@@ -30,7 +30,7 @@ const A0 = 135;
 const SWEEP = 270;
 const CX = 22;
 const CY = 25;
-const R = 10.5;
+const R = 11.6; // the ring, just outside the disc
 
 function polar(deg: number, r = R): [number, number] {
   const a = (deg * Math.PI) / 180;
@@ -123,10 +123,10 @@ register('live.dial', (_args, { node }) => {
     const font = 'font-family:inherit;';
     const name = mk('text', { x: '22', y: '8', 'text-anchor': 'middle', style: `${font}font-size:7.2px;fill:var(--ld-ink,#c9ced6);letter-spacing:.02em;` });
     name.textContent = param.shortname;
-    mk('path', { d: arc(A0, A0 + SWEEP), fill: 'none', stroke: 'var(--ld-track,#3a3f47)', 'stroke-width': '2.6', 'stroke-linecap': 'round' });
-    const fill = mk('path', { d: '', fill: 'none', stroke: 'var(--ld-accent,#ffad56)', 'stroke-width': '2.6', 'stroke-linecap': 'round' });
-    mk('circle', { cx: String(CX), cy: String(CY), r: '6.6', fill: 'var(--ld-cap,#22262c)', stroke: 'var(--ld-cap-edge,#4a505a)', 'stroke-width': '0.6' });
-    const needle = mk('line', { x1: String(CX), y1: String(CY), x2: String(CX), y2: String(CY), stroke: 'var(--ld-needle,#f2f4f7)', 'stroke-width': '1.4', 'stroke-linecap': 'round' });
+    mk('path', { d: arc(A0, A0 + SWEEP), fill: 'none', stroke: 'var(--ld-track,#3a3f47)', 'stroke-width': '1.2', 'stroke-linecap': 'round' });
+    const fill = mk('path', { d: '', fill: 'none', stroke: 'var(--ld-accent,#ffad56)', 'stroke-width': '1.7', 'stroke-linecap': 'round' });
+    mk('circle', { cx: String(CX), cy: String(CY), r: '9.6', fill: 'var(--ld-cap,#22262c)', stroke: 'var(--ld-cap-edge,#4a505a)', 'stroke-width': '0.5' });
+    const needle = mk('line', { x1: String(CX), y1: String(CY), x2: String(CX), y2: String(CY), stroke: 'var(--ld-needle,#f2f4f7)', 'stroke-width': '1.2', 'stroke-linecap': 'round' });
     const readout = mk('text', { x: '22', y: '46', 'text-anchor': 'middle', style: `${font}font-size:6.8px;fill:var(--ld-dim,#8b929c);font-variant-numeric:tabular-nums;` });
     const focus = mk('circle', { cx: String(CX), cy: String(CY), r: '14.5', fill: 'none', stroke: 'var(--ld-accent,#ffad56)', 'stroke-width': '0.8', opacity: '0' });
     root.appendChild(svg);
@@ -135,8 +135,8 @@ register('live.dial', (_args, { node }) => {
       const pos = paramPosition(param, value);
       const deg = A0 + SWEEP * pos;
       fill.setAttribute('d', arc(A0, deg));
-      const [x0, y0] = polar(deg, 2.2);
-      const [x1, y1] = polar(deg, 6.2);
+      const [x0, y0] = polar(deg, 2.6);
+      const [x1, y1] = polar(deg, 8.6);
       needle.setAttribute('x1', String(x0));
       needle.setAttribute('y1', String(y0));
       needle.setAttribute('x2', String(x1));

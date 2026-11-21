@@ -8,7 +8,7 @@
   "settings": {
    "kind": "instrument",
    "name": "Saw Lead",
-   "accent": "#2f7df6",
+   "accent": "#3f78bd",
    "instrument": {
     "osc": {
      "options": {
@@ -67,7 +67,7 @@
   "settings": {
    "kind": "instrument",
    "name": "Hollow Lead",
-   "accent": "#d48806",
+   "accent": "#c98a12",
    "instrument": {
     "osc": {
      "options": {
@@ -136,7 +136,7 @@
   "settings": {
    "kind": "instrument",
    "name": "Pluck",
-   "accent": "#e64d8c",
+   "accent": "#c2457f",
    "instrument": {
     "osc": {
      "options": {
@@ -195,7 +195,7 @@
   "settings": {
    "kind": "instrument",
    "name": "Soft Pad",
-   "accent": "#f2683c",
+   "accent": "#c8553d",
    "instrument": {
     "osc": {
      "options": {
@@ -264,7 +264,7 @@
   "settings": {
    "kind": "instrument",
    "name": "Strings",
-   "accent": "#8b5cf6",
+   "accent": "#7a5bd0",
    "instrument": {
     "osc": {
      "options": {
@@ -333,7 +333,7 @@
   "settings": {
    "kind": "instrument",
    "name": "Glass Bells",
-   "accent": "#0ea5a0",
+   "accent": "#1f8f86",
    "instrument": {
     "osc": {
      "options": {
@@ -390,7 +390,7 @@
   "settings": {
    "kind": "instrument",
    "name": "Sub Bass",
-   "accent": "#f2683c",
+   "accent": "#c8553d",
    "instrument": {
     "osc": {
      "options": {
@@ -436,7 +436,7 @@
   "settings": {
    "kind": "instrument",
    "name": "Acid Bass",
-   "accent": "#0ea5a0",
+   "accent": "#1f8f86",
    "instrument": {
     "osc": {
      "options": {
@@ -494,7 +494,7 @@
   "settings": {
    "kind": "instrument",
    "name": "Electric Keys",
-   "accent": "#d48806",
+   "accent": "#c98a12",
    "instrument": {
     "osc": {
      "options": {
@@ -562,7 +562,7 @@
   "settings": {
    "kind": "instrument",
    "name": "Organ",
-   "accent": "#2f7df6",
+   "accent": "#3f78bd",
    "instrument": {
     "osc": {
      "options": {
@@ -621,7 +621,7 @@
   "settings": {
    "kind": "instrument",
    "name": "Lo-Fi Keys",
-   "accent": "#e64d8c",
+   "accent": "#c2457f",
    "instrument": {
     "osc": {
      "options": {
@@ -698,7 +698,7 @@
   "settings": {
    "kind": "instrument",
    "name": "Plain Synth",
-   "accent": "#2f7df6",
+   "accent": "#3f78bd",
    "instrument": {
     "osc": {
      "options": {

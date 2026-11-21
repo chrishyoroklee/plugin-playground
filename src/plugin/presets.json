@@ -7,7 +7,7 @@
   "sample": "guitar",
   "settings": {
    "name": "Warm Tube",
-   "accent": "#2f7df6",
+   "accent": "#3f78bd",
    "chain": [
     {
      "module": "drive",
@@ -34,7 +34,7 @@
   "sample": "guitar",
   "settings": {
    "name": "Overdrive",
-   "accent": "#2f7df6",
+   "accent": "#3f78bd",
    "chain": [
     {
      "module": "drive",
@@ -61,7 +61,7 @@
   "sample": "drums",
   "settings": {
    "name": "Crunch",
-   "accent": "#d48806",
+   "accent": "#c98a12",
    "chain": [
     {
      "module": "drive",
@@ -88,7 +88,7 @@
   "sample": "guitar",
   "settings": {
    "name": "Fuzz Box",
-   "accent": "#e64d8c",
+   "accent": "#c2457f",
    "chain": [
     {
      "module": "drive",
@@ -115,7 +115,7 @@
   "sample": "piano",
   "settings": {
    "name": "Wavefolder",
-   "accent": "#8b5cf6",
+   "accent": "#7a5bd0",
    "chain": [
     {
      "module": "drive",
@@ -142,7 +142,7 @@
   "sample": "guitar",
   "settings": {
    "name": "Shoegaze Wall",
-   "accent": "#e64d8c",
+   "accent": "#c2457f",
    "chain": [
     {
      "module": "drive",
@@ -203,7 +203,7 @@
   "sample": "piano",
   "settings": {
    "name": "Tape Lo-Fi",
-   "accent": "#d48806",
+   "accent": "#c98a12",
    "chain": [
     {
      "module": "crush",
@@ -251,7 +251,7 @@
   "sample": "drums",
   "settings": {
    "name": "8-Bit Arcade",
-   "accent": "#0ea5a0",
+   "accent": "#1f8f86",
    "chain": [
     {
      "module": "crush",
@@ -276,7 +276,7 @@
   "sample": "vocals",
   "settings": {
    "name": "Telephone",
-   "accent": "#d48806",
+   "accent": "#c98a12",
    "chain": [
     {
      "module": "filter",
@@ -314,7 +314,7 @@
   "sample": "drums",
   "settings": {
    "name": "Blown Speaker",
-   "accent": "#2f7df6",
+   "accent": "#3f78bd",
    "chain": [
     {
      "module": "drive",
@@ -361,7 +361,7 @@
   "sample": "guitar",
   "settings": {
    "name": "Underwater",
-   "accent": "#f2683c",
+   "accent": "#c8553d",
    "chain": [
     {
      "module": "filter",
@@ -410,7 +410,7 @@
   "sample": "drums",
   "settings": {
    "name": "Resonant Low-Pass",
-   "accent": "#2f7df6",
+   "accent": "#3f78bd",
    "chain": [
     {
      "module": "filter",
@@ -437,7 +437,7 @@
   "sample": "vocals",
   "settings": {
    "name": "Thin Air",
-   "accent": "#f2683c",
+   "accent": "#c8553d",
    "chain": [
     {
      "module": "filter",
@@ -464,7 +464,7 @@
   "sample": "piano",
   "settings": {
    "name": "Hollow Notch",
-   "accent": "#8b5cf6",
+   "accent": "#7a5bd0",
    "chain": [
     {
      "module": "filter",
@@ -491,7 +491,7 @@
   "sample": "piano",
   "settings": {
    "name": "Wide Chorus",
-   "accent": "#0ea5a0",
+   "accent": "#1f8f86",
    "chain": [
     {
      "module": "chorus",
@@ -519,7 +519,7 @@
   "sample": "guitar",
   "settings": {
    "name": "Slow Ensemble",
-   "accent": "#f2683c",
+   "accent": "#c8553d",
    "chain": [
     {
      "module": "chorus",
@@ -557,7 +557,7 @@
   "sample": "vocals",
   "settings": {
    "name": "Vibrato",
-   "accent": "#e64d8c",
+   "accent": "#c2457f",
    "chain": [
     {
      "module": "chorus",
@@ -585,7 +585,7 @@
   "sample": "drums",
   "settings": {
    "name": "Jet Flanger",
-   "accent": "#8b5cf6",
+   "accent": "#7a5bd0",
    "chain": [
     {
      "module": "chorus",
@@ -613,7 +613,7 @@
   "sample": "guitar",
   "settings": {
    "name": "Surf Tremolo",
-   "accent": "#f2683c",
+   "accent": "#c8553d",
    "chain": [
     {
      "module": "tremolo",
@@ -650,7 +650,7 @@
   "sample": "piano",
   "settings": {
    "name": "Slow Pulse",
-   "accent": "#0ea5a0",
+   "accent": "#1f8f86",
    "chain": [
     {
      "module": "tremolo",
@@ -677,7 +677,7 @@
   "sample": "vocals",
   "settings": {
    "name": "Helicopter",
-   "accent": "#2f7df6",
+   "accent": "#3f78bd",
    "chain": [
     {
      "module": "tremolo",
@@ -704,7 +704,7 @@
   "sample": "piano",
   "settings": {
    "name": "Auto-Pan Drift",
-   "accent": "#e64d8c",
+   "accent": "#c2457f",
    "chain": [
     {
      "module": "tremolo",
@@ -743,7 +743,7 @@
   "sample": "vocals",
   "settings": {
    "name": "Slapback",
-   "accent": "#f2683c",
+   "accent": "#c8553d",
    "chain": [
     {
      "module": "delay",
@@ -771,7 +771,7 @@
   "sample": "guitar",
   "settings": {
    "name": "Quarter Echo",
-   "accent": "#0ea5a0",
+   "accent": "#1f8f86",
    "chain": [
     {
      "module": "delay",
@@ -799,7 +799,7 @@
   "sample": "drums",
   "settings": {
    "name": "Ping-Pong",
-   "accent": "#8b5cf6",
+   "accent": "#7a5bd0",
    "chain": [
     {
      "module": "delay",
@@ -827,7 +827,7 @@
   "sample": "drums",
   "settings": {
    "name": "Dub Echo",
-   "accent": "#0ea5a0",
+   "accent": "#1f8f86",
    "chain": [
     {
      "module": "filter",
@@ -876,7 +876,7 @@
   "sample": "drums",
   "settings": {
    "name": "Small Room",
-   "accent": "#d48806",
+   "accent": "#c98a12",
    "chain": [
     {
      "module": "reverb",
@@ -902,7 +902,7 @@
   "sample": "piano",
   "settings": {
    "name": "Concert Hall",
-   "accent": "#f2683c",
+   "accent": "#c8553d",
    "chain": [
     {
      "module": "reverb",
@@ -928,7 +928,7 @@
   "sample": "vocals",
   "settings": {
    "name": "Cathedral",
-   "accent": "#8b5cf6",
+   "accent": "#7a5bd0",
    "chain": [
     {
      "module": "filter",
@@ -965,7 +965,7 @@
   "sample": "piano",
   "settings": {
    "name": "Space Station",
-   "accent": "#8b5cf6",
+   "accent": "#7a5bd0",
    "chain": [
     {
      "module": "delay",

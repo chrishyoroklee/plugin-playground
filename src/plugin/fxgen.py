@@ -345,7 +345,7 @@ class Device:
         w = max(w, 2 * CARD_PAD + 60)
         x = self.card_x
         self.s.emit("card((%d, %d), x=%d, w=%d, color=CARD)" % (XP, self.park_y, x, w))
-        self.s.emit('label("%s", (%d, %d), (%d, %d, %d, 18), size=10.0, bold=True, color=ACCENT)'
+        self.s.emit('label("%s", (%d, %d), (%d, %d, %d, 18), size=10.0, bold=True, color=INK)'
                     % (mod["label"].upper(), XP + 60, self.park_y, x, TITLE_Y, w))
         self.park_y += 30
         self.card_x = x + w + CARD_GAP
@@ -946,10 +946,10 @@ def script(settings):
     s.emit(PREAMBLE)
     s.emit()
     s.emit("ACCENT = %r" % _rgba(st["accent"]))
-    # The device's colours: pale blue cards with navy lettering, and the accent on top.
-    s.emit("CARD = [0.925, 0.945, 0.976, 1.0]")
-    s.emit("INK = [0.075, 0.137, 0.239, 1.0]")
-    s.emit("DIM = [0.4, 0.455, 0.549, 1.0]")
+    # The device's colours: pale cards and warm black lettering. The accent is the dials' arc.
+    s.emit("CARD = [0.992, 0.949, 0.922, 1.0]")
+    s.emit("INK = [0.184, 0.063, 0.027, 1.0]")
+    s.emit("DIM = [0.561, 0.435, 0.396, 1.0]")
 
     # the name, in the device view
     brand = ['label(%s, (%d, %d), (8, %d, %d), size=12.0, bold=True, color=INK)'
