@@ -10,7 +10,8 @@ npm run plugin -- --settings my-effect.json    # the page's settings, saved as a
 npm run plugin -- --preset pingpong --install  # ...and copy the plugins where hosts look
 ```
 
-It needs Python with `maxpylang`, CMake 3.21 or newer and a C++17 compiler. The first
+It needs Python with `maxpylang` (`pip install public/py/maxpylang-*.whl`, the build the
+page itself loads), CMake 3.21 or newer and a C++17 compiler. The first
 build downloads the plugin SDKs. Everything lands in `build/plugins/<name>/`:
 
 ```

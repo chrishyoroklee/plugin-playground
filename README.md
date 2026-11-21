@@ -12,7 +12,7 @@ npm run dev        # http://localhost:5173
 npm test           # the browser half (vitest)
 npm run build      # static site in dist/, works from any folder
 
-pip install maxpylang pytest numpy
+pip install public/py/maxpylang-*.whl pytest numpy   # the wheel the page loads
 pytest tests       # the generator, and the C++ compiled from its patches
 
 npm run plugin -- --preset "Tape Lo-Fi"   # a native CLAP / VST3 / Audio Unit plugin

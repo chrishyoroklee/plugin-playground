@@ -11,8 +11,9 @@ the page plays and the .amxd holds), patchc.py compiles that patch to C++ (Effec
 and CMake builds Effect.h into a .clap, a .vst3 and, on macOS, an Audio Unit.
 
 Everything lands in build/plugins/<name>/: Effect.h and patch.json to read, the plugins
-next to them. Needs Python with maxpylang, CMake 3.21 or newer and a C++17 compiler. The
-first build downloads the plugin SDKs (CLAP, clap-wrapper, VST3), which takes a minute.
+next to them. Needs Python with maxpylang (the wheel in public/py), CMake 3.21 or newer
+and a C++17 compiler. The first build downloads the plugin SDKs (CLAP, clap-wrapper,
+VST3), which takes a minute.
 
 Other switches: --source-only stops after writing Effect.h; --render IN.wav OUT.wav plays
 a file through the effect without building a plugin; --formats picks which to build;
