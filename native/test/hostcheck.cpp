@@ -282,12 +282,16 @@ int main(int argc, char** argv) {
         rescans = 0;
         check(state2->load(second, &istream), "state loads");
         check(n == 0 || rescans > 0, "loading state tells the host the values changed");
+        int moved = 0;
         for (int i = 0; i < n; i++) {
             double a = 0, b = 1;
             params->get_value(plugin, infos[i].id, &a);
             params2->get_value(second, infos[i].id, &b);
-            check(a == b && a != infos[i].default_value, "a loaded parameter has the saved value");
+            check(a == b, "a loaded parameter has the saved value");
+            if (a != infos[i].default_value) moved++;
         }
+        // A stepped parameter can be moved onto its own default; most cannot.
+        check(n == 0 || moved > 0, "the saved values were not just the defaults");
         Bytes junk;
         junk.data.assign({'n', 'o', 'p', 'e'});
         clap_istream_t bad = {&junk, streamRead};
