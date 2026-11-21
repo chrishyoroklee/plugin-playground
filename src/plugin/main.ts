@@ -159,7 +159,7 @@ async function apply(next: RunResult): Promise<void> {
   deviceWidth = renderDevice($('device'), next.json, report.built as ReadonlyMap<string, MaxNode>);
   const hidden = renderPatch($('patch-wrap'), patch);
   $('patch-wrap').dataset.hidden = String(hidden);
-  fitDevice();
+  applyZoom();
 
   $('boot').hidden = true;
   $<HTMLButtonElement>('btn-download').disabled = false;
@@ -343,6 +343,34 @@ function renderCode(r: RunResult): void {
 
 const NARROW = window.matchMedia('(max-width: 980px)');
 
+// Zoom, chosen by the user, for each view. 1 is the device at the size that fits the
+// stage, and the patch at its natural size. Past that the stage scrolls.
+const ZOOM_MIN = 0.4;
+const ZOOM_MAX = 4;
+const zoomOf: Record<'device' | 'patch', number> = { device: 1, patch: 1 };
+
+function setZoom(next: number): void {
+  zoomOf[view] = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, next));
+  applyZoom();
+}
+
+function applyZoom(): void {
+  $('zoom-reset').textContent = `${Math.round(zoomOf[view] * 100)}%`;
+  $<HTMLButtonElement>('zoom-out').disabled = zoomOf[view] <= ZOOM_MIN;
+  $<HTMLButtonElement>('zoom-in').disabled = zoomOf[view] >= ZOOM_MAX;
+  if (view === 'device') fitDevice();
+  else fitPatch();
+}
+
+/** The patch is an SVG with a viewBox, so its drawn size is its natural size times the zoom. */
+function fitPatch(): void {
+  const svg = $('patch-wrap').querySelector<SVGSVGElement>('svg');
+  if (!svg) return;
+  const box = svg.viewBox.baseVal;
+  svg.setAttribute('width', String(box.width * zoomOf.patch));
+  svg.setAttribute('height', String(box.height * zoomOf.patch));
+}
+
 function fitDevice(): void {
   if (!deviceWidth) return;
   const wrap = $('device-wrap');
@@ -351,7 +379,8 @@ function fitDevice(): void {
   // device must fit it both ways. Stacked on a narrow one the stage grows with the
   // device, and only the width limits it. 128 is the wrapper's vertical padding.
   const tall = NARROW.matches ? Infinity : (wrap.clientHeight - 128) / DEVICE_HEIGHT;
-  const zoom = Math.max(0.62, Math.min(2.4, room / deviceWidth, tall));
+  const fit = Math.max(0.62, Math.min(2.4, room / deviceWidth, tall));
+  const zoom = fit * zoomOf.device;
   const device = $('device');
   device.style.transform = `scale(${zoom})`;
   // A transform does not change layout size, so the wrapper is sized by hand.
@@ -367,7 +396,7 @@ function setView(next: 'device' | 'patch'): void {
   $('view-patch').setAttribute('aria-selected', String(next === 'patch'));
   $('device-wrap').hidden = next !== 'device';
   $('patch-wrap').hidden = next !== 'patch';
-  if (next === 'device') fitDevice();
+  applyZoom();
 }
 
 // ── left panel ──────────────────────────────────────────────────────────────────
@@ -1107,6 +1136,16 @@ function init(): void {
   });
 
   new ResizeObserver(() => fitDevice()).observe($('device-wrap'));
+
+  // Zoom: the buttons on the stage, or pinch / Ctrl-scroll over it.
+  $('zoom-out').addEventListener('click', () => setZoom(zoomOf[view] / 1.25));
+  $('zoom-in').addEventListener('click', () => setZoom(zoomOf[view] * 1.25));
+  $('zoom-reset').addEventListener('click', () => setZoom(1));
+  $('stage').addEventListener('wheel', (e) => {
+    if (!e.ctrlKey && !e.metaKey) return; // a plain scroll still scrolls
+    e.preventDefault();
+    setZoom(zoomOf[view] * Math.exp(-e.deltaY * 0.0025)); // a wheel notch is about a quarter
+  }, { passive: false });
 
   python.ready.catch((err: Error) => {
     setStatus('error', 'Python failed to start');
