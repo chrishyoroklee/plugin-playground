@@ -13,6 +13,7 @@ import type { IRNode } from '../src/ir/types';
 import type { Msg } from '../src/runtime/atoms';
 import { highlightPython } from '../src/plugin/device-view';
 import { PRESETS, SCHEMA, decodeSettings, dialIndex, encodeSettings, normalize } from '../src/plugin/model';
+import { SOUNDS, SOUND_RATE, findSound } from '../src/plugin/sounds';
 
 const ctx = new (globalThis as any).OfflineAudioContext(2, 128, 44100) as BaseAudioContext;
 
@@ -226,5 +227,44 @@ describe('script view', () => {
 
   it('does not treat a # inside a string as a comment', () => {
     expect(highlightPython('c = "#ff7a45"')).toBe('c = <span class="c-str">"#ff7a45"</span>');
+  });
+});
+
+describe('sound library', () => {
+  const computed = SOUNDS.filter((s) => s.render);
+
+  it('lists the recordings and the computed sounds, each once, each one or the other', () => {
+    expect(new Set(SOUNDS.map((s) => s.id)).size).toBe(SOUNDS.length);
+    expect(SOUNDS.filter((s) => s.url).map((s) => s.id)).toEqual(['piano', 'guitar', 'vocals', 'drums']);
+    expect(computed.length).toBeGreaterThanOrEqual(10);
+    for (const s of SOUNDS) expect(Boolean(s.url) !== Boolean(s.render), s.id).toBe(true);
+  });
+
+  it('has the sound every preset asks for', () => {
+    for (const p of PRESETS) if (p.sample) expect(findSound(p.sample), p.id).toBeDefined();
+  });
+
+  it.each(computed.map((s) => [s.id, s] as const))('%s is a loop of sensible length, at half scale', (_id, sound) => {
+    const channels = sound.render!();
+    expect([1, 2]).toContain(channels.length);
+    const seconds = channels[0].length / SOUND_RATE;
+    expect(seconds).toBeGreaterThanOrEqual(1);
+    expect(seconds).toBeLessThanOrEqual(10);
+    let peak = 0;
+    for (const ch of channels) {
+      expect(ch.length).toBe(channels[0].length);
+      for (const v of ch) {
+        if (!Number.isFinite(v)) throw new Error(`${sound.id} has a sample that is not a number`);
+        peak = Math.max(peak, Math.abs(v));
+      }
+    }
+    expect(peak).toBeCloseTo(0.5, 5);
+  });
+
+  it('computes the same sound every time', () => {
+    for (const id of ['arpeggio', 'drum-machine', 'pink']) {
+      const sound = findSound(id)!;
+      expect(sound.render!()[0]).toEqual(sound.render!()[0]);
+    }
   });
 });

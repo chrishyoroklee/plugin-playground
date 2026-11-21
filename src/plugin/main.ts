@@ -19,21 +19,17 @@ import type { MaxNode } from '../engine/registry';
 import { parseMaxPat } from '../parser/maxpat';
 import { preloadWorklets } from '../runtime/worklet';
 import { firstNum } from '../runtime/atoms';
-import { Track, type SampleDef } from './audio';
+import { Track } from './audio';
 import { DEVICE_HEIGHT, highlightPython, renderDevice, renderPatch } from './device-view';
 import {
   PRESETS, SCHEMA, decodeSettings, dialIndex, encodeSettings, moduleSpec, normalize,
   type ChainEntry, type Preset, type Settings,
 } from './model';
 import { PyRuntime, base64ToBytes, type RunResult } from './python';
+import { SOUNDS, findSound } from './sounds';
+import { getTheme, setTheme } from './theme';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => document.getElementById(id) as T;
-
-const SAMPLES: SampleDef[] = ['piano', 'guitar', 'vocals', 'drums'].map((id) => ({
-  id,
-  label: id[0].toUpperCase() + id.slice(1),
-  url: `${import.meta.env.BASE_URL}samples/fx/${id}.mp3`,
-}));
 
 /** One line per workaround the generated script carries; the page links each to the log. */
 const GAPS: Record<string, string> = {
@@ -560,33 +556,52 @@ function renderSide(): void {
 
 // ── transport ───────────────────────────────────────────────────────────────────
 
-function renderSamples(): void {
-  const host = $('samples');
-  host.replaceChildren();
-  for (const s of SAMPLES) {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.className = 'chip';
-    b.textContent = s.label;
-    b.setAttribute('role', 'radio');
-    b.setAttribute('aria-checked', String(!customBuffer && s.id === sampleId));
-    b.addEventListener('click', () => {
-      customBuffer = undefined;
-      $('file-name').textContent = 'Your audio';
-      void chooseSample(s.id);
-    });
-    host.append(b);
-  }
+const PLAYING_ICON = '<svg viewBox="0 0 16 16" width="11" height="11" aria-hidden="true"><path d="M5 3.2v9.6L12.6 8z" fill="currentColor"/></svg>';
+
+/** The sound library: every sound under its group, and the button that names the one playing. */
+function renderLibrary(): void {
+  const current = customBuffer ? undefined : findSound(sampleId);
+  $('sound-name').textContent = current?.label ?? 'Library';
+  $('btn-library').classList.toggle('is-active', !!current);
   document.querySelector('.chip.upload')?.classList.toggle('is-active', !!customBuffer);
+
+  const host = $('sounds');
+  host.replaceChildren();
+  for (const group of new Set(SOUNDS.map((s) => s.group))) {
+    const heading = document.createElement('h3');
+    heading.textContent = group;
+    const grid = document.createElement('div');
+    grid.className = 'sound-grid';
+    for (const sound of SOUNDS.filter((s) => s.group === group)) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'sound';
+      b.dataset.sound = sound.id;
+      b.setAttribute('role', 'radio');
+      b.setAttribute('aria-checked', String(sound === current));
+      b.innerHTML = `<i>${PLAYING_ICON}</i><b></b><span></span>`;
+      b.querySelector('b')!.textContent = sound.label;
+      b.querySelector('span')!.textContent = sound.blurb;
+      // Trying a sound is one click: it is chosen and it plays. The library stays open
+      // so the next one is one click too.
+      b.addEventListener('click', () => {
+        customBuffer = undefined;
+        $('file-name').textContent = 'Your audio';
+        void chooseSample(sound.id).then(() => { if (!track.playing) void setPlaying(true); });
+      });
+      grid.append(b);
+    }
+    host.append(heading, grid);
+  }
 }
 
 async function chooseSample(id: string): Promise<void> {
+  const sound = findSound(id);
+  if (!sound) return;
   sampleId = id;
-  renderSamples();
-  const sample = SAMPLES.find((s) => s.id === id);
-  if (!sample) return;
+  renderLibrary();
   try {
-    const buffer = await track.load(sample);
+    const buffer = await track.load(sound);
     if (sampleId === id && !customBuffer) track.setBuffer(buffer);
   } catch (err) {
     toast(String((err as Error).message || err));
@@ -598,7 +613,7 @@ async function useFile(file: File): Promise<void> {
     const buffer = await track.decode(await file.arrayBuffer());
     customBuffer = buffer;
     $('file-name').textContent = file.name.length > 22 ? `${file.name.slice(0, 20)}…` : file.name;
-    renderSamples();
+    renderLibrary();
     track.setBuffer(buffer);
     if (!track.playing) await setPlaying(true);
   } catch {
@@ -746,9 +761,27 @@ async function copy(text: string, done: string): Promise<void> {
 
 // ── wiring ──────────────────────────────────────────────────────────────────────
 
+/**
+ * A button that opens the panel beside it. A click on the button toggles it; a click
+ * anywhere outside closes it. Returns the function that closes it (for Escape).
+ */
+function popover(rootId: string, buttonId: string): () => void {
+  const root = $(rootId);
+  const button = $(buttonId);
+  const set = (open: boolean): void => {
+    root.classList.toggle('open', open);
+    button.setAttribute('aria-expanded', String(open));
+  };
+  button.addEventListener('click', () => set(!root.classList.contains('open')));
+  document.addEventListener('pointerdown', (e) => {
+    if (!root.contains(e.target as Node)) set(false);
+  });
+  return () => set(false);
+}
+
 function init(): void {
   renderSide();
-  renderSamples();
+  renderLibrary();
   setView('device');
 
   $('name').addEventListener('input', () => {
@@ -801,20 +834,19 @@ function init(): void {
     void copy(location.href, 'Link copied. It opens this exact device.');
   });
 
-  // Hover or focus shows the help (CSS). A click pins it open until the next click
-  // outside it, or Escape.
-  const setHelp = (open: boolean): void => {
-    $('help').classList.toggle('open', open);
-    $('btn-help').setAttribute('aria-expanded', String(open));
-  };
-  $('btn-help').addEventListener('click', () => setHelp(!$('help').classList.contains('open')));
-  document.addEventListener('pointerdown', (e) => {
-    if (!$('help').contains(e.target as Node)) setHelp(false);
+  // The three popovers. The help also peeks on hover or focus (CSS).
+  const popovers = [popover('help', 'btn-help'), popover('settings', 'btn-settings'), popover('library', 'btn-library')];
+
+  const dark = $('dark-mode');
+  dark.setAttribute('aria-checked', String(getTheme() === 'dark'));
+  dark.addEventListener('click', () => {
+    setTheme(getTheme() === 'dark' ? 'light' : 'dark');
+    dark.setAttribute('aria-checked', String(getTheme() === 'dark'));
   });
 
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
-      setHelp(false);
+      for (const close of popovers) close();
       if ($('help').contains(document.activeElement)) (document.activeElement as HTMLElement).blur();
     }
     if (e.key === 'Escape' && $('drawer').classList.contains('open')) setDrawer(false);

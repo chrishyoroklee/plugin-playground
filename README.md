@@ -37,6 +37,12 @@ settings ──▶ src/plugin/fxgen.py (maxpylang, in Pyodide) ──▶ patcher
   the script that ran, with maxpylang's type check results above it.
 - **`src/plugin/schema.json`** describes the modules and every dial's range, and is read
   by both the generator and the page. **`presets.json`** is the preset library.
+- **The sound library is mostly computed.** `src/plugin/sounds.ts` lists what the page can
+  play through a device: the four recordings in `public/samples/fx`, and synth loops, a
+  drum machine and test signals that are computed in the browser when first chosen. You
+  can also drop in your own audio file.
+- **Light by default.** Dark mode is a switch under the gear (`src/plugin/theme.ts`); every
+  colour that differs is a variable at the top of `plugin.css`.
 - **The engine plays the device as a host would.** `src/runtime/host.ts` is a pair of
   buses standing in for the Live track: the page plays a sample into `plugin~` and
   listens to `plugout~`.

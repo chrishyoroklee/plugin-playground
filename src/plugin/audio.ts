@@ -6,12 +6,7 @@
 // (hear the sample dry, at the same moment in the loop) and a meter.
 
 import { hostBus } from '../runtime/host';
-
-export interface SampleDef {
-  id: string;
-  label: string;
-  url: string;
-}
+import { SOUND_RATE, type Sound } from './sounds';
 
 const FADE = 0.015;
 
@@ -65,20 +60,27 @@ export class Track {
     this.meterData = this.meters.map((a) => new Float32Array(new ArrayBuffer(a.fftSize * 4)));
   }
 
-  /** Fetch and decode a bundled sample, once. */
-  load(sample: SampleDef): Promise<AudioBuffer> {
-    let p = this.buffers.get(sample.id);
+  /** A sound from the library as a buffer: fetched and decoded, or computed. Once each. */
+  load(sound: Sound): Promise<AudioBuffer> {
+    let p = this.buffers.get(sound.id);
     if (!p) {
-      p = fetch(sample.url)
-        .then((r) => {
-          if (!r.ok) throw new Error(`could not load ${sample.label} (${r.status})`);
-          return r.arrayBuffer();
-        })
-        .then((data) => this.ctx.decodeAudioData(data));
-      p.catch(() => this.buffers.delete(sample.id));
-      this.buffers.set(sample.id, p);
+      p = sound.render ? Promise.resolve().then(() => this.compute(sound.render!())) : this.fetch(sound);
+      p.catch(() => this.buffers.delete(sound.id));
+      this.buffers.set(sound.id, p);
     }
     return p;
+  }
+
+  private async fetch(sound: Sound): Promise<AudioBuffer> {
+    const response = await fetch(sound.url!);
+    if (!response.ok) throw new Error(`could not load ${sound.label} (${response.status})`);
+    return this.ctx.decodeAudioData(await response.arrayBuffer());
+  }
+
+  private compute(channels: Float32Array[]): AudioBuffer {
+    const buffer = this.ctx.createBuffer(channels.length, channels[0].length, SOUND_RATE);
+    channels.forEach((data, ch) => buffer.getChannelData(ch).set(data));
+    return buffer;
   }
 
   decode(data: ArrayBuffer): Promise<AudioBuffer> {
