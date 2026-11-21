@@ -14,8 +14,14 @@ cmake_minimum_required(VERSION 3.21)
 
 set(CMAKE_OSX_DEPLOYMENT_TARGET "10.15" CACHE STRING "")
 set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "")
+# On Windows, link the C++ runtime into the plugin: it then needs no redistributable on
+# the machine it is copied to, and it matches how the VST3 SDK is built.
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
 project(plugin-playground-fx VERSION 0.1.0 LANGUAGES C CXX)
+if(APPLE)
+    enable_language(OBJC OBJCXX)  # the VST3 and Audio Unit wrappers have Objective-C++ in them
+endif()
 
 set(FX_EFFECT_DIR "" CACHE PATH "The folder holding the Effect.h that patchc generated")
 set(FX_NAME "Effect" CACHE STRING "The plugin's name, as hosts show it")
