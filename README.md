@@ -53,7 +53,8 @@ settings ──▶ src/plugin/fxgen.py (maxpylang, in Pyodide) ──▶ patcher
   generator puts a synth where `plugin~` was: `notein`, a `poly` that hands each note a
   voice, and the voices laid out side by side (two oscillators, a filter, an envelope),
   followed by the same effect chain. The page plays it from an on-screen piano, the
-  computer keyboard, a MIDI keyboard or a looping phrase (`src/plugin/keys.ts`).
+  computer keyboard (each letter is printed on the key it plays), a MIDI keyboard or a
+  looping phrase (`src/plugin/keys.ts`).
 - **The same patch compiles to a native plugin.** `src/plugin/patchc.py` turns the
   patcher JSON into C++ (one readable `Effect.h` per effect, on the kernels in
   `native/mxrt.h`), and `npm run plugin` builds that as CLAP, VST3 and Audio Unit, so the

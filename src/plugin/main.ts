@@ -619,6 +619,7 @@ function renderKind(): void {
   $('mode-instrument').setAttribute('aria-selected', String(instrument));
   document.body.dataset.kind = kind();
   $('synth-group').hidden = !instrument;
+  $('keybed').hidden = !instrument;
   $('play-keys').hidden = !instrument;
   $('play-sample').hidden = instrument;
   $('btn-bypass').hidden = instrument;
@@ -963,6 +964,9 @@ function init(): void {
     );
   });
   keyboard.listenToComputerKeys(() => kind() === 'instrument');
+  keyboard.onOctave = (name) => { $('octave').textContent = name; };
+  $('octave-down').addEventListener('click', () => keyboard.shiftOctave(-1));
+  $('octave-up').addEventListener('click', () => keyboard.shiftOctave(1));
 
   // Ready-made plugin builds, if the site was published with them (.github/workflows/pages.yml).
   fetch(`${import.meta.env.BASE_URL}downloads/index.json`)

@@ -158,13 +158,30 @@
             </div>
           </div>
 
+          <!-- An instrument's keyboard: click or drag the keys, or play the letters printed on them. -->
+          <div id="keybed" class="keybed" hidden>
+            <div class="keybed-head">
+              <span class="label">Keyboard</span>
+              <span class="hint">Click or drag the keys, or play the letters on your computer keyboard. Lower on a key is louder.</span>
+              <div class="octave" role="group" aria-label="Octave of the computer keyboard">
+                <button id="octave-down" class="btn icon" type="button" title="Octave down (Z)" aria-label="Octave down">
+                  <svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><path d="M3 7h8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+                </button>
+                <span id="octave" class="octave-name" aria-live="polite">C4</span>
+                <button id="octave-up" class="btn icon" type="button" title="Octave up (X)" aria-label="Octave up">
+                  <svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true"><path d="M3 7h8M7 3v8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+                </button>
+              </div>
+            </div>
+            <div id="piano" class="piano" role="group" aria-label="Piano. The letters on the keys play it from your computer keyboard; Z and X change octave."></div>
+          </div>
+
           <div class="transport">
             <button id="btn-play" class="play" type="button" aria-pressed="false" aria-label="Play">
               <svg class="i-play" viewBox="0 0 16 16" width="18" height="18" aria-hidden="true"><path d="M4.5 2.8v10.4L13 8z" fill="currentColor"/></svg>
               <svg class="i-stop" viewBox="0 0 16 16" width="18" height="18" aria-hidden="true"><rect x="3.5" y="3.5" width="9" height="9" rx="1.5" fill="currentColor"/></svg>
             </button>
             <div id="play-keys" class="keys" hidden>
-              <div id="piano" class="piano" role="group" aria-label="Piano. The keys A S D F and the row above play it too; Z and X change octave."></div>
               <label class="chip phrase" title="What the play button loops">
                 <span class="label">Loop</span>
                 <select id="phrase" aria-label="Phrase to loop"></select>

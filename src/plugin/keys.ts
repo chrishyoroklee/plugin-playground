@@ -1,14 +1,21 @@
-// Playing an instrument on the page: a piano to click, the computer's keyboard, a MIDI
-// keyboard if one is plugged in, and a few phrases that loop so the hands are free to
+// Playing an instrument on the page: a piano to click or drag across, the computer's
+// keyboard (each letter is printed on the key it plays), a MIDI keyboard if one is
+// plugged in, and a few phrases that loop so the hands are free to
 // turn dials.
 //
 // Everything here ends in one call, `onNote(key, velocity)`, with a velocity of 0 for a
 // key coming up: the same two numbers a notein object hands a patch. main.ts sends them
 // to the notein of the running device.
 
-/** MIDI note numbers for the piano drawn on the page: C2 up to C6. */
+/** MIDI note numbers for the piano drawn on the page: C2 up to C7. */
 const LOW = 36;
-const HIGH = 84;
+const HIGH = 96;
+/** The part of it a phone shows: C3 up to B5. */
+const PHONE_LOW = 48;
+const PHONE_HIGH = 83;
+/** The octaves the computer keyboard can sit in, so that every letter stays on the piano. */
+const LOWEST_OCTAVE = 2;
+const HIGHEST_OCTAVE = 5;
 
 const BLACK = new Set([1, 3, 6, 8, 10]); // semitones above C
 const isBlack = (key: number): boolean => BLACK.has(key % 12);
@@ -19,15 +26,45 @@ const COMPUTER_KEYS: Record<string, number> = {
   KeyK: 12, KeyO: 13, KeyL: 14, KeyP: 15, Semicolon: 16,
 };
 
+/** What is printed on a key for the letter that plays it. */
+const letterOf = (code: string): string => (code === 'Semicolon' ? ';' : code.replace('Key', ''));
+
 export class Keyboard {
   private readonly held = new Map<number, Set<string>>(); // key -> who is holding it
   private readonly keys = new Map<number, HTMLElement>();
   private octave = 4; // where the computer keyboard's A sits: C4, middle C
   private midi: MIDIAccess | undefined;
+  /** Called when the computer keyboard moves to another octave, with the note its A now plays ("C4"). */
+  onOctave: (name: string) => void = () => {};
 
   constructor(private readonly host: HTMLElement, private readonly onNote: (key: number, velocity: number) => void) {
     this.draw();
+    this.label();
     this.listenToPointer();
+  }
+
+  /** Move the computer keyboard up or down by octaves. Whatever it was holding is let go. */
+  shiftOctave(by: number): void {
+    const next = Math.min(HIGHEST_OCTAVE, Math.max(LOWEST_OCTAVE, this.octave + by));
+    if (next === this.octave) return;
+    this.releaseAll('computer');
+    this.octave = next;
+    this.label();
+    this.onOctave(`C${next}`);
+  }
+
+  /** The key the computer keyboard's A plays in the current octave. */
+  private get base(): number {
+    return 12 * (this.octave + 1);
+  }
+
+  /** Print each letter on the key it plays. */
+  private label(): void {
+    for (const el of this.keys.values()) delete el.dataset.letter;
+    for (const [code, step] of Object.entries(COMPUTER_KEYS)) {
+      const el = this.keys.get(this.base + step);
+      if (el) el.dataset.letter = letterOf(code);
+    }
   }
 
   /**
@@ -77,6 +114,8 @@ export class Keyboard {
       const el = document.createElement('i');
       el.dataset.key = String(key);
       el.className = isBlack(key) ? 'key black' : 'key';
+      // The outer octaves are left off a phone's screen, where the keys would be slivers.
+      if (key < PHONE_LOW || key > PHONE_HIGH) el.classList.add('outer');
       if (key % 12 === 0) el.dataset.name = `C${key / 12 - 1}`;
       // A black key hangs between two white ones: it is drawn inside the white key to its left.
       if (isBlack(key)) this.keys.get(key - 1)?.append(el);
@@ -132,18 +171,17 @@ export class Keyboard {
     window.addEventListener('keydown', (e) => {
       if (!active() || typing(e) || e.repeat) return;
       if (e.code === 'KeyZ' || e.code === 'KeyX') {
-        this.releaseAll('computer');
-        this.octave = Math.min(7, Math.max(1, this.octave + (e.code === 'KeyX' ? 1 : -1)));
+        this.shiftOctave(e.code === 'KeyX' ? 1 : -1);
         return;
       }
       const step = COMPUTER_KEYS[e.code];
       if (step === undefined) return;
       e.preventDefault();
-      this.press(12 * (this.octave + 1) + step, 100, 'computer');
+      this.press(this.base + step, 100, 'computer');
     });
     window.addEventListener('keyup', (e) => {
       const step = COMPUTER_KEYS[e.code];
-      if (step !== undefined) this.release(12 * (this.octave + 1) + step, 'computer');
+      if (step !== undefined) this.release(this.base + step, 'computer');
     });
     window.addEventListener('blur', () => this.releaseAll('computer'));
   }
