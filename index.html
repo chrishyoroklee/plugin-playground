@@ -82,12 +82,26 @@
                 <span id="dl-amxd-note">An .amxd for Ableton Live, with every dial where it stands now</span>
               </button>
               <div class="dl">
-                <b>Plugin for any host</b>
-                <span>VST3 and CLAP, and an Audio Unit on macOS</span>
-                <div id="dl-builds" class="dl-builds" hidden></div>
-                <p id="dl-how" class="muted small"></p>
-                <code id="dl-command"></code>
-                <button id="dl-settings" class="btn" type="button">Download settings (.json)</button>
+                <b>Plugin for your DAW</b>
+                <span id="dl-plugin-note">Logic Pro, GarageBand, Ableton Live, FL Studio, Reaper and others</span>
+                <div id="dl-ready">
+                  <p id="dl-which" class="small" hidden></p>
+                  <div class="dl-pick">
+                    <div id="dl-systems" class="seg" role="radiogroup" aria-label="Your system"></div>
+                    <select id="dl-version" aria-label="Your version of it"></select>
+                  </div>
+                  <p id="dl-check" class="dl-check small" role="status"></p>
+                  <a id="dl-installer" class="btn primary" download></a>
+                  <p id="dl-steps" class="muted small"></p>
+                  <p id="dl-unsigned" class="muted small"></p>
+                </div>
+                <p id="dl-none" class="small" hidden></p>
+                <details class="dl-build">
+                  <summary>Build it yourself</summary>
+                  <p class="muted small">For a plugin of exactly this device, under its own name. Needs Python, CMake and a C++ compiler. Save the settings and run this in a copy of <a href="https://github.com/chrishyoroklee/plugin-playground" target="_blank" rel="noopener">the project</a>:</p>
+                  <code id="dl-command"></code>
+                  <button id="dl-settings" class="btn" type="button">Download settings (.json)</button>
+                </details>
               </div>
             </div>
           </div>

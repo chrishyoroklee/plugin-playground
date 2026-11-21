@@ -27,6 +27,10 @@ import {
   type ChainEntry, type Kind, type ModuleSpec, type Preset, type Section, type Settings,
 } from './model';
 import { PyRuntime, base64ToBytes, type RunResult } from './python';
+import {
+  SYSTEMS, checkSystem, detectMachine, detectSystem, findInstaller, systemInfo,
+  type Machine, type SystemId, type Verdict,
+} from './installers';
 import { SOUNDS, findSound } from './sounds';
 import { getTheme, setTheme } from './theme';
 
@@ -56,7 +60,7 @@ let noteIn: MaxNode | undefined;
 /** The device of the kind not on screen, kept for when its tab is chosen again. */
 const parked: Partial<Record<Kind, { settings: Settings; preset: string | undefined }>> = {};
 /** Ready-made plugin builds, by preset id and system, if this site was published with any. */
-let builds: Record<string, Record<string, string>> = {};
+let builds: Record<string, Partial<Record<SystemId, string>>> = {};
 // Last, because choosing the starting device also sets the preset and sample above.
 let settings: Settings = initialSettings();
 
@@ -939,30 +943,76 @@ async function download(): Promise<void> {
   }
 }
 
-/** A system's name for a ready-made build, and the label its link gets. */
-const SYSTEMS: [id: string, label: string][] = [['macos', 'macOS'], ['windows', 'Windows'], ['linux', 'Linux']];
+// ── the plugin installer ────────────────────────────────────────────────────────
+
+/** What the browser says this computer is; the menu starts on its system. */
+let machine: Machine = detectSystem(navigator);
+let system: SystemId = machine.system ?? 'macos';
+/** The version chosen for each system, once the visitor or the browser has said. */
+const versionOf: Partial<Record<SystemId, string>> = {};
+
+function chosenVersion(): string {
+  return versionOf[system] ?? (machine.system === system ? machine.version : undefined) ?? systemInfo(system).versions[0].id;
+}
 
 /**
- * The plugin half of the download menu. A plugin is compiled code, so the page cannot
- * make one itself. An untouched preset may have builds published with the site; anything
- * else is built on the visitor's machine from the settings, with one command.
+ * The plugin half of the download menu: pick a system, have it checked, download that
+ * system's installer. A plugin is compiled code, so the page cannot make one itself: the
+ * installers are the ones published with the site, one per preset and system.
  */
 function renderDownloads(): void {
-  const ready = activePreset ? builds[activePreset] : undefined;
-  const links = $('dl-builds');
-  links.replaceChildren();
-  links.hidden = !ready;
-  for (const [id, label] of SYSTEMS) {
-    if (!ready?.[id]) continue;
-    const a = Object.assign(document.createElement('a'), { className: 'btn', textContent: label, href: ready[id] });
-    a.setAttribute('download', '');
-    links.append(a);
+  const found = findInstaller(settings, activePreset, presetsOf(kind()), builds);
+  const instrument = kind() === 'instrument';
+  $('dl-ready').hidden = !found;
+  $('dl-none').hidden = !!found;
+  $('dl-command').textContent = `npm run plugin -- --settings ${settings.name.replace(/ /g, '_')}.json --install`;
+  if (!found) {
+    $('dl-none').textContent = Object.keys(builds).length
+      ? `There is no ready-made installer for this ${instrument ? 'instrument' : 'chain'}: a plugin is compiled code, and this one is your own. Every preset has one, and so does a preset with only its dials moved.`
+      : 'This copy of the site was published without the installers.';
+    return;
   }
-  const file = `${settings.name.replace(/ /g, '_')}.json`;
-  $('dl-how').textContent = ready
-    ? 'Ready-made builds of this preset, unsigned. To build your own version, with your changes, save the settings and run this in a copy of the project:'
-    : 'A plugin is compiled code, so it is built on your machine. Save the settings and run this in a copy of the project:';
-  $('dl-command').textContent = `npm run plugin -- --settings ${file} --install`;
+
+  const which = $('dl-which');
+  which.hidden = found.exact;
+  which.textContent = found.exact ? '' : `You get ${found.preset.name}: the same ${instrument ? 'instrument' : 'effect'} as yours, with the dials where the preset has them. Every dial is there to set in your DAW.`;
+
+  const info = systemInfo(system);
+  const host = $('dl-systems');
+  host.replaceChildren();
+  for (const s of SYSTEMS) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = s.label;
+    b.setAttribute('role', 'radio');
+    b.setAttribute('aria-checked', String(s.id === system));
+    b.addEventListener('click', () => { system = s.id; renderDownloads(); });
+    host.append(b);
+  }
+  const select = $<HTMLSelectElement>('dl-version');
+  select.replaceChildren(...info.versions.map((v) => new Option(v.label, v.id)));
+  select.value = chosenVersion();
+
+  const file = found.files[system];
+  const verdict: Verdict = file
+    ? checkSystem(system, chosenVersion(), machine)
+    : { state: 'no', text: `The ${info.label} build of ${found.preset.name} failed the last time the site was published.` };
+  const check = $('dl-check');
+  check.dataset.state = verdict.state;
+  check.textContent = verdict.text;
+
+  const link = $<HTMLAnchorElement>('dl-installer');
+  link.textContent = `Download the ${info.label} ${info.file}`;
+  const allowed = !!file && verdict.state !== 'no';
+  link.classList.toggle('is-off', !allowed);
+  link.setAttribute('aria-disabled', String(!allowed));
+  if (allowed) link.href = `${import.meta.env.BASE_URL}${file}`;
+  else link.removeAttribute('href');
+
+  const where = instrument ? 'Instrument, AU Instruments, Plugin Playground' : 'Audio FX, Audio Units, Plugin Playground';
+  $('dl-steps').textContent = `${info.formats}. ${info.steps.replace('{where}', where)}`;
+  $('dl-unsigned').textContent = info.unsigned;
+  $('dl-unsigned').hidden = !info.unsigned;
 }
 
 function saveSettings(): void {
@@ -1041,6 +1091,16 @@ function init(): void {
     .then((r) => (r.ok ? r.json() : {}))
     .then((found: typeof builds) => { builds = found; renderDownloads(); })
     .catch(() => { /* none published: the menu offers the command instead */ });
+  // The real version and processor, where the browser will say.
+  void detectMachine(navigator).then((found) => { machine = found; renderDownloads(); });
+  $('dl-version').addEventListener('change', () => {
+    versionOf[system] = $<HTMLSelectElement>('dl-version').value;
+    renderDownloads();
+  });
+  $('dl-installer').addEventListener('click', (e) => {
+    if ($('dl-installer').getAttribute('aria-disabled') === 'true') { e.preventDefault(); return; }
+    toast(`Downloading the ${systemInfo(system).label} installer. Open it when it has arrived.`);
+  });
 
   $('name').addEventListener('input', () => {
     const typed = $<HTMLInputElement>('name').value;

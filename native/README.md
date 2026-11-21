@@ -23,11 +23,34 @@ patch.json       the Max patch it was compiled from
 ```
 
 `build/plugins/_build` and `_sdk` are CMake's. They are shared, so the SDKs compile once
-and each further plugin takes a few seconds. `--all --package DIR` builds every preset
-and zips each one for the system it was built on, which is how the site's ready-made
-downloads are made (`.github/workflows/`). Those builds are not signed: on macOS a
-downloaded plugin has to have its quarantine flag cleared before a host will load it,
-and the README inside each zip says how.
+and each further plugin takes a few seconds.
+
+## Installers
+
+`--package DIR` wraps what was built in the installer its system expects, which is what
+the site's Download menu hands out (`--all --package DIR` in `.github/workflows/`):
+
+| System  | File                       | What it does |
+|---------|----------------------------|--------------|
+| macOS   | `<name>-macos.pkg`         | Opens in Installer. Audio Unit, VST3 and CLAP into `/Library/Audio/Plug-Ins`, or `~/Library` if "for me only" is chosen. |
+| Windows | `<name>-windows-setup.exe` | A setup program (Inno Setup). VST3 and CLAP into `C:\Program Files\Common Files`, with an entry to uninstall. |
+| Linux   | `<name>-linux.tar.gz`      | The plugins and `install.sh`, which copies them to `~/.vst3` and `~/.clap`. Linux has no installer format every distribution opens. |
+
+On macOS the installer is also what makes the plugin load. Files that Installer writes do
+not carry the quarantine flag a plugin unzipped from a download has, which hosts refuse,
+and each bundle is sealed with an ad hoc signature on the way in.
+
+`--check-installer DIR` runs the installer with no window and requires every plugin to be
+where hosts look; on macOS the Audio Unit then has to pass `auval`. CI does this for an
+effect and an instrument on each system.
+
+**Not signed yet.** The installers are not signed with a paid developer certificate, so
+each system asks the visitor to allow them once: on macOS under System Settings, Privacy
+& Security, Open Anyway; on Windows through SmartScreen's More info, Run anyway. With an
+Apple Developer ID, set `FX_CODESIGN_IDENTITY` ("Developer ID Application: ...") and
+`FX_INSTALLER_IDENTITY` ("Developer ID Installer: ...") when packaging and both are used;
+the package then still has to be notarized (`xcrun notarytool submit`, `xcrun stapler
+staple`), which nothing here does yet.
 
 ## How it works
 

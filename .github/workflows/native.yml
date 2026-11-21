@@ -4,10 +4,12 @@
 #   - the Python tests: the generator, the patch compiler, and the C++ it writes
 #   - every preset, effects and instruments, built as CLAP, VST3 and (on macOS) Audio
 #     Unit; each build loads its own .clap and compares it with the C++ (hostcheck)
-#   - three of them installed and put through clap-validator, pluginval and auval
+#   - two installers run as a visitor would run them, and what they installed checked
+#   - three presets installed and put through clap-validator, pluginval and auval
 #
-# The builds are zipped and kept as the run's artifacts. pages.yml calls this workflow
-# and publishes those zips with the site, as the page's ready-made downloads.
+# Each build is wrapped in its system's installer and kept as the run's artifacts.
+# pages.yml calls this workflow and publishes those installers with the site, as the
+# page's downloads.
 name: Native plugins
 
 on:
@@ -62,15 +64,33 @@ jobs:
       # The generator, the compiler, and the C++ it writes against the browser engine's rendering.
       - run: python -m pytest tests -q
 
-      # Every preset, each checked against its Effect.h as it is built, zipped for download.
+      # The Windows installer is made with Inno Setup.
+      - name: Install Inno Setup
+        if: runner.os == 'Windows'
+        run: |
+          if [ ! -f "/c/Program Files (x86)/Inno Setup 6/ISCC.exe" ]; then choco install innosetup -y --no-progress; fi
+
+      # Every preset, each checked against its Effect.h as it is built, then wrapped in
+      # this system's installer: a .pkg, a setup .exe, or a .tar.gz with an install script.
       - name: Build every preset
         run: python scripts/plugin.py --all --package downloads
 
       - uses: actions/upload-artifact@v4
         with:
           name: downloads-${{ matrix.os }}
-          path: downloads/*.zip
+          path: |
+            downloads/*.pkg
+            downloads/*.exe
+            downloads/*.tar.gz
           if-no-files-found: error
+
+      # What a visitor does: run the installer, then open a host. An effect and an
+      # instrument are installed for the whole machine and have to land where hosts scan;
+      # on macOS each Audio Unit then has to pass auval, as it must before Logic lists it.
+      - name: Run two of the installers
+        run: |
+          python scripts/plugin.py --preset pingpong --package downloads --check-installer downloads
+          python scripts/plugin.py --preset "Soft Pad" --package downloads --check-installer downloads
 
       - name: Install the validators
         run: |

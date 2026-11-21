@@ -6,7 +6,7 @@ Build a native plugin from a preset or a settings file.
     npm run plugin -- --settings my-effect.json        # the page's settings, saved to a file
     npm run plugin -- --preset tape --install          # ...and copy it where hosts look
     npm run plugin -- --list                           # the presets
-    npm run plugin -- --all --package downloads        # every preset, zipped per system
+    npm run plugin -- --all --package downloads        # every preset, as this system's installer
 
 What it does, in order: fxgen.py builds the Max patch for the settings (the same patch
 the page plays and the .amxd holds), patchc.py compiles that patch to C++ (Effect.h),
@@ -249,56 +249,281 @@ def install(found, log=print):
 
 
 # ── packaging ───────────────────────────────────────────────────────────────────
+#
+# What a visitor downloads: one installer per system, the kind any plugin comes with.
+#
+#   macOS    <slug>-macos.pkg          opens in Installer; Audio Unit, VST3 and CLAP
+#   Windows  <slug>-windows-setup.exe  a setup program (Inno Setup); VST3 and CLAP
+#   Linux    <slug>-linux.tar.gz       the plugins and an install.sh; Linux has no one
+#                                      installer format that every distribution opens
+#
+# Each puts the plugins in the folders every host scans, so nothing is copied by hand.
 
 SYSTEM = {"Darwin": "macos", "Windows": "windows"}.get(platform.system(), "linux")
+PACKAGE_NAMES = {"macos": "%s-macos.pkg", "windows": "%s-windows-setup.exe", "linux": "%s-linux.tar.gz"}
+VERSION = "0.1.0"
+FORMAT_NAMES = {"clap": "CLAP", "vst3": "VST3", "au": "Audio Unit"}
+# Where an installer puts each format: the folders shared by every user of the machine.
+MAC_FOLDERS = {"au": "Library/Audio/Plug-Ins/Components", "vst3": "Library/Audio/Plug-Ins/VST3",
+               "clap": "Library/Audio/Plug-Ins/CLAP"}
+WINDOWS_FOLDERS = {"vst3": r"{commoncf64}\VST3", "clap": r"{commoncf64}\CLAP"}
 
-README = """{name}
-{rule}
-Built by Plugin Playground from a Max patch. {what}
 
-Copy the file for your host into the folder next to its name:
+def _run(cmd, what, **kwargs):
+    done = subprocess.run([str(c) for c in cmd], capture_output=True, text=True, **kwargs)
+    if done.returncode != 0:
+        raise BuildError("%s failed:\n%s\n%s" % (what, done.stdout[-4000:], done.stderr[-4000:]))
+    return done
 
-{folders}
 
-Then rescan plugins in your host.
-
-These builds are not signed. On macOS, a plugin downloaded from the web is quarantined
-and the host will not load it until you clear that, in Terminal:
-
-    xattr -dr com.apple.quarantine "<the plugin you copied>"
-"""
+def _what(made):
+    return "an instrument, played with MIDI" if made["kind"] == "instrument" else "an audio effect"
 
 
 def package(made, found, folder):
-    """Zip what was built, with a note on where it goes. Returns the zip's path."""
-    import zipfile
+    """Make this system's installer for what was built. Returns the installer's path."""
+    import tempfile
 
+    folder = Path(folder).resolve()
     folder.mkdir(parents=True, exist_ok=True)
-    target = folder / ("%s-%s.zip" % (made["slug"], SYSTEM))
-    names = {"clap": "CLAP", "vst3": "VST3", "au": "Audio Unit"}
-    folders = "\n".join("    %-28s %s  (%s)" % (path.name, install_dirs()[fmt], names[fmt]) for fmt, path in found.items())
-    what = "It is an instrument: play it with MIDI." if made["kind"] == "instrument" else "It is an audio effect."
-    text = README.format(name=made["name"], rule="=" * len(made["name"]), what=what, folders=folders)
-    with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as z:
-        z.writestr("README.txt", text)
-        for path in found.values():
-            if path.is_dir():   # a macOS bundle: keep the folder and the run bit on what is inside
-                for file in sorted(p for p in path.rglob("*") if p.is_file()):
-                    z.write(file, str(Path(path.name) / file.relative_to(path)))
-            else:
-                z.write(path, path.name)
+    target = folder / (PACKAGE_NAMES[SYSTEM] % made["slug"])
+    if target.exists():
+        target.unlink()
+    with tempfile.TemporaryDirectory() as work:
+        {"macos": package_macos, "windows": package_windows, "linux": package_linux}[SYSTEM](made, found, target, Path(work))
     return target
+
+
+def package_macos(made, found, target, work):
+    """
+    A .pkg that Installer opens. It can install for every user (/Library, asks for an
+    administrator's password) or for this user alone (~/Library).
+
+    Two things here are what make the plugin load in a host afterwards. Each bundle is
+    sealed with a signature: ad hoc unless FX_CODESIGN_IDENTITY names a Developer ID. And
+    because Installer writes the files, they do not carry the quarantine flag that a
+    plugin unzipped from a download does, which is what makes hosts refuse it.
+
+    The package itself is signed only if FX_INSTALLER_IDENTITY names a Developer ID
+    Installer certificate. Unsigned, macOS asks the visitor to allow it once.
+    """
+    import plistlib
+
+    root, scripts, resources, parts = work / "root", work / "scripts", work / "resources", work / "parts"
+    for d in (root, scripts, resources, parts):
+        d.mkdir()
+    identity = os.environ.get("FX_CODESIGN_IDENTITY") or "-"
+    for fmt, path in found.items():
+        staged = root / MAC_FOLDERS[fmt] / path.name
+        staged.parent.mkdir(parents=True, exist_ok=True)
+        _copy(path, staged)
+        sign = ["codesign", "--force", "--sign", identity]
+        if identity != "-":
+            sign += ["--options", "runtime", "--timestamp"]
+        _run(sign + [staged], "codesign")
+
+
+    # An Audio Unit copied in a moment ago is not always known to the system yet.
+    post = scripts / "postinstall"
+    post.write_text("#!/bin/sh\nkillall -9 AudioComponentRegistrar >/dev/null 2>&1\nexit 0\n")
+    post.chmod(0o755)
+
+    # Without this, Installer "relocates" a bundle: finding another copy of it anywhere on
+    # the disk (a build folder, say), it updates that copy and leaves the plugin folder empty.
+    components = work / "components.plist"
+    _run(["pkgbuild", "--analyze", "--root", root, components], "pkgbuild --analyze")
+    listed = plistlib.loads(components.read_bytes())
+    for bundle in listed:
+        bundle["BundleIsRelocatable"] = False
+    components.write_bytes(plistlib.dumps(listed))
+
+    identifier = "com.plugin-playground.%s" % made["slug"]
+    _run(["pkgbuild", "--root", root, "--component-plist", components, "--scripts", scripts,
+          "--identifier", identifier, "--version", VERSION, "--install-location", "/",
+          parts / "plugins.pkg"], "pkgbuild")
+
+    name = _xml(made["name"])
+    where = ("Instrument > AU Instruments > Plugin Playground" if made["kind"] == "instrument"
+             else "Audio FX > Audio Units > Plugin Playground")
+    (resources / "welcome.html").write_text(
+        "<html><body style=\"font: 13px -apple-system, sans-serif\">"
+        "<p><b>%s</b> is %s, made with Plugin Playground.</p>"
+        "<p>This installs it as %s, so every host on this Mac can use it.</p>"
+        "<p>When it has finished, restart your host. In Logic Pro and GarageBand it is under "
+        "<b>%s</b>.</p></body></html>"
+        % (name, _what(made), _listed(FORMAT_NAMES[f] for f in ("au", "vst3", "clap") if f in found), where),
+        encoding="utf-8")
+    distribution = work / "distribution.xml"
+    distribution.write_text(
+        '<?xml version="1.0" encoding="utf-8"?>\n'
+        '<installer-gui-script minSpecVersion="2">\n'
+        '  <title>%s</title>\n'
+        '  <welcome file="welcome.html" mime-type="text/html"/>\n'
+        '  <domains enable_localSystem="true" enable_currentUserHome="true"/>\n'
+        '  <options customize="never" require-scripts="false" hostArchitectures="arm64,x86_64"/>\n'
+        '  <volume-check><allowed-os-versions><os-version min="10.15"/></allowed-os-versions></volume-check>\n'
+        '  <choices-outline><line choice="plugins"/></choices-outline>\n'
+        '  <choice id="plugins" visible="false"><pkg-ref id="%s"/></choice>\n'
+        '  <pkg-ref id="%s" version="%s">plugins.pkg</pkg-ref>\n'
+        '</installer-gui-script>\n' % (name, identifier, identifier, VERSION), encoding="utf-8")
+    build = ["productbuild", "--distribution", distribution, "--package-path", parts, "--resources", resources]
+    if os.environ.get("FX_INSTALLER_IDENTITY"):
+        build += ["--sign", os.environ["FX_INSTALLER_IDENTITY"], "--timestamp"]
+    _run(build + [target], "productbuild")
+
+
+def _xml(text):
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
+
+
+def _listed(words):
+    words = ["an " + w if w[0] in "AEIOU" else "a " + w for w in words]
+    return words[0] if len(words) == 1 else ", ".join(words[:-1]) + " and " + words[-1]
+
+
+def inno_setup():
+    """Inno Setup's compiler, which builds the Windows installer."""
+    tool = shutil.which("iscc") or shutil.which("ISCC")
+    if tool:
+        return tool
+    for base in (os.environ.get("ProgramFiles(x86)"), os.environ.get("ProgramFiles")):
+        guess = Path(base or "") / "Inno Setup 6" / "ISCC.exe"
+        if base and guess.exists():
+            return str(guess)
+    raise BuildError("Inno Setup is not installed (https://jrsoftware.org/isinfo.php), which builds the Windows installer")
+
+
+def package_windows(made, found, target, work):
+    """
+    A setup program made with Inno Setup: VST3 and CLAP into Common Files, where every
+    host looks, with an entry under "Installed apps" to remove them again. Not signed, so
+    SmartScreen asks the visitor to allow it once.
+    """
+    q = lambda text: str(text).replace('"', "")  # noqa: E731  (a name is never quoted in a .iss)
+    files = []
+    for fmt, path in found.items():
+        folder = WINDOWS_FOLDERS[fmt]
+        if path.is_dir():   # a VST3 can be a folder with the plugin inside it
+            files.append('Source: "%s\\*"; DestDir: "%s\\%s"; Flags: ignoreversion recursesubdirs createallsubdirs'
+                         % (q(path), folder, q(path.name)))
+        else:
+            files.append('Source: "%s"; DestDir: "%s"; Flags: ignoreversion' % (q(path), folder))
+    script = work / "setup.iss"
+    script.write_text("\n".join([
+        "[Setup]",
+        "AppId=PluginPlayground.%s" % made["slug"],
+        "AppName=%s" % q(made["name"]),
+        "AppVersion=%s" % VERSION,
+        "AppVerName=%s (Plugin Playground)" % q(made["name"]),
+        "AppPublisher=Plugin Playground",
+        "CreateAppDir=no",
+        "UninstallFilesDir={commonpf64}\\Plugin Playground\\%s" % made["slug"],
+        "PrivilegesRequired=admin",
+        "DisableProgramGroupPage=yes",
+        "DisableWelcomePage=no",
+        "Compression=lzma2",
+        "SolidCompression=yes",
+        "WizardStyle=modern",
+        "OutputDir=%s" % q(target.parent),
+        "OutputBaseFilename=%s" % target.name[:-len(".exe")],
+        "",
+        "[Messages]",
+        "WelcomeLabel2=This installs %s, %s made with Plugin Playground, as %s.%%n%%n"
+        "When it has finished, rescan plugins in your host." % (
+            q(made["name"]), _what(made), _listed(FORMAT_NAMES[f] for f in ("vst3", "clap") if f in found)),
+        "",
+        "[Files]",
+        *files,
+        "",
+    ]), encoding="utf-8-sig")
+    _run([inno_setup(), "/Q", script], "Inno Setup")
+    if not target.exists():
+        raise BuildError("Inno Setup finished but did not write %s" % target)
+
+
+INSTALL_SH = """#!/bin/sh
+# Installs {name} for this user: VST3 into ~/.vst3 and CLAP into ~/.clap, the folders
+# every Linux host scans. `sh install.sh --remove` takes it out again.
+set -e
+here=$(cd "$(dirname "$0")" && pwd)
+{steps}
+"""
+
+
+def package_linux(made, found, target, work):
+    """The plugins and an install.sh, as a .tar.gz so the script keeps its run bit."""
+    import tarfile
+
+    top = work / made["slug"]
+    top.mkdir()
+    steps = ['if [ "$1" = "--remove" ]; then']
+    for fmt, path in found.items():
+        steps.append('    rm -rf "$HOME/.%s/%s"' % (fmt, path.name))
+    steps += ['    echo "Removed {name}."'.format(name=made["name"]), "    exit 0", "fi"]
+    for fmt, path in found.items():
+        _copy(path, top / path.name)
+        steps += ['mkdir -p "$HOME/.%s"' % fmt, 'rm -rf "$HOME/.%s/%s"' % (fmt, path.name),
+                  'cp -R "$here/%s" "$HOME/.%s/"' % (path.name, fmt)]
+    steps.append('echo "Installed %s. Rescan plugins in your host."' % made["name"])
+    script = top / "install.sh"
+    script.write_text(INSTALL_SH.format(name=made["name"], steps="\n".join(steps)), encoding="utf-8")
+    script.chmod(0o755)
+    (top / "README.txt").write_text(
+        "%s\n%s\n%s, made with Plugin Playground.\n\nTo install it, run this in a terminal, in this folder:\n\n"
+        "    sh install.sh\n\nIt copies the VST3 into ~/.vst3 and the CLAP into ~/.clap. Then rescan plugins in\n"
+        "your host. `sh install.sh --remove` takes it out again.\n"
+        % (made["name"], "=" * len(made["name"]), _what(made).capitalize()), encoding="utf-8")
+    with tarfile.open(target, "w:gz") as tar:
+        tar.add(top, arcname=made["slug"])
+
+
+def check_installer(made, folder, log=print):
+    """
+    Run this system's installer for a preset, the one --package wrote into `folder`, with
+    no window, and require every plugin to be where hosts look for it. On macOS the Audio
+    Unit then has to pass Apple's auval, which is the check Logic makes before it lists one.
+    Installs for the whole machine, so it needs administrator rights: CI has them.
+    """
+    import tempfile
+
+    installer = Path(folder).resolve() / (PACKAGE_NAMES[SYSTEM] % made["slug"])
+    if not installer.exists():
+        raise BuildError("there is no %s: build it with --package first" % installer)
+    names = {"clap": made["name"] + ".clap", "vst3": made["name"] + ".vst3", "au": made["name"] + ".component"}
+    if SYSTEM == "macos":
+        _run(["sudo", "-n", "installer", "-pkg", installer, "-target", "/"], "installer")
+        where = {fmt: Path("/") / MAC_FOLDERS[fmt] / names[fmt] for fmt in ("clap", "vst3", "au")}
+    elif SYSTEM == "windows":
+        _run([installer, "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"], "the setup program")
+        common = Path(os.environ.get("CommonProgramW6432") or os.environ.get("CommonProgramFiles") or r"C:\Program Files\Common Files")
+        where = {"vst3": common / "VST3" / names["vst3"], "clap": common / "CLAP" / names["clap"]}
+    else:
+        import tarfile
+        with tempfile.TemporaryDirectory() as work:
+            with tarfile.open(installer) as tar:
+                tar.extractall(work)
+            _run(["sh", Path(work) / made["slug"] / "install.sh"], "install.sh")
+        where = {fmt: Path.home() / ("." + fmt) / names[fmt] for fmt in ("clap", "vst3")}
+    for fmt, path in where.items():
+        if not path.exists():
+            raise BuildError("the installer ran, but there is no %s" % path)
+        log("  the installer put the %s at %s" % (FORMAT_NAMES[fmt], path))
+    if SYSTEM == "macos":
+        subprocess.run(["killall", "-9", "AudioComponentRegistrar"], capture_output=True)
+        done = _run(["auval", "-v", au_type(made), au_subtype(made["slug"]), "PlPg"], "auval")
+        log("  auval: %s" % ([l for l in done.stdout.splitlines() if "VALIDATION" in l] or ["passed"])[-1].strip())
 
 
 def write_index(folder):
     """
-    index.json for a folder of packaged presets: preset id -> system -> the zip's path, as
-    the page will fetch it ("downloads/soft-pad-macos.zip"). Returns how many presets it lists.
+    index.json for a folder of packaged presets: preset id -> system -> the installer's
+    path, as the page will fetch it ("downloads/soft-pad-macos.pkg"). Returns how many
+    presets it lists.
     """
     index = {}
     for p in PRESETS + INSTRUMENTS:
-        for system in ("macos", "windows", "linux"):
-            name = "%s-%s.zip" % (patchc.slug(p["settings"].get("name", p["name"])), system)
+        for system, pattern in PACKAGE_NAMES.items():
+            name = pattern % patchc.slug(p["settings"].get("name", p["name"]))
             if (folder / name).exists():
                 index.setdefault(p["id"], {})[system] = "%s/%s" % (folder.name, name)
     (folder / "index.json").write_text(json.dumps(index, indent=1), encoding="utf-8")
@@ -357,7 +582,7 @@ def main(argv=None):
     ap.add_argument("--list", action="store_true", help="list the presets and stop")
     ap.add_argument("--all", action="store_true", help="build every preset, effects and instruments, one after another")
     ap.add_argument("--index", metavar="DIR",
-                    help="write DIR/index.json, listing the --package zips in DIR by preset and system, and stop")
+                    help="write DIR/index.json, listing the --package installers in DIR by preset and system, and stop")
     ap.add_argument("--out", default=str(ROOT / "build" / "plugins"), help="where to build (default: build/plugins)")
     ap.add_argument("--formats", default=None, help="comma-separated: clap, vst3, au (default: all this system can build)")
     ap.add_argument("--install", action="store_true", help="copy the plugins into your user plugin folders")
@@ -367,7 +592,9 @@ def main(argv=None):
     ap.add_argument("--play", nargs=3, metavar=("NOTES", "SECONDS", "OUT.wav"),
                     help='render an instrument playing notes, e.g. "60@0+1:100,67@0.5+1:80" (key@start+length:velocity)')
     ap.add_argument("--package", metavar="DIR",
-                    help="also zip the plugins into DIR, one file per system, ready to hand to someone")
+                    help="also make this system's installer in DIR: a .pkg, a setup .exe, or a .tar.gz with install.sh")
+    ap.add_argument("--check-installer", metavar="DIR",
+                    help="run the installer --package wrote into DIR, silently, and check what it installed (needs admin rights)")
     ap.add_argument("--render", nargs=2, metavar=("IN.wav", "OUT.wav"),
                     help="play a WAV through the effect instead of building a plugin")
     args = ap.parse_args(argv)
@@ -431,6 +658,8 @@ def main(argv=None):
             install(found)
         if args.package:
             print("  packed %s" % package(made, found, Path(args.package)))
+        if args.check_installer:
+            check_installer(made, Path(args.check_installer))
         if args.validate and not validate(made, found, args.install):
             return 1
         return 0

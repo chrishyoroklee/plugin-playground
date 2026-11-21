@@ -27,9 +27,11 @@ Try it at <https://chrishyoroklee.github.io/plugin-playground/>.
   from the library (recordings, synth loops, a drum machine, test signals) or use your
   own file. For an instrument, click or drag the keyboard, play the letters printed on
   its keys, press **MIDI** to use a MIDI keyboard, or press play to loop a phrase.
-- **Download** offers the Max for Live device and the plugin. An untouched preset has
-  ready-made plugin builds for macOS, Windows and Linux. Anything you have changed is
-  built on your machine from its settings, with one command (below).
+- **Download** offers the Max for Live device and the plugin. For the plugin you pick
+  your system (macOS, Windows or Linux) and its version, the page checks it, and you get
+  that system's installer: run it and every DAW on the machine has the plugin. Every
+  preset has one, and so does a preset with only its dials moved (the dials are there to
+  set in the DAW). A chain of your own is built on your machine, with one command (below).
 - **Settings** (the gear) has dark mode, a link that reopens this exact device, and the
   Python that built it.
 
@@ -62,8 +64,10 @@ or JUCE. The plugin lands in `build/plugins/<name>/` as `.clap`, `.vst3` and, on
 `.component`, next to the C++ it was built from. [`native/README.md`](native/README.md)
 has the details, the design and its limits.
 
-The ready-made builds on the site are not signed. On macOS a downloaded plugin will not
-load until its quarantine flag is cleared; the README inside each zip gives the command.
+The installers on the site (a `.pkg` for macOS, a setup `.exe` for Windows, a `.tar.gz`
+with an install script for Linux) are made by `--package`. They are not signed with a
+paid developer certificate yet, so macOS and Windows each ask to allow them once; the
+Download menu says how.
 
 ## How it works
 
@@ -125,7 +129,7 @@ saved for Live, and the plugin is that patch compiled.
   with the C++ it came from; three presets also go through clap-validator, pluginval and,
   on macOS, auval.
 - `.github/workflows/pages.yml` runs on every push to `main`: it builds the site, calls
-  the workflow above, and publishes the site with those plugin builds as its downloads.
+  the workflow above, and publishes the site with those installers as its downloads.
   That takes about 18 minutes, most of it the macOS builds. GitHub Pages has to use
   "GitHub Actions" as its source, because the page is TypeScript and cannot be served
   from the repository as it is.

@@ -35,7 +35,8 @@ jobs:
           name: site
           path: dist
 
-  # Every preset as a plugin, on each system. Its zips are this run's downloads-* artifacts.
+  # Every preset as a plugin, on each system, in that system's installer. They are this
+  # run's downloads-* artifacts.
   plugins:
     uses: ./.github/workflows/native.yml
 
