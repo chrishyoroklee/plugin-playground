@@ -1,4 +1,6 @@
-// The plugin shell: one compiled Effect.h, wrapped as a CLAP plugin. An effect gets a
+// The plugin shell: one Effect.h, wrapped as a CLAP plugin. That is either the Effect.h
+// patchc generated for one device, or the runtime's (native/runtime), which becomes
+// whichever device is in the file next to the plugin when the plugin is loaded. An effect gets a
 // stereo input and output; an instrument (Effect::kIsInstrument) gets a note input and a
 // stereo output, and is played by the host's notes or by raw MIDI.
 //
@@ -20,7 +22,9 @@
 
 #include <atomic>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -28,11 +32,15 @@
 
 #include "Effect.h"
 #include "entry.h"
+#ifdef FX_RUNTIME
+#include "locate.h"
+#endif
 
 namespace {
 
-constexpr int N = Effect::kNumParams;
-constexpr int kSlots = N > 0 ? N : 1;
+// The number of dials. Written as a call because the runtime only knows once it has read
+// its device; for a generated Effect.h it is a constant.
+int N() { return Effect::kNumParams; }
 constexpr char kStateMagic[4] = {'P', 'P', 'F', 'X'};
 constexpr uint32_t kStateVersion = 1;
 
@@ -42,7 +50,7 @@ double fromHost(int i, double v) {
     return curved(i) ? mxrt::positionToValue(Effect::kParams[i], v) : mxrt::clampValue(Effect::kParams[i], v);
 }
 int indexOf(clap_id id) {
-    for (int i = 0; i < N; i++)
+    for (int i = 0; i < N(); i++)
         if (Effect::kParams[i].id == id) return i;
     return -1;
 }
@@ -52,13 +60,14 @@ struct Plugin {
     const clap_host_t* host = nullptr;
     const clap_host_params_t* hostParams = nullptr;
     Effect effect;
-    std::atomic<double> values[kSlots];  // in the dial's units
-    std::atomic<bool> dirty[kSlots];     // changed off the audio thread; process() applies it
+    std::unique_ptr<std::atomic<double>[]> values;  // in the dial's units
+    std::unique_ptr<std::atomic<bool>[]> dirty;     // changed off the audio thread; process() applies it
     std::vector<float> spare32;          // somewhere to render a channel the host did not give us
     std::vector<double> spare64;
 
-    explicit Plugin(const clap_host_t* h) : host(h) {
-        for (int i = 0; i < N; i++) {
+    explicit Plugin(const clap_host_t* h)
+        : host(h), values(new std::atomic<double>[N() > 0 ? N() : 1]), dirty(new std::atomic<bool>[N() > 0 ? N() : 1]) {
+        for (int i = 0; i < N(); i++) {
             values[i].store(Effect::kParams[i].initial);
             dirty[i].store(false);
         }
@@ -98,7 +107,7 @@ struct Plugin {
     }
 
     void applyDirty() {
-        for (int i = 0; i < N; i++)
+        for (int i = 0; i < N(); i++)
             if (dirty[i].exchange(false)) effect.setParam(i, values[i].load());
     }
 
@@ -134,7 +143,7 @@ void pluginDestroy(const clap_plugin_t* plugin) { delete self(plugin); }
 
 bool pluginActivate(const clap_plugin_t* plugin, double sampleRate, uint32_t, uint32_t maxFrames) {
     Plugin* p = self(plugin);
-    for (int i = 0; i < N; i++) {
+    for (int i = 0; i < N(); i++) {
         p->dirty[i].store(false);
         p->effect.setParam(i, p->values[i].load());
     }
@@ -228,10 +237,10 @@ const clap_plugin_note_ports_t kNotePorts = {notePortsCount, notePortsGet};
 
 // ── parameters ──────────────────────────────────────────────────────────────────
 
-uint32_t paramsCount(const clap_plugin_t*) { return N; }
+uint32_t paramsCount(const clap_plugin_t*) { return N(); }
 
 bool paramsInfo(const clap_plugin_t*, uint32_t index, clap_param_info_t* info) {
-    if (index >= static_cast<uint32_t>(N)) return false;
+    if (index >= static_cast<uint32_t>(N())) return false;
     const int i = static_cast<int>(index);
     const mxrt::ParamInfo& p = Effect::kParams[i];
     std::memset(info, 0, sizeof *info);
@@ -303,10 +312,10 @@ bool readAll(const clap_istream_t* stream, void* data, size_t size) {
 
 bool stateSave(const clap_plugin_t* plugin, const clap_ostream_t* stream) {
     Plugin* p = self(plugin);
-    const uint32_t count = N;
+    const uint32_t count = N();
     if (!writeAll(stream, kStateMagic, 4) || !writeAll(stream, &kStateVersion, 4) || !writeAll(stream, &count, 4))
         return false;
-    for (int i = 0; i < N; i++) {
+    for (int i = 0; i < N(); i++) {
         const uint32_t id = Effect::kParams[i].id;
         const double value = p->values[i].load();
         if (!writeAll(stream, &id, 4) || !writeAll(stream, &value, 8)) return false;
@@ -375,21 +384,28 @@ const clap_plugin_descriptor_t* descriptor() {
         "",
         "",
         FX_VERSION,
-        Effect::kIsInstrument ? "An instrument generated as a Max patch and compiled to C++."
-                              : "An audio effect generated as a Max patch and compiled to C++.",
+        Effect::kIsInstrument ? "An instrument made with Plugin Playground, from a Max patch."
+                              : "An audio effect made with Plugin Playground, from a Max patch.",
         Effect::kIsInstrument ? kInstrumentFeatures : kEffectFeatures,
     };
     return &desc;
 }
 
-uint32_t factoryCount(const clap_plugin_factory_t*) { return 1; }
+// A runtime plugin whose device could not be read is no plugin at all.
+#ifdef FX_RUNTIME
+bool ready() { return Effect::loaded(); }
+#else
+bool ready() { return true; }
+#endif
+
+uint32_t factoryCount(const clap_plugin_factory_t*) { return ready() ? 1 : 0; }
 
 const clap_plugin_descriptor_t* factoryDescriptor(const clap_plugin_factory_t*, uint32_t index) {
-    return index == 0 ? descriptor() : nullptr;
+    return index == 0 && ready() ? descriptor() : nullptr;
 }
 
 const clap_plugin_t* factoryCreate(const clap_plugin_factory_t*, const clap_host_t* host, const char* id) {
-    if (!host || !clap_version_is_compatible(host->clap_version) || std::strcmp(id, descriptor()->id) != 0)
+    if (!ready() || !host || !clap_version_is_compatible(host->clap_version) || std::strcmp(id, descriptor()->id) != 0)
         return nullptr;
     Plugin* p = new Plugin(host);
     p->plugin.desc = descriptor();
@@ -413,7 +429,23 @@ const clap_plugin_factory_t kFactory = {factoryCount, factoryDescriptor, factory
 
 extern "C" {
 
+#ifdef FX_RUNTIME
+// The device is the file the helper put beside this plugin when it made it. The path a
+// host passes is not used: through the VST3 and Audio Unit wrappers it is not always the
+// plugin's own, and the plugin can find itself. A host may call this more than once.
+bool fx_entry_init(const char*) {
+    if (Effect::loaded()) return true;
+    std::string why;
+    const std::string file = fxlocate::deviceFile();
+    if (file.empty() || !Effect::loadFile(file, &why)) {
+        std::fprintf(stderr, "Plugin Playground: %s\n", file.empty() ? "this plugin has no device file" : why.c_str());
+        return false;
+    }
+    return true;
+}
+#else
 bool fx_entry_init(const char*) { return true; }
+#endif
 
 void fx_entry_deinit(void) {}
 

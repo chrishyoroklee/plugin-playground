@@ -1,15 +1,16 @@
-# Builds native plugins from the generator's patches on Linux, macOS and Windows, and
-# holds them to the rules their hosts check.
+# Builds the native side on Linux, macOS and Windows, and holds it to the rules hosts check.
 #
-#   - the Python tests: the generator, the patch compiler, and the C++ it writes
-#   - every preset, effects and instruments, built as CLAP, VST3 and (on macOS) Audio
-#     Unit; each build loads its own .clap and compares it with the C++ (hostcheck)
-#   - two installers run as a visitor would run them, and what they installed checked
-#   - three presets installed and put through clap-validator, pluginval and auval
+#   - the Python tests: the generator, the patch compiler, the C++ it writes, and the
+#     runtime against that C++, sample for sample, for every preset
+#   - the runtime plugin (CLAP, VST3 and, on macOS, Audio Unit) and the helper, wrapped
+#     in this system's installer; then every preset made into a plugin by the helper,
+#     loaded, and compared with the device it was made from (hostcheck)
+#   - the installer run as a visitor would run it, a device opened with what it
+#     installed, and the result put through clap-validator, pluginval and auval
+#   - one preset compiled into a plugin of its own, the way `npm run plugin` does
 #
-# Each build is wrapped in its system's installer and kept as the run's artifacts.
-# pages.yml calls this workflow and publishes those installers with the site, as the
-# page's downloads.
+# The installer is kept as the run's artifact. pages.yml calls this workflow and
+# publishes the three of them with the site, as the page's downloads.
 name: Native plugins
 
 on:
@@ -70,10 +71,11 @@ jobs:
         run: |
           if [ ! -f "/c/Program Files (x86)/Inno Setup 6/ISCC.exe" ]; then choco install innosetup -y --no-progress; fi
 
-      # Every preset, each checked against its Effect.h as it is built, then wrapped in
-      # this system's installer: a .pkg, a setup .exe, or a .tar.gz with an install script.
-      - name: Build every preset
-        run: python scripts/plugin.py --all --package downloads
+      # The runtime and the helper, in this system's installer: a .pkg, a setup .exe, or
+      # a .tar.gz with an install script. Then every preset as the helper makes it,
+      # each loaded and held to its device.
+      - name: Build the runtime and make every preset from it
+        run: python scripts/plugin.py --runtime --all --package downloads
 
       - uses: actions/upload-artifact@v4
         with:
@@ -83,14 +85,6 @@ jobs:
             downloads/*.exe
             downloads/*.tar.gz
           if-no-files-found: error
-
-      # What a visitor does: run the installer, then open a host. An effect and an
-      # instrument are installed for the whole machine and have to land where hosts scan;
-      # on macOS each Audio Unit then has to pass auval, as it must before Logic lists it.
-      - name: Run two of the installers
-        run: |
-          python scripts/plugin.py --preset pingpong --package downloads --check-installer downloads
-          python scripts/plugin.py --preset "Soft Pad" --package downloads --check-installer downloads
 
       - name: Install the validators
         run: |
@@ -107,11 +101,19 @@ jobs:
           echo "$RUNNER_TEMP/tools/$bin" >> "$GITHUB_PATH"
           if [ "$RUNNER_OS" = Linux ]; then sudo apt-get update -q && sudo apt-get install -y -q xvfb; fi
 
-      # A feedback delay through two lines, a chain of three effects, and an instrument.
-      - name: Install and validate three presets
+      # What a visitor does: run the installer, then open a device file. A feedback delay
+      # through two lines, a chain of three effects, and an instrument are each opened
+      # with what the installer put on the machine, have to land where hosts scan, and
+      # are then put through the validators. On macOS that includes auval, which an Audio
+      # Unit has to pass before Logic lists it.
+      - name: Run the installer, open three devices, validate them
         run: |
           run=""
           if [ "$RUNNER_OS" = Linux ]; then run="xvfb-run -a"; fi
-          $run python scripts/plugin.py --preset pingpong --install --validate
-          $run python scripts/plugin.py --preset "Tape Lo-Fi" --install --validate
-          $run python scripts/plugin.py --preset "Soft Pad" --install --validate
+          $run python scripts/plugin.py --runtime --preset pingpong --package downloads --check-installer downloads --validate
+          $run python scripts/plugin.py --runtime --preset "Tape Lo-Fi" --check-installer downloads --validate
+          $run python scripts/plugin.py --runtime --preset "Soft Pad" --check-installer downloads --validate
+
+      # The other way to a plugin, for someone with a compiler: one device, compiled.
+      - name: Compile one preset into a plugin of its own
+        run: python scripts/plugin.py --preset pingpong

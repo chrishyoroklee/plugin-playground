@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { PRESETS, INSTRUMENTS, normalize, type Settings } from '../src/plugin/model';
 import {
-  SYSTEMS, checkSystem, detectMachine, detectSystem, findInstaller, shape, type NavigatorLike,
+  SYSTEMS, checkSystem, detectMachine, detectSystem, deviceFileName, type NavigatorLike,
 } from '../src/plugin/installers';
 
 const UA = {
@@ -70,47 +69,14 @@ describe('checking a system before the download', () => {
   });
 });
 
-describe('which installer goes with a device', () => {
-  const builds = Object.fromEntries([...PRESETS, ...INSTRUMENTS].map((p) => [p.id, { macos: `downloads/${p.id}-macos.pkg` }]));
-  const tube = PRESETS.find((p) => p.id === 'tube')!;
-
-  it('an untouched preset gets its own', () => {
-    const found = findInstaller(normalize(tube.settings), 'tube', PRESETS, builds)!;
-    expect(found.preset.id).toBe('tube');
-    expect(found.exact).toBe(true);
+describe('the name of a device file', () => {
+  it('is the device\'s name, as typed', () => {
+    expect(deviceFileName('Dusty Keys')).toBe('Dusty Keys.ppdevice');
   });
 
-  it('a preset with only its dials and name changed gets the same plugin, and is told so', () => {
-    const mine: Settings = normalize(tube.settings);
-    mine.name = 'My Tube';
-    for (const entry of mine.chain) for (const id of Object.keys(entry.values)) entry.values[id] += 1;
-    const found = findInstaller(mine, undefined, PRESETS, builds)!;
-    expect(shape(found.preset.settings)).toBe(shape(mine));
-    expect(found.exact).toBe(false);
-  });
-
-  it('a chain no preset has gets none', () => {
-    const mine: Settings = normalize(tube.settings);
-    mine.chain = [...mine.chain].reverse();
-    for (const entry of mine.chain) entry.on = true;
-    expect(findInstaller(mine, undefined, PRESETS, builds)).toBeUndefined();
-  });
-
-  it('an instrument is never matched to an effect', () => {
-    const pad = INSTRUMENTS[0];
-    const found = findInstaller(normalize(pad.settings), undefined, INSTRUMENTS, builds)!;
-    expect(found.preset.settings.kind).toBe('instrument');
-    expect(shape(pad.settings)).not.toBe(shape({ chain: pad.settings.chain }));
-  });
-
-  it('a module switched off does not change the shape; an option does', () => {
-    const a = normalize(tube.settings);
-    const b = normalize(tube.settings);
-    const off = b.chain.find((e) => !e.on);
-    if (off) off.values[Object.keys(off.values)[0]] += 1;
-    expect(shape(b)).toBe(shape(a));
-    const on = b.chain.find((e) => e.on && Object.keys(e.options).length)!;
-    on.options[Object.keys(on.options)[0]] = 'something-else';
-    expect(shape(b)).not.toBe(shape(a));
+  it('has nothing in it a file system refuses', () => {
+    expect(deviceFileName('AC/DC: "loud" <mix>?')).toBe('AC-DC- -loud- -mix--.ppdevice');
+    expect(deviceFileName(' .hidden. ')).toBe('hidden.ppdevice');
+    expect(deviceFileName('...')).toBe('Device.ppdevice');
   });
 });

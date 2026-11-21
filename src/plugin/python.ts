@@ -5,6 +5,7 @@
 // the device you hear and the file you download both come out of the real library.
 
 import fxgenSource from './fxgen.py?raw';
+import patchcSource from './patchc.py?raw';
 import schemaSource from './schema.json?raw';
 import type { Settings } from './model';
 
@@ -64,7 +65,7 @@ export class PyRuntime {
 
     this.ready = booted.then(async () => {
       onStatus('loading the generator…');
-      await this.send({ type: 'install', dir: '/fxgen', files: { 'fxgen.py': fxgenSource, 'schema.json': schemaSource } });
+      await this.send({ type: 'install', dir: '/fxgen', files: { 'fxgen.py': fxgenSource, 'patchc.py': patchcSource, 'schema.json': schemaSource } });
     });
     this.ready.catch(() => {});
   }
@@ -82,6 +83,14 @@ export class PyRuntime {
     await this.ready;
     const json = await this.send({ type: 'call', module: 'fxgen', fn: 'run_json', args: [JSON.stringify(settings), wantAmxd] });
     return JSON.parse(json) as RunResult;
+  }
+  /**
+   * The device as a file for the runtime plugin (a .ppdevice): the same patch, compiled
+   * by patchc.py to a program. Opening it with Plugin Playground installed makes the plugin.
+   */
+  async device(settings: Settings): Promise<string> {
+    await this.ready;
+    return this.send({ type: 'call', module: 'patchc', fn: 'device_for', args: [JSON.stringify(settings)] });
   }
 }
 

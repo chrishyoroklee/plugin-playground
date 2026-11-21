@@ -28,8 +28,8 @@ import {
 } from './model';
 import { PyRuntime, base64ToBytes, type RunResult } from './python';
 import {
-  SYSTEMS, checkSystem, detectMachine, detectSystem, findInstaller, systemInfo,
-  type Machine, type SystemId, type Verdict,
+  SYSTEMS, checkSystem, detectMachine, detectSystem, deviceFileName, systemInfo,
+  type Machine, type RuntimeFiles, type SystemId, type Verdict,
 } from './installers';
 import { SOUNDS, findSound } from './sounds';
 import { getTheme, setTheme } from './theme';
@@ -59,8 +59,8 @@ let deviceWidth = 0;
 let noteIn: MaxNode | undefined;
 /** The device of the kind not on screen, kept for when its tab is chosen again. */
 const parked: Partial<Record<Kind, { settings: Settings; preset: string | undefined }>> = {};
-/** Ready-made plugin builds, by preset id and system, if this site was published with any. */
-let builds: Record<string, Partial<Record<SystemId, string>>> = {};
+/** The Plugin Playground installer for each system, if this site was published with them. */
+let runtime: RuntimeFiles = {};
 // Last, because choosing the starting device also sets the preset and sample above.
 let settings: Settings = initialSettings();
 
@@ -943,39 +943,40 @@ async function download(): Promise<void> {
   }
 }
 
-// ── the plugin installer ────────────────────────────────────────────────────────
+// ── the plugin: install once, then a file per device ────────────────────────────
 
 /** What the browser says this computer is; the menu starts on its system. */
 let machine: Machine = detectSystem(navigator);
 let system: SystemId = machine.system ?? 'macos';
 /** The version chosen for each system, once the visitor or the browser has said. */
 const versionOf: Partial<Record<SystemId, string>> = {};
+const INSTALLED_KEY = 'pp-runtime-installed';
 
 function chosenVersion(): string {
   return versionOf[system] ?? (machine.system === system ? machine.version : undefined) ?? systemInfo(system).versions[0].id;
 }
 
+/** Whether this browser has already fetched the installer: step 1 then folds away. */
+function installedBefore(): boolean {
+  try { return localStorage.getItem(INSTALLED_KEY) === '1'; } catch { return false; }
+}
+
 /**
- * The plugin half of the download menu: pick a system, have it checked, download that
- * system's installer. A plugin is compiled code, so the page cannot make one itself: the
- * installers are the ones published with the site, one per preset and system.
+ * The plugin half of the download menu. A plugin is compiled code, which the page cannot
+ * make, so the compiled part is installed once (step 1: pick a system, have it checked,
+ * download its installer) and the device is a file the page writes (step 2). Opening that
+ * file makes the plugin, under the device's own name, with every dial where it stands.
  */
 function renderDownloads(): void {
-  const found = findInstaller(settings, activePreset, presetsOf(kind()), builds);
   const instrument = kind() === 'instrument';
-  $('dl-ready').hidden = !found;
-  $('dl-none').hidden = !!found;
+  const any = Object.keys(runtime).length > 0;
+  $('dl-ready').hidden = !any;
+  $('dl-none').hidden = any;
   $('dl-command').textContent = `npm run plugin -- --settings ${settings.name.replace(/ /g, '_')}.json --install`;
-  if (!found) {
-    $('dl-none').textContent = Object.keys(builds).length
-      ? `There is no ready-made installer for this ${instrument ? 'instrument' : 'chain'}: a plugin is compiled code, and this one is your own. Every preset has one, and so does a preset with only its dials moved.`
-      : 'This copy of the site was published without the installers.';
+  if (!any) {
+    $('dl-none').textContent = 'This copy of the site was published without the Plugin Playground installer.';
     return;
   }
-
-  const which = $('dl-which');
-  which.hidden = found.exact;
-  which.textContent = found.exact ? '' : `You get ${found.preset.name}: the same ${instrument ? 'instrument' : 'effect'} as yours, with the dials where the preset has them. Every dial is there to set in your DAW.`;
 
   const info = systemInfo(system);
   const host = $('dl-systems');
@@ -993,10 +994,10 @@ function renderDownloads(): void {
   select.replaceChildren(...info.versions.map((v) => new Option(v.label, v.id)));
   select.value = chosenVersion();
 
-  const file = found.files[system];
+  const file = runtime[system];
   const verdict: Verdict = file
     ? checkSystem(system, chosenVersion(), machine)
-    : { state: 'no', text: `The ${info.label} build of ${found.preset.name} failed the last time the site was published.` };
+    : { state: 'no', text: `The ${info.label} installer failed to build the last time the site was published.` };
   const check = $('dl-check');
   check.dataset.state = verdict.state;
   check.textContent = verdict.text;
@@ -1008,11 +1009,35 @@ function renderDownloads(): void {
   link.setAttribute('aria-disabled', String(!allowed));
   if (allowed) link.href = `${import.meta.env.BASE_URL}${file}`;
   else link.removeAttribute('href');
-
-  const where = instrument ? 'Instrument, AU Instruments, Plugin Playground' : 'Audio FX, Audio Units, Plugin Playground';
-  $('dl-steps').textContent = `${info.formats}. ${info.steps.replace('{where}', where)}`;
+  $('dl-steps').textContent = `${info.steps} It is the same for everything you make here: you only do this once.`;
   $('dl-unsigned').textContent = info.unsigned;
   $('dl-unsigned').hidden = !info.unsigned;
+  $('dl-once-title').textContent = installedBefore() ? 'Plugin Playground is installed (install it again)' : 'Install Plugin Playground, once';
+
+  const where = instrument ? 'Instrument, AU Instruments, Plugin Playground' : 'Audio FX, Audio Units, Plugin Playground';
+  $('dl-device-title').textContent = `Get “${settings.name}”`;
+  $('dl-device').textContent = `Download ${deviceFileName(settings.name)}`;
+  $('dl-opens').textContent = info.opens.replace('{name}', settings.name).replace('{where}', where);
+}
+
+/** Step 2: the device as a file, written here from the settings as they are this instant. */
+async function downloadDevice(): Promise<void> {
+  const btn = $<HTMLButtonElement>('dl-device');
+  btn.disabled = true;
+  btn.classList.add('is-busy');
+  try {
+    const text = await python.device(settings);
+    const name = deviceFileName(settings.name);
+    save(text, name, 'application/octet-stream');
+    toast(`Saved ${name}. Open it to install the plugin.`);
+  } catch (err) {
+    console.error(err);
+    toast('The download failed. The error is under View Python.');
+    showCheckError(String((err as Error).message || err));
+  } finally {
+    btn.disabled = false;
+    btn.classList.remove('is-busy');
+  }
 }
 
 function saveSettings(): void {
@@ -1086,11 +1111,11 @@ function init(): void {
   $('octave-down').addEventListener('click', () => keyboard.shiftOctave(-1));
   $('octave-up').addEventListener('click', () => keyboard.shiftOctave(1));
 
-  // Ready-made plugin builds, if the site was published with them (.github/workflows/pages.yml).
+  // The installers, if the site was published with them (.github/workflows/pages.yml).
   fetch(`${import.meta.env.BASE_URL}downloads/index.json`)
     .then((r) => (r.ok ? r.json() : {}))
-    .then((found: typeof builds) => { builds = found; renderDownloads(); })
-    .catch(() => { /* none published: the menu offers the command instead */ });
+    .then((found: { runtime?: RuntimeFiles }) => { runtime = found.runtime ?? {}; renderDownloads(); })
+    .catch(() => { /* none published: the menu says so */ });
   // The real version and processor, where the browser will say.
   void detectMachine(navigator).then((found) => { machine = found; renderDownloads(); });
   $('dl-version').addEventListener('change', () => {
@@ -1099,8 +1124,13 @@ function init(): void {
   });
   $('dl-installer').addEventListener('click', (e) => {
     if ($('dl-installer').getAttribute('aria-disabled') === 'true') { e.preventDefault(); return; }
+    try { localStorage.setItem(INSTALLED_KEY, '1'); } catch { /* private browsing: it is asked again next time */ }
     toast(`Downloading the ${systemInfo(system).label} installer. Open it when it has arrived.`);
+    renderDownloads();
   });
+  $('dl-device').addEventListener('click', () => void downloadDevice());
+  // Someone who has installed it already does not need step 1 in the way.
+  $<HTMLDetailsElement>('dl-once').open = !installedBefore();
 
   $('name').addEventListener('input', () => {
     const typed = $<HTMLInputElement>('name').value;

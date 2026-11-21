@@ -25,24 +25,50 @@ patch.json       the Max patch it was compiled from
 `build/plugins/_build` and `_sdk` are CMake's. They are shared, so the SDKs compile once
 and each further plugin takes a few seconds.
 
-## Installers
+## The runtime: any device, nothing compiled
 
-`--package DIR` wraps what was built in the installer its system expects, which is what
-the site's Download menu hands out (`--all --package DIR` in `.github/workflows/`):
+Compiling is something a web page cannot do, so the site does not hand out compiled
+devices. It hands out one plugin that runs any device, and a file per device:
 
-| System  | File                       | What it does |
-|---------|----------------------------|--------------|
-| macOS   | `<name>-macos.pkg`         | Opens in Installer. Audio Unit, VST3 and CLAP into `/Library/Audio/Plug-Ins`, or `~/Library` if "for me only" is chosen. |
-| Windows | `<name>-windows-setup.exe` | A setup program (Inno Setup). VST3 and CLAP into `C:\Program Files\Common Files`, with an entry to uninstall. |
-| Linux   | `<name>-linux.tar.gz`      | The plugins and `install.sh`, which copies them to `~/.vst3` and `~/.clap`. Linux has no installer format every distribution opens. |
+```
+settings ─▶ fxgen.py ─▶ patch JSON ─▶ patchc.py ─┬─▶ Effect.h ─▶ a compiler ─▶ one device's plugin
+                                                 └─▶ a .ppdevice ─▶ the runtime plugin, as that device
+```
 
-On macOS the installer is also what makes the plugin load. Files that Installer writes do
-not carry the quarantine flag a plugin unzipped from a download has, which hosts refuse,
-and each bundle is sealed with an ad hoc signature on the way in.
+- **The device file** (`.ppdevice`) is patchc's other output: the statements it would
+  have written as C++, as instructions, with the device's name, its dials and the page's
+  settings. It is text, about 5 KB. The page writes it in the browser, where patchc runs
+  under Pyodide next to fxgen.
+- **The runtime** (`native/runtime/`) is `mxvm.h`, which runs those instructions over the
+  same kernels in `mxrt.h`, and an `Effect.h` with the same shape as a generated one. The
+  shell, the renderer and hostcheck are built against it unchanged. A runtime plugin
+  finds the device file beside it when it loads and is that device from then on.
+- **The helper** (`native/helper/`) opens a device file: it copies the runtime under the
+  device's name, puts the file inside, and on macOS writes the Info.plist an Audio Unit
+  is listed by. On macOS it is `Plugin Playground.app` with the runtime inside it, on
+  Windows `Plugin Playground.exe`, and everywhere `plugin-playground-install` for a
+  terminal. The installer sets it to open `.ppdevice` files.
 
-`--check-installer DIR` runs the installer with no window and requires every plugin to be
-where hosts look; on macOS the Audio Unit then has to pass `auval`. CI does this for an
-effect and an instrument on each system.
+```sh
+npm run plugin -- --runtime                                # build the runtime and the helper
+npm run plugin -- --runtime --preset "Soft Pad" --install  # ...and make a device from them
+npm run plugin -- --runtime --all --package downloads      # every preset checked; the installer
+```
+
+| System  | Installer                             | What it installs | Where a device's plugins go |
+|---------|---------------------------------------|------------------|-----------------------------|
+| macOS   | `plugin-playground-macos.pkg`         | `Plugin Playground.app` in Applications | `~/Library/Audio/Plug-Ins` (Audio Unit, VST3, CLAP) |
+| Windows | `plugin-playground-windows-setup.exe` | the helper and runtime in Program Files | `Common Files\VST3\Plugin Playground` and the same under `CLAP`, which the installer makes writable by every user |
+| Linux   | `plugin-playground-linux.tar.gz`      | `install.sh` copies it to `~/.local/share/plugin-playground` | `~/.vst3` and `~/.clap` |
+
+Opening a device needs no administrator and no tools, and on macOS the plugins it makes
+carry no quarantine flag, because a program on the machine wrote them: that flag is what
+makes a host refuse a plugin unzipped from a download.
+
+A device file names the oldest runtime that can run it (`PROGRAM_RUNTIME` in patchc.py,
+`kRuntimeVersion` in mxvm.h). When an object is added that an installed runtime would
+not know, raise both: the helper then tells someone with the old one to install the new
+one, and does not make half a plugin.
 
 **Not signed yet.** The installers are not signed with a paid developer certificate, so
 each system asks the visitor to allow them once: on macOS under System Settings, Privacy
@@ -50,7 +76,11 @@ each system asks the visitor to allow them once: on macOS under System Settings,
 Apple Developer ID, set `FX_CODESIGN_IDENTITY` ("Developer ID Application: ...") and
 `FX_INSTALLER_IDENTITY` ("Developer ID Installer: ...") when packaging and both are used;
 the package then still has to be notarized (`xcrun notarytool submit`, `xcrun stapler
-staple`), which nothing here does yet.
+staple`), which nothing here does yet. A plugin the helper makes is signed ad hoc on the
+machine, which a Developer ID does not change.
+
+`--package DIR` without `--runtime` still wraps one compiled device in an installer of
+its own, and `--check-installer DIR` runs it.
 
 ## How it works
 
@@ -122,6 +152,11 @@ no preset uses.
 - **The sound.** `scripts/maxcheck/native.py` renders the maxcheck signal through the
   compiled C++ for every test, next to the Max and browser renderings, and `compare.py`
   reads all three. Results are in [`scripts/maxcheck/README.md`](../scripts/maxcheck/README.md).
+- **The runtime.** `pytest tests/test_runtime.py` renders all 43 presets through their
+  compiled C++ and through the runtime given their device file, once as they are and
+  once with every dial moved, and requires the same samples, not similar ones. A device
+  file the runtime cannot run (a newer format, an unknown object, a cut-off file) has to
+  be refused with the reason.
 - **Every preset.** `pytest tests/test_patchc.py` compiles all 31 presets and the 57
   module tests, renders each and holds its level to the browser engine's rendering of
   the same patch (`tests/reference/browser.json`), with no browser or Max needed.
@@ -137,12 +172,15 @@ no preset uses.
   `clap-validator`, `pluginval` and, on macOS, `auval`, whichever are installed.
   `.github/workflows/native.yml` does this on Linux, macOS and Windows.
 
-Where that stands (November 2026): CI builds every preset, 31 effects and 12 instruments,
-on Linux, macOS and Windows, and each passes hostcheck. Three of them (Ping-Pong, Tape
-Lo-Fi and the instrument Soft Pad) are also put through clap-validator, pluginval at
-strictness 5 (VST3 everywhere, the Audio Unit on macOS) and auval. Nobody has yet loaded
-one in Logic or another host by hand, and the C++ has been compared with the browser
-engine, not directly with Max recordings.
+Where that stands (November 2026): CI builds the runtime on Linux, macOS and Windows,
+makes every preset from it with the helper (31 effects and 12 instruments) and each
+passes hostcheck. It runs the installer, opens three devices with what was installed
+(Ping-Pong, Tape Lo-Fi and the instrument Soft Pad) and puts them through
+clap-validator, pluginval at strictness 5 (VST3 everywhere, the Audio Unit on macOS) and
+auval. On a Mac, a chain no preset has, made on the page in a browser, downloaded and
+opened in Finder's way, became a plugin that passes auval. Nobody has yet loaded one in
+Logic or another host by hand, and the C++ has been compared with the browser engine,
+not directly with Max recordings.
 
 ## Limits
 
@@ -162,6 +200,8 @@ engine, not directly with Max recordings.
   on, so where a sweep starts there is arbitrary.
 - A dial moved by the host sets its numbers at once, as it does in Max: there is no
   smoothing beyond what the patch has (the delay time glides through its `line~`).
+- The runtime costs more than compiled code: about 1 to 2 % of one core for the heaviest
+  presets, against about 1 % compiled. Its sound is the same, sample for sample.
 - No custom window, and no RNBO export.
 
 ## Licences

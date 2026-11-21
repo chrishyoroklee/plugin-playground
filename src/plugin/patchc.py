@@ -1158,6 +1158,308 @@ def compile_patch(patch, name=None):
     return Compiler(patch, name).emit()
 
 
+# ── the other backend: a program for the runtime plugin ─────────────────────────
+#
+# A plugin built from Effect.h has to be compiled, which a web page cannot do. The
+# runtime plugin (native/runtime) is compiled once and runs a device it is handed as a
+# program: the same statements emit() writes as C++, one instruction each, over the same
+# kernels. So nothing about how a patch is read is decided twice. The statements are
+# taken from the compiler as it wrote them and translated here, which is why this
+# section parses a small part of C++: the part patchc itself writes.
+
+PROGRAM_FORMAT = 1
+# The oldest runtime that can run what this file writes. Raise it when an instruction,
+# a kernel or a function is added that an installed runtime would not know.
+PROGRAM_RUNTIME = 1
+
+# Registers every program has, by number.
+FIXED_REGISTERS = ["sr_", "v", "pitch", "velocity", "in_l", "in_r", "out_l", "out_r"]
+
+_TOKEN = re.compile(r"\s*(?:(\d+\.?\d*(?:[eE][-+]?\d+)?)|([A-Za-z_][A-Za-z_0-9]*(?:::[A-Za-z_][A-Za-z_0-9]*)*)|(.))")
+
+
+def _tokens(text):
+    out = []
+    at = 0
+    text = text.rstrip()
+    while at < len(text):
+        m = _TOKEN.match(text, at)
+        if not m:
+            raise CompileError("cannot read the statement %r" % text)
+        at = m.end()
+        if m.group(1) is not None:
+            out.append(("num", m.group(1)))
+        elif m.group(2) is not None:
+            out.append(("name", m.group(2)))
+        else:
+            out.append(("op", m.group(3)))
+    return out
+
+
+def _quote(text):
+    """A name as one word: anything but letters, digits, - and _ becomes %XX."""
+    return "".join(c if (c.isascii() and c.isalnum()) or c in "-_" else "".join("%%%02X" % b for b in c.encode("utf-8"))
+                   for c in str(text)) or "%00"
+
+
+class Program:
+    """Translates one Compiler's statements into the runtime's instructions."""
+
+    FUNCTIONS = {"mxrt::clip": "clip", "mxrt::pong": "pong", "mxrt::overdrive": "overdrive", "mxrt::scale": "scale",
+                 "mxrt::toInt": "toInt", "mxrt::mtof": "mtof", "mxrt::dbtoa": "dbtoa", "std::pow": "pow",
+                 "std::tanh": "tanh", "std::sqrt": "sqrt", "std::sin": "sin", "std::cos": "cos"}
+
+    def __init__(self, compiler):
+        self.c = compiler
+        self.registers = {name: i for i, name in enumerate(FIXED_REGISTERS)}
+        self.initial = {}     # register -> the number it starts at
+        self.constants = {}   # literal -> register
+        self.kernels = {}     # member name -> (number, type)
+        self.code = None
+
+    # registers --------------------------------------------------------------------
+
+    def register(self, name):
+        if name not in self.registers:
+            self.registers[name] = len(self.registers)
+        return self.registers[name]
+
+    def temporary(self):
+        return self.register("%%t%d" % len(self.registers))
+
+    def constant(self, text):
+        value = float(text)
+        key = repr(value)
+        if key not in self.constants:
+            self.constants[key] = self.register("%%c%s" % key)
+            self.initial[self.constants[key]] = key
+        return self.constants[key]
+
+    # statements -------------------------------------------------------------------
+
+    def declare(self, line):
+        """A member: `mxrt::OnePole onepole_3_;` or `double mul_3_b = 2.5;`."""
+        words = line.split("  // ")[0].rstrip(";").split()
+        if words[0] == "double":
+            self.initial[self.register(words[1])] = repr(float(words[3]))
+        elif words[0].startswith("mxrt::"):
+            self.kernels[words[1]] = (len(self.kernels), words[0][len("mxrt::"):])
+        else:
+            raise CompileError("cannot read the member %r" % line)
+
+    def statement(self, line):
+        text = line.split("  // ")[0].strip()
+        if not text.endswith(";"):
+            raise CompileError("cannot read the statement %r" % line)
+        text = text[:-1]
+        if text.startswith("const double "):
+            name, expr = text[len("const double "):].split(" = ", 1)
+            self.expression(expr, self.register(name))
+        elif text.startswith("out["):
+            channel = int(text[4])
+            expr = text.split(" = static_cast<Sample>(", 1)[1][:-1]
+            self.expression(expr, self.register(("out_l", "out_r")[channel]))
+        elif " = " in text and "(" not in text.split(" = ", 1)[0]:
+            target, expr = text.split(" = ", 1)
+            if "." in target:
+                kernel, field = target.split(".")
+                self.code.append("s %d %s %d" % (self.kernels[kernel][0], field, self.expression(expr)))
+            else:
+                self.expression(expr, self.register(target))
+        else:
+            self.tokens = _tokens(text)
+            self.at = 0
+            self.primary(void=True)
+            if self.at != len(self.tokens):
+                raise CompileError("cannot read the statement %r" % line)
+
+    # expressions: + - * / over numbers, names, calls and fields --------------------
+
+    # Where each instruction keeps the register it writes, by its first word.
+    WRITES = {"+": 1, "-": 1, "*": 1, "/": 1, "neg": 1, "pos": 1, "g": 1, "f": 2, "c": 3}
+
+    def expression(self, text, into=None):
+        self.tokens = _tokens(text)
+        self.at = 0
+        fresh = len(self.registers)
+        result = self.sum()
+        if self.at != len(self.tokens):
+            raise CompileError("cannot read the expression %r" % text)
+        if into is None or result == into:
+            return result
+        # The last instruction wrote a temporary nothing else has seen: write `into` instead.
+        words = self.code[-1].split() if self.code else [""]
+        at = self.WRITES.get(words[0])
+        if result >= fresh and at is not None and int(words[at]) == result:
+            words[at] = str(into)
+            self.code[-1] = " ".join(words)
+        else:
+            self.code.append("= %d %d" % (into, result))
+        return into
+
+    def peek(self):
+        return self.tokens[self.at] if self.at < len(self.tokens) else (None, None)
+
+    def take(self, value=None):
+        token = self.peek()
+        if token[0] is None or (value is not None and token[1] != value):
+            raise CompileError("expected %r in a statement patchc wrote" % (value or "more"))
+        self.at += 1
+        return token
+
+    def binary(self, operators, operand):
+        left = operand()
+        while self.peek() in [("op", o) for o in operators]:
+            op = self.take()[1]
+            right = operand()
+            target = self.temporary()
+            self.code.append("%s %d %d %d" % (op, target, left, right))
+            left = target
+        return left
+
+    def sum(self):
+        return self.binary("+-", lambda: self.binary("*/", self.unary))
+
+    def unary(self):
+        if self.peek() == ("op", "-"):
+            self.take()
+            if self.peek()[0] == "num":
+                return self.constant("-" + self.take()[1])
+            value = self.unary()
+            target = self.temporary()
+            self.code.append("neg %d %d" % (target, value))
+            return target
+        return self.primary()
+
+    def arguments(self):
+        self.take("(")
+        args = []
+        while self.peek() != ("op", ")"):
+            args.append(self.sum())
+            if self.peek() == ("op", ","):
+                self.take()
+        self.take(")")
+        return args
+
+    def primary(self, void=False):
+        kind, value = self.take()
+        if kind == "num":
+            return self.constant(value)
+        if (kind, value) == ("op", "("):
+            inner = self.sum()
+            self.take(")")
+            return inner
+        if kind != "name":
+            raise CompileError("cannot read %r in a statement patchc wrote" % value)
+        if value in ("true", "false"):
+            return self.constant("1" if value == "true" else "0")
+        if value == "mxrt::valueToPosition":
+            # mxrt::valueToPosition(kParams[3], v): where the dial stands, 0 to 1
+            self.take("(")
+            self.take("kParams")
+            self.take("[")
+            index = int(self.take()[1])
+            self.take("]")
+            self.take(",")
+            arg = self.sum()
+            self.take(")")
+            target = self.temporary()
+            self.code.append("pos %d %d %d" % (target, index, arg))
+            return target
+        if value in self.FUNCTIONS:
+            args = self.arguments()
+            target = self.temporary()
+            self.code.append("f %s %d %s" % (self.FUNCTIONS[value], target, " ".join(map(str, args))))
+            return target
+        if value in self.kernels:
+            number, _ = self.kernels[value]
+            self.take(".")
+            member = self.take()[1]
+            if self.peek() == ("op", "("):
+                args = self.arguments()
+                target = -1 if void else self.temporary()
+                self.code.append(("c %d %s %d %s" % (number, member, target, " ".join(map(str, args)))).rstrip())
+                return target
+            target = self.temporary()
+            self.code.append("g %d %d %s" % (target, number, member))
+            return target
+        if "::" in value or self.peek() == ("op", "("):
+            raise CompileError("the runtime has no instruction for %r" % value)
+        return self.register(value)
+
+    # the whole device -------------------------------------------------------------
+
+    def section(self, title, lines):
+        self.code = []
+        for line in lines:
+            self.statement(line)
+        return ["@%s" % title] + self.code
+
+    def emit(self, settings=None):
+        c = self.c
+        name = c.name or "Effect"
+        nodes = c.order
+        for _, member in c.operands:
+            self.initial[self.register(member)] = "0.0"
+        for n in nodes:
+            for line in n.members:
+                self.declare(line)
+
+        body = []
+        body += self.section("prepare",
+                             ["%s = %s;" % (member, lit(box.num(0, 0))) for box, member in c.operands]
+                             + [line for n in nodes for line in n.prepare])
+        # After the dials have been applied: a ramp starts at its dial's value, not on the way to it.
+        body += self.section("settle", ["%s.reset();" % n.member for n in nodes if isinstance(n, Line)])
+        body += self.section("reset", [line for n in nodes for line in n.reset])
+        body += self.section("process", [line for n in nodes for line in n.tick()])
+        for p, lines in zip(c.params, c.updates):
+            body += self.section("update %d" % p.index, lines)
+        for number, lines in enumerate(c.voice_code, start=1):
+            body += self.section("voice %d" % number, lines)
+
+        out = ["ppdevice %d" % PROGRAM_FORMAT, "runtime %d" % PROGRAM_RUNTIME,
+               "name %s" % _quote(name), "slug %s" % slug(name),
+               "kind %s" % ("instrument" if c.instrument else "effect"),
+               "tail %d" % (1 if any(n.stateful for n in nodes) else 0)]
+        if c.instrument:
+            out.append("poly %d %d" % (c.poly.num(0), 1 if c.poly.num(1, 0) else 0))
+        for p in c.params:
+            out.append("param %d %s %s %s %s %d %d %s %s" % (
+                p.id, lit(p.min), lit(p.max), lit(p.initial), lit(p.exponent), p.unit, 1 if p.integer else 0,
+                _quote(p.name), _quote(p.short)))
+        out.append("registers %d" % len(self.registers))
+        for register in sorted(self.initial):
+            out.append("n %d %s" % (register, self.initial[register]))
+        for member, (number, ctype) in sorted(self.kernels.items(), key=lambda item: item[1][0]):
+            out.append("k %d %s" % (number, ctype))
+        out += body
+        out.append("@end")
+        if settings is not None:
+            # What the page needs to open this device again. The runtime does not read it.
+            import base64
+            packed = json.dumps(settings, separators=(",", ":"), ensure_ascii=True).encode("ascii")
+            out.append("settings %s" % base64.b64encode(packed).decode("ascii"))
+        return "\n".join(out) + "\n"
+
+
+def compile_program(patch, name=None, settings=None):
+    """Patch JSON (a dict) to a device file for the runtime plugin. Raises CompileError."""
+    return Program(Compiler(patch, name)).emit(settings)
+
+
+
+def device_for(settings_json):
+    """
+    For the page, which runs this under Pyodide: settings as JSON to the text of the
+    device file its Download hands over. fxgen builds the patch, as it does for the
+    sound in the browser and for the .amxd, so all three are the same device.
+    """
+    import fxgen
+    result = fxgen.run(json.loads(settings_json), want_amxd=False)
+    return compile_program(result["json"], result["settings"]["name"], result["settings"])
+
+
 def objects(patch):
     """The object classes a patch uses, for reporting."""
     return sorted({Box(e["box"], 0).cls for e in patch["patcher"].get("boxes", [])})

@@ -30,6 +30,13 @@ set(FX_FORMATS "CLAP;VST3;AUV2" CACHE STRING "CLAP is always built; VST3 and AUV
 set(FX_AU_SUBTYPE "Fx00" CACHE STRING "The Audio Unit's four-character subtype, unique per effect")
 set(FX_KIND "effect" CACHE STRING "effect or instrument: what Effect.h is, which the Audio Unit has to declare")
 option(FX_BUILD_PLUGIN "Build the plugin, which downloads the SDKs (off: only the renderer)" ON)
+# The runtime plugin: compiled once, it becomes whichever device is in the file beside it
+# (runtime/Effect.h). scripts/plugin.py --runtime builds it, with the helper that makes a
+# named plugin out of it for each device.
+option(FX_RUNTIME "Build the runtime plugin and the helper, not one device's plugin" OFF)
+if(FX_RUNTIME)
+    set(FX_EFFECT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/runtime" CACHE PATH "" FORCE)
+endif()
 
 if(NOT EXISTS "${FX_EFFECT_DIR}/Effect.h")
     message(FATAL_ERROR "FX_EFFECT_DIR should be a folder holding Effect.h (got \"${FX_EFFECT_DIR}\")")
@@ -72,7 +79,7 @@ if(FX_BUILD_PLUGIN)
     endif()
 
     add_library(fx_impl STATIC shell/plugin.cpp)
-    target_link_libraries(fx_impl PUBLIC clap clap-wrapper-extensions fx_effect)
+    target_link_libraries(fx_impl PUBLIC clap clap-wrapper-extensions fx_effect ${CMAKE_DL_LIBS})
     target_compile_definitions(fx_impl PRIVATE FX_VERSION="${PROJECT_VERSION}")
 
     make_clapfirst_plugins(
@@ -99,5 +106,33 @@ if(FX_BUILD_PLUGIN)
     add_dependencies(fx_hostcheck fx_clap)
     add_dependencies(fx_all fx_hostcheck)
     enable_testing()
-    add_test(NAME hostcheck COMMAND fx_hostcheck "$<TARGET_FILE:fx_clap>")
+    if(NOT FX_RUNTIME)
+        # The runtime is no device until the helper has made one of it; scripts/plugin.py
+        # does that and then runs hostcheck on the result.
+        add_test(NAME hostcheck COMMAND fx_hostcheck "$<TARGET_FILE:fx_clap>")
+    endif()
+endif()
+
+if(FX_RUNTIME)
+    # The helper: opens a .ppdevice and makes its plugins (helper/install.h). A program
+    # for the terminal everywhere, and an app with a window on macOS and Windows, where
+    # the installer registers it to open device files.
+    add_executable(fx_install helper/cli.cpp)
+    target_link_libraries(fx_install PRIVATE fx_effect)
+    set_target_properties(fx_install PROPERTIES OUTPUT_NAME plugin-playground-install)
+    add_custom_target(fx_helper ALL DEPENDS fx_install)
+    if(WIN32)
+        add_executable(fx_helper_win WIN32 helper/windows.cpp)
+        target_link_libraries(fx_helper_win PRIVATE fx_effect shell32)
+        set_target_properties(fx_helper_win PROPERTIES OUTPUT_NAME "Plugin Playground")
+        add_dependencies(fx_helper fx_helper_win)
+    endif()
+    if(APPLE)
+        # The binary of Plugin Playground.app; scripts/plugin.py builds the bundle round it.
+        add_executable(fx_helper_app helper/mac.mm)
+        target_link_libraries(fx_helper_app PRIVATE fx_effect "-framework Cocoa")
+        target_compile_options(fx_helper_app PRIVATE -fobjc-arc)
+        set_target_properties(fx_helper_app PROPERTIES OUTPUT_NAME plugin-playground-app)
+        add_dependencies(fx_helper fx_helper_app)
+    endif()
 endif()

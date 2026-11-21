@@ -1,11 +1,13 @@
-// The plugin installers the site carries, and which one a visitor should be given.
+// Getting a device into a DAW: what the page knows about the one thing to install.
 //
-// CI builds every preset as a plugin on each system and wraps it in that system's own
-// kind of installer (scripts/plugin.py, --package). This file is what the page knows
-// about them: what each system needs, how to tell which system the browser is on, and
-// which installer goes with the device on screen.
-
-import { normalize, type Preset, type Settings } from './model';
+// A plugin is compiled code, which a page cannot make. So the compiled part is the same
+// for every device: Plugin Playground itself, installed once, which holds a plugin that
+// runs any device and a helper that opens device files. CI builds its installer for each
+// system (scripts/plugin.py, --runtime --package). The device is then a small file the
+// page writes (patchc.py, device_for), and opening it makes the plugin.
+//
+// This file is the page's side of that: what each system needs, how to tell which system
+// the browser is on, and whether to let the download go ahead.
 
 export type SystemId = 'macos' | 'windows' | 'linux';
 
@@ -24,8 +26,10 @@ export interface SystemInfo {
   formats: string;
   needs: string;
   versions: VersionChoice[];
-  /** What to do with the download. `{where}` is where Logic lists it. */
+  /** What to do with the installer once it has downloaded. */
   steps: string;
+  /** What opening a device file does here. `{name}` is the device, `{where}` is where Logic lists it. */
+  opens: string;
   /** The builds are not signed with a paid developer certificate: what the system says, and the way past it. */
   unsigned: string;
 }
@@ -41,7 +45,8 @@ export const SYSTEMS: SystemInfo[] = [
       { id: 'new', label: 'macOS 10.15 Catalina or newer', ok: true },
       { id: 'old', label: 'macOS 10.14 Mojave or older', ok: false },
     ],
-    steps: 'Open the .pkg and follow the installer, then restart your DAW. In Logic Pro and GarageBand it is under {where}.',
+    steps: 'Open the .pkg and follow the installer.',
+    opens: 'Open the file. It installs as “{name}”, an Audio Unit, VST3 and CLAP plugin. Restart your DAW; in Logic Pro and GarageBand it is under {where}.',
     unsigned: 'The installer is not signed by Apple yet, so macOS blocks it the first time: open System Settings, Privacy & Security, scroll down and press Open Anyway.',
   },
   {
@@ -55,7 +60,8 @@ export const SYSTEMS: SystemInfo[] = [
       { id: '10', label: 'Windows 10 (64-bit)', ok: true },
       { id: 'old', label: 'Windows 8.1 or older', ok: false },
     ],
-    steps: 'Run the setup program, then rescan plugins in your DAW.',
+    steps: 'Run the setup program.',
+    opens: 'Open the file. It installs as “{name}”, a VST3 and CLAP plugin. Then rescan plugins in your DAW.',
     unsigned: 'The installer is not signed yet, so Windows may say it protected your PC: press More info, then Run anyway.',
   },
   {
@@ -68,7 +74,8 @@ export const SYSTEMS: SystemInfo[] = [
       { id: 'new', label: 'As new as Ubuntu 24.04 (glibc 2.39)', ok: true },
       { id: 'old', label: 'Older than that', ok: false },
     ],
-    steps: 'Unpack it and run sh install.sh in the folder, then rescan plugins in your DAW. Linux has no single installer format, so this is a script.',
+    steps: 'Unpack it and run sh install.sh in the folder. Linux has no single installer format, so this is a script.',
+    opens: 'Open the file, or run plugin-playground-install on it. It installs as “{name}”, a VST3 and CLAP plugin. Then rescan plugins in your DAW.',
     unsigned: '',
   },
 ];
@@ -177,48 +184,13 @@ export function checkSystem(system: SystemId, version: string, machine: Machine)
   return { state: 'yes', text: `Works on ${info.needs}.` };
 }
 
-// ── which installer ─────────────────────────────────────────────────────────────
+// ── the device file ─────────────────────────────────────────────────────────────
 
-/**
- * What a device compiles to, leaving out everything that is only a number: its kind, the
- * modules switched on, in order, and each one's options. Two devices with the same shape
- * are the same plugin with its dials in different places.
- */
-export function shape(input: Partial<Settings>): string {
-  const s = normalize(input);
-  const options = (o: Record<string, string>): string => Object.keys(o).sort().map((k) => `${k}=${o[k]}`).join(',');
-  const parts: string[] = [s.kind ?? 'effect'];
-  for (const [id, part] of Object.entries(s.instrument ?? {}).sort(([a], [b]) => a.localeCompare(b))) {
-    parts.push(`${id}(${options(part.options)})`);
-  }
-  for (const entry of s.chain) if (entry.on) parts.push(`${entry.module}(${options(entry.options)})`);
-  return parts.join('>');
-}
+/** The installer of Plugin Playground for each system that has one, as the site lists them. */
+export type RuntimeFiles = Partial<Record<SystemId, string>>;
 
-export interface Installer {
-  preset: Preset;
-  /** The installer for each system that has one. */
-  files: Partial<Record<SystemId, string>>;
-  /** False when the device has been changed from the preset, but only in its dials or name. */
-  exact: boolean;
-}
-
-/**
- * The ready-made installer for the device on screen: its preset's if it is an untouched
- * preset, otherwise that of a preset with the same shape, if there is one.
- */
-export function findInstaller(
-  settings: Settings,
-  activePreset: string | undefined,
-  presets: Preset[],
-  builds: Record<string, Partial<Record<SystemId, string>>>,
-): Installer | undefined {
-  const exact = presets.find((p) => p.id === activePreset && builds[p.id]);
-  if (exact) return { preset: exact, files: builds[exact.id], exact: true };
-  const mine = shape(settings);
-  const kind = settings.kind ?? 'effect';
-  const same = presets.filter((p) => (p.settings.kind ?? 'effect') === kind && builds[p.id] && shape(p.settings) === mine);
-  // Several presets can share a shape; the one this device is named after is the one it came from.
-  const from = same.find((p) => p.name === settings.name) ?? same[0];
-  return from ? { preset: from, files: builds[from.id], exact: false } : undefined;
+/** A device's name as the name of its file: nothing a file system minds. */
+export function deviceFileName(name: string): string {
+  const safe = name.replace(/[\\/:*?"<>|\u0000-\u001f]/g, '-').replace(/^[ .]+|[ .]+$/g, '');
+  return `${safe || 'Device'}.ppdevice`;
 }

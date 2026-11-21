@@ -182,6 +182,16 @@ bool parseNotes(const char* text, double rate, std::vector<NoteEvent>& events) {
 }  // namespace
 
 int main(int argc, char** argv) {
+#ifdef FX_RUNTIME
+    // The runtime's renderer is not any one device until it is told: render --device FILE ...
+    std::string why;
+    if (argc < 3 || std::strcmp(argv[1], "--device") != 0 || !Effect::loadFile(argv[2], &why)) {
+        std::fprintf(stderr, "render: %s\n", why.empty() ? "start with --device FILE, a .ppdevice" : why.c_str());
+        return 2;
+    }
+    argv += 2;
+    argc -= 2;
+#endif
     if (argc == 2 && std::strcmp(argv[1], "--params") == 0) { printParams(); return 0; }
 
     bool asFloat = false, asChrome = false;

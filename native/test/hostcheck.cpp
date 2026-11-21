@@ -153,10 +153,20 @@ const clap_plugin_entry_t* load(const char* path) {
 }  // namespace
 
 int main(int argc, char** argv) {
+#ifdef FX_RUNTIME
+    // Built on the runtime, the Effect here is no device until it is told which: the same
+    // file the helper put inside the plugin being checked.
+    std::string why;
+    if (argc != 3 || !Effect::loadFile(argv[2], &why)) {
+        std::fprintf(stderr, "hostcheck: %s\n", why.empty() ? "usage: hostcheck <plugin binary> <device file>" : why.c_str());
+        return 2;
+    }
+#else
     if (argc != 2) {
         std::fprintf(stderr, "usage: hostcheck <plugin binary>\n");
         return 2;
     }
+#endif
     const clap_plugin_entry_t* entry = load(argv[1]);
     if (!entry || !entry->init(argv[1])) {
         std::fprintf(stderr, "hostcheck: %s is not a loadable CLAP plugin\n", argv[1]);

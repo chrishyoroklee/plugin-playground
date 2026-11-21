@@ -27,11 +27,11 @@ Try it at <https://chrishyoroklee.github.io/plugin-playground/>.
   from the library (recordings, synth loops, a drum machine, test signals) or use your
   own file. For an instrument, click or drag the keyboard, play the letters printed on
   its keys, press **MIDI** to use a MIDI keyboard, or press play to loop a phrase.
-- **Download** offers the Max for Live device and the plugin. For the plugin you pick
-  your system (macOS, Windows or Linux) and its version, the page checks it, and you get
-  that system's installer: run it and every DAW on the machine has the plugin. Every
-  preset has one, and so does a preset with only its dials moved (the dials are there to
-  set in the DAW). A chain of your own is built on your machine, with one command (below).
+- **Download** offers the Max for Live device and the plugin. The plugin takes two steps.
+  Once, you install Plugin Playground for your system (macOS, Windows or Linux: you pick
+  it and its version, and the page checks it). After that every device, a preset or a
+  chain of your own, is one small file: open it and it is a plugin in every DAW on the
+  machine, under the name you gave it, with every dial where it stood.
 - **Settings** (the gear) has dark mode, a link that reopens this exact device, and the
   Python that built it.
 
@@ -64,10 +64,13 @@ or JUCE. The plugin lands in `build/plugins/<name>/` as `.clap`, `.vst3` and, on
 `.component`, next to the C++ it was built from. [`native/README.md`](native/README.md)
 has the details, the design and its limits.
 
-The installers on the site (a `.pkg` for macOS, a setup `.exe` for Windows, a `.tar.gz`
-with an install script for Linux) are made by `--package`. They are not signed with a
-paid developer certificate yet, so macOS and Windows each ask to allow them once; the
-Download menu says how.
+That command compiles one device into a plugin of its own. The site does not need it:
+what it installs is one plugin, compiled once, that runs any device from a file
+(`native/runtime/`), and the page writes that file itself. `npm run plugin -- --runtime
+--package DIR` builds that plugin, its helper and their installer (a `.pkg` for macOS, a
+setup `.exe` for Windows, a `.tar.gz` with an install script for Linux). The installers
+are not signed with a paid developer certificate yet, so macOS and Windows each ask to
+allow them once; the Download menu says how.
 
 ## How it works
 
@@ -129,7 +132,7 @@ saved for Live, and the plugin is that patch compiled.
   with the C++ it came from; three presets also go through clap-validator, pluginval and,
   on macOS, auval.
 - `.github/workflows/pages.yml` runs on every push to `main`: it builds the site, calls
-  the workflow above, and publishes the site with those installers as its downloads.
+  the workflow above, and publishes the site with the three installers as its downloads.
   That takes about 18 minutes, most of it the macOS builds. GitHub Pages has to use
   "GitHub Actions" as its source, because the page is TypeScript and cannot be served
   from the repository as it is.
