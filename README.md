@@ -16,6 +16,11 @@ pip install maxpylang pytest
 pytest tests       # the generator: every preset builds, checks clean, round-trips .amxd
 ```
 
+The site is at <https://chrishyoroklee.github.io/plugin-playground/>. Every push to `main`
+runs the tests, builds `dist/` and publishes it (`.github/workflows/pages.yml`). GitHub
+Pages has to use "GitHub Actions" as its source: the page is TypeScript, so the repository
+root cannot be served as it is.
+
 ## How it works
 
 ```
