@@ -12,8 +12,10 @@ npm run dev        # http://localhost:5173
 npm test           # the browser half (vitest)
 npm run build      # static site in dist/, works from any folder
 
-pip install maxpylang pytest
-pytest tests       # the generator: every preset builds, checks clean, round-trips .amxd
+pip install maxpylang pytest numpy
+pytest tests       # the generator, and the C++ compiled from its patches
+
+npm run plugin -- --preset "Tape Lo-Fi"   # a native CLAP / VST3 / Audio Unit plugin
 ```
 
 The site is at <https://chrishyoroklee.github.io/plugin-playground/>. Every push to `main`
@@ -38,15 +40,20 @@ settings ──▶ src/plugin/fxgen.py (maxpylang, in Pyodide) ──▶ patcher
 - **The engine plays the device as a host would.** `src/runtime/host.ts` is a pair of
   buses standing in for the Live track: the page plays a sample into `plugin~` and
   listens to `plugout~`.
+- **The same patch compiles to a native plugin.** `src/plugin/patchc.py` turns the
+  patcher JSON into C++ (one readable `Effect.h` per effect, on the kernels in
+  `native/mxrt.h`), and `npm run plugin` builds that as CLAP, VST3 and Audio Unit, so the
+  effect runs outside Ableton Live. No Max or RNBO is needed to build.
+  [`native/README.md`](native/README.md) has the design and its limits.
 - **The sound is checked against Max.** `scripts/maxcheck/` renders a test signal through
   the same generated patches in Max and in this engine and compares the recordings. Its
   README has the method and the results.
 
 ## What is copied from MaxPyLang
 
-Everything outside `src/plugin/` is a copy of MaxPyLang's web engine (`web/src/` there)
-as of November 2026: only the files this page needs, unchanged. Engine fixes should go to
-MaxPyLang first and be copied here.
+Everything under `src/` outside `src/plugin/` is a copy of MaxPyLang's web engine
+(`web/src/` there) as of November 2026: only the files this page needs, unchanged. Engine
+fixes should go to MaxPyLang first and be copied here.
 
 `public/py/` holds the maxpylang wheel the page loads into Pyodide. To update it, run
 `python -m pip wheel . --no-deps -w <this folder>/public/py` in a MaxPyLang checkout and
