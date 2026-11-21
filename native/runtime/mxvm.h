@@ -4,7 +4,7 @@
 // what lets one plugin, compiled once, be any device: patchc translates the statements
 // it would have written as C++ into instructions (src/plugin/patchc.py, Program), and
 // this runs them over the same kernels in mxrt.h. One instruction is one of those
-// statements, so a device sounds the same either way; tests/test_runtime.py holds the
+// statements, so a device sounds the same either way, to within rounding; tests/test_runtime.py holds the
 // two to each other for every preset.
 //
 // A device file is text, one item per line:

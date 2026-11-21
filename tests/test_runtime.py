@@ -5,7 +5,10 @@ A device reaches a host two ways. patchc writes it as C++ (Effect.h), which is c
 into a plugin of its own; or patchc writes it as a program (a .ppdevice), which the
 runtime plugin, compiled once, reads and runs. The page can only offer the second, so
 the second has to be the first: these tests render every preset both ways and require
-the same samples, not similar ones.
+the same samples. "The same" is to within rounding: a compiler works out the maths on a
+device's constants ahead of time, correctly rounded, where the runtime calls the maths
+library when it loads, and the two can differ in the last bit of a double. With clang on
+macOS they do not differ at all; with gcc a reverb tail has differed by 7e-15.
 
 They need a C++ compiler and numpy, and are skipped without them.
 """
@@ -42,6 +45,16 @@ needs_compiler = pytest.mark.skipif(plugin.compiler() is None, reason="no C++ co
 
 # A chord, a note played over a held one, more keys than a small instrument has voices,
 # and a key let go late: the note path, voice stealing and the release all get used.
+# Far below anything a 24-bit file can hold (6e-8), far above a last-bit difference.
+ROUNDING = 1e-9
+
+
+def _same(compiled, runtime):
+    import numpy as np
+    worst = float(np.abs(compiled.astype("f8") - runtime.astype("f8")).max())
+    assert worst <= ROUNDING, "they differ by up to %g" % worst
+
+
 NOTES = "48@0.1+0.9:100,60@0.1+0.9:90,64@0.3+0.5:127,67@0.3+0.5:60,72@0.5+0.2:100,76@0.6+0.2:100,79@0.7+0.2:100,84@0.8+1.0:1"
 
 
@@ -79,12 +92,12 @@ def _render_both(both, entry, tag, **how):
 
 @needs_compiler
 @pytest.mark.parametrize("entry", EVERYTHING, ids=[p["id"] for p in EVERYTHING])
-def test_the_runtime_is_the_compiled_plugin_sample_for_sample(both, entry):
+def test_the_runtime_is_the_compiled_plugin(both, entry):
     import numpy as np
     compiled, runtime = _render_both(both, entry, "plain")
     assert len(compiled) == len(runtime) and len(compiled) > 0
     assert np.abs(compiled).max() > 0, "the compiled plugin made no sound, so the comparison says nothing"
-    assert np.array_equal(compiled, runtime), "they differ by up to %g" % np.abs(compiled - runtime).max()
+    _same(compiled, runtime)
 
 
 @needs_compiler
@@ -99,7 +112,7 @@ def test_every_dial_does_the_same_thing_in_both(both, entry):
         values[index] = lo + (hi - lo) / 3
     assert values, "a preset with no dials"
     compiled, runtime = _render_both(both, entry, "moved", values=values, block=37)
-    assert np.array_equal(compiled, runtime), "they differ by up to %g" % np.abs(compiled - runtime).max()
+    _same(compiled, runtime)
 
 
 # ── the device file ─────────────────────────────────────────────────────────────

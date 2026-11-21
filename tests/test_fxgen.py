@@ -21,9 +21,9 @@ spec = importlib.util.spec_from_file_location("fxgen", PLUGIN / "fxgen.py")
 fxgen = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(fxgen)
 
-SCHEMA = json.loads((PLUGIN / "schema.json").read_text())
-PRESETS = json.loads((PLUGIN / "presets.json").read_text())
-INSTRUMENTS = json.loads((PLUGIN / "instruments.json").read_text())
+SCHEMA = json.loads((PLUGIN / "schema.json").read_text(encoding="utf-8"))
+PRESETS = json.loads((PLUGIN / "presets.json").read_text(encoding="utf-8"))
+INSTRUMENTS = json.loads((PLUGIN / "instruments.json").read_text(encoding="utf-8"))
 
 
 def everything_on():
@@ -267,7 +267,7 @@ def test_named_gaps_are_the_ones_the_page_explains():
     (docs/type-system/m4l-gaps.md in the MaxPyLang repo), and the page has a line for it."""
     import re
 
-    page = (PLUGIN / "main.ts").read_text()
+    page = (PLUGIN / "main.ts").read_text(encoding="utf-8")
     named = set(re.findall(r"gap (M4L-\d+)", fxgen.script(everything_on())))
     assert named == {"M4L-01", "M4L-02", "M4L-03", "M4L-04"}
     for gap_id in named:

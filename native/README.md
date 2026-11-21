@@ -154,7 +154,8 @@ no preset uses.
   reads all three. Results are in [`scripts/maxcheck/README.md`](../scripts/maxcheck/README.md).
 - **The runtime.** `pytest tests/test_runtime.py` renders all 43 presets through their
   compiled C++ and through the runtime given their device file, once as they are and
-  once with every dial moved, and requires the same samples, not similar ones. A device
+  once with every dial moved, and requires the same samples to within rounding (1e-9;
+  with clang they are identical, with gcc a reverb tail differed by 7e-15). A device
   file the runtime cannot run (a newer format, an unknown object, a cut-off file) has to
   be refused with the reason.
 - **Every preset.** `pytest tests/test_patchc.py` compiles all 31 presets and the 57
@@ -201,7 +202,7 @@ not directly with Max recordings.
 - A dial moved by the host sets its numbers at once, as it does in Max: there is no
   smoothing beyond what the patch has (the delay time glides through its `line~`).
 - The runtime costs more than compiled code: about 1 to 2 % of one core for the heaviest
-  presets, against about 1 % compiled. Its sound is the same, sample for sample.
+  presets, against about 1 % compiled. Its sound is the same, to within rounding.
 - No custom window, and no RNBO export.
 
 ## Licences
