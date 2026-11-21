@@ -257,7 +257,8 @@ def validate(made, found, installed, log=print):
             continue
         done = subprocess.run(cmd, capture_output=True, text=True)
         if done.returncode == 0:
-            last = [l for l in done.stdout.strip().splitlines() if l.strip()][-1:] or [""]
+            # the validator's own verdict: its last line that says anything
+            last = [l for l in done.stdout.splitlines() if any(c.isalnum() for c in l)][-1:] or [""]
             log("  %s: passed  %s" % (name, last[0].strip()))
         else:
             ok = False

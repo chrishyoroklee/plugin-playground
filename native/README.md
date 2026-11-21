@@ -93,6 +93,13 @@ no preset uses.
   `clap-validator`, `pluginval` and, on macOS, `auval`, whichever are installed.
   `.github/workflows/native.yml` does this on Linux, macOS and Windows.
 
+Where that stands (November 2026): all 31 presets build as CLAP and VST3 and pass
+hostcheck and clap-validator on Linux. CI builds two of them (Ping-Pong and Tape Lo-Fi)
+on Linux, macOS and Windows, where they pass clap-validator, pluginval at strictness 5
+(VST3 everywhere, the Audio Unit on macOS) and auval. Nobody has yet loaded one in Logic
+or another host by hand, and the C++ has been compared with the browser engine, not
+directly with Max recordings.
+
 ## Limits
 
 - Only the objects `fxgen.py` uses are covered: `patchc.SUPPORTED` lists them. An
