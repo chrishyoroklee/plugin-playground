@@ -90,29 +90,32 @@ inline int trimmed(char* out, size_t size, double v, int digits) {
 inline void formatValue(const ParamInfo& p, double value, char* out, size_t size) {
     if (size == 0) return;
     char num[48];
+    // The number with at most `digits` decimals, then the unit.
+    const auto print = [&](double v, int digits, const char* unit) {
+        detail::trimmed(num, sizeof num, v, digits);
+        std::snprintf(out, size, "%s%s", num, unit);
+    };
     switch (p.unit) {
         case kInt:
             std::snprintf(out, size, "%ld", std::lround(value));
             return;
         case kMs:
-            if (value >= 1000) { detail::trimmed(num, sizeof num, value / 1000, 2); std::snprintf(out, size, "%s s", num); }
-            else { detail::trimmed(num, sizeof num, value, value < 10 ? 1 : 0); std::snprintf(out, size, "%s ms", num); }
+            if (value >= 1000) print(value / 1000, 2, " s");
+            else print(value, value < 10 ? 1 : 0, " ms");
             return;
         case kHertz:
-            if (value >= 1000) { detail::trimmed(num, sizeof num, value / 1000, 2); std::snprintf(out, size, "%s kHz", num); }
-            else { detail::trimmed(num, sizeof num, value, value < 10 ? 2 : 0); std::snprintf(out, size, "%s Hz", num); }
+            if (value >= 1000) print(value / 1000, 2, " kHz");
+            else print(value, value < 10 ? 2 : 0, " Hz");
             return;
         case kDb:
             detail::trimmed(num, sizeof num, value, 1);
             std::snprintf(out, size, "%s%s dB", value > 0 ? "+" : "", num);
             return;
         case kPercent:
-            detail::trimmed(num, sizeof num, value, 0);
-            std::snprintf(out, size, "%s %%", num);
+            print(value, 0, " %");
             return;
         default:
-            detail::trimmed(num, sizeof num, value, std::fabs(value) >= 100 ? 0 : 2);
-            std::snprintf(out, size, "%s", num);
+            print(value, std::fabs(value) >= 100 ? 0 : 2, "");
     }
 }
 
@@ -432,7 +435,8 @@ struct Line {
         const double y = value;
         if (done < total) {
             done++;
-            value = done == total ? target : from + (target - from) * (static_cast<double>(done) / static_cast<double>(total));
+            const double progress = static_cast<double>(done) / static_cast<double>(total);
+            value = done == total ? target : from + (target - from) * progress;
         }
         return y;
     }

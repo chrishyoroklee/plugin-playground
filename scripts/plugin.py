@@ -165,8 +165,8 @@ def build_plugin(made, formats=None, log=print):
     # is the one that finds the right compiler.
     if os.name != "nt" and shutil.which("ninja") and not (build / "CMakeCache.txt").exists():
         configure += ["-G", "Ninja"]
-    for step, cmd in (("configure", configure),
-                      ("build", ["cmake", "--build", str(build), "--target", "fx_all", "--config", "Release", "--parallel"])):
+    compile_ = ["cmake", "--build", str(build), "--target", "fx_all", "--config", "Release", "--parallel"]
+    for step, cmd in (("configure", configure), ("build", compile_)):
         log("  cmake %s ..." % step)
         done = subprocess.run(cmd, capture_output=True, text=True)
         if done.returncode != 0:
@@ -279,7 +279,8 @@ def main(argv=None):
     ap.add_argument("--validate", action="store_true",
                     help="run clap-validator, pluginval and (on macOS, with --install) auval, whichever are installed")
     ap.add_argument("--source-only", action="store_true", help="write Effect.h and stop")
-    ap.add_argument("--render", nargs=2, metavar=("IN.wav", "OUT.wav"), help="play a WAV through the effect instead of building a plugin")
+    ap.add_argument("--render", nargs=2, metavar=("IN.wav", "OUT.wav"),
+                    help="play a WAV through the effect instead of building a plugin")
     args = ap.parse_args(argv)
 
     if args.list:

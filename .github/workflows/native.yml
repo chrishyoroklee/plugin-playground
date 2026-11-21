@@ -49,8 +49,8 @@ jobs:
       # the generator uses.
       - run: python -m pip install public/py/maxpylang-*.whl pytest numpy
 
-      # The compiler, and the C++ it writes against the browser engine's rendering.
-      - run: python -m pytest tests/test_patchc.py -q
+      # The generator, the compiler, and the C++ it writes against the browser engine's rendering.
+      - run: python -m pytest tests -q
 
       - name: Install the validators
         run: |

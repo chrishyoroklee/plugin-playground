@@ -55,7 +55,10 @@ def test_every_preset_builds_and_checks_clean(preset):
     assert cords["checked"] == cords["total"] > 0
     assert result["coverage"]["objects"]["not_seen_into"] == []
     assert result["warnings"] == []  # an unknown object would be an UnknownObjectWarning here
-    assert result["log"] == ""  # the script saves with verbose=False
+    # The script saves with verbose=False, so all maxpylang prints is its check report.
+    report = [line for line in result["log"].splitlines() if line]
+    assert all(line.startswith("PatchCheck:") for line in report), result["log"]
+    assert "no unknown objects" in result["log"]
 
 
 @pytest.mark.parametrize("preset", PRESETS, ids=[p["id"] for p in PRESETS])

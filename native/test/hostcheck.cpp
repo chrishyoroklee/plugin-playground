@@ -64,7 +64,9 @@ struct Events {
     clap_input_events_t in;
     Events() {
         in.ctx = this;
-        in.size = [](const clap_input_events_t* e) { return static_cast<uint32_t>(static_cast<Events*>(e->ctx)->list.size()); };
+        in.size = [](const clap_input_events_t* e) {
+            return static_cast<uint32_t>(static_cast<Events*>(e->ctx)->list.size());
+        };
         in.get = [](const clap_input_events_t* e, uint32_t i) -> const clap_event_header_t* {
             return &static_cast<Events*>(e->ctx)->list[i].header;
         };
@@ -143,7 +145,8 @@ int main(int argc, char** argv) {
     if (failures) return 1;
     const clap_plugin_descriptor_t* desc = factory->get_plugin_descriptor(factory, 0);
     check(std::strcmp(desc->name, Effect::kName) == 0, "the plugin has the effect's name");
-    check(std::string(desc->id) == std::string("com.plugin-playground.") + Effect::kSlug, "the plugin id is built from the name");
+    check(std::string(desc->id) == std::string("com.plugin-playground.") + Effect::kSlug,
+          "the plugin id is built from the name");
 
     const clap_plugin_t* plugin = factory->create_plugin(factory, &kHost, desc->id);
     check(plugin && plugin->init(plugin), "the plugin can be created");
@@ -170,10 +173,11 @@ int main(int argc, char** argv) {
         check(params->get_info(plugin, i, &info), "a parameter describes itself");
         check(info.id == Effect::kParams[i].id && std::strcmp(info.name, Effect::kParams[i].name) == 0,
               "a parameter has its dial's id and name");
-        check(info.min_value < info.max_value && info.default_value >= info.min_value && info.default_value <= info.max_value,
-              "a parameter's default is inside its range");
+        const bool inside = info.default_value >= info.min_value && info.default_value <= info.max_value;
+        check(info.min_value < info.max_value && inside, "a parameter's default is inside its range");
         double value = 0;
-        check(params->get_value(plugin, info.id, &value) && value == info.default_value, "a parameter starts at its default");
+        check(params->get_value(plugin, info.id, &value) && value == info.default_value,
+              "a parameter starts at its default");
         char text[64] = "";
         double back = 0;
         check(params->value_to_text(plugin, info.id, info.default_value, text, sizeof text) && text[0] != 0,
@@ -215,8 +219,9 @@ int main(int argc, char** argv) {
         float* directOut[2] = {wantL.data(), wantR.data()};
         if (b == moveBlock) {
             for (int i = 0; i < n; i++) {
-                const double v = infos[i].min_value + (infos[i].max_value - infos[i].min_value) * (0.3 + 0.4 * i / (n > 1 ? n - 1 : 1));
-                events.add(moveAt, infos[i].id, v);
+                // Somewhere between 30 % and 70 % of the way up, different for each parameter.
+                const double way = 0.3 + 0.4 * i / (n > 1 ? n - 1 : 1);
+                events.add(moveAt, infos[i].id, infos[i].min_value + (infos[i].max_value - infos[i].min_value) * way);
             }
             direct.process(directIn, directOut, static_cast<int>(moveAt));
             for (int i = 0; i < n; i++) {

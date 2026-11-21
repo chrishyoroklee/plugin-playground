@@ -29,8 +29,10 @@ Adding an object: one kernel in mxrt.h if it has state, and one class below.
 Command line:  python patchc.py patch.json [-o Effect.h] [--name "My Effect"]
 """
 
+import argparse
 import json
 import math
+import os
 import re
 import sys
 
@@ -945,8 +947,6 @@ def objects(patch):
 
 
 def main(argv=None):
-    import argparse
-
     ap = argparse.ArgumentParser(description="Compile a Max patch (the JSON fxgen produces) into Effect.h.")
     ap.add_argument("patch", help="a .json or .maxpat file")
     ap.add_argument("-o", "--output", help="where to write Effect.h (default: standard output)")
@@ -954,7 +954,6 @@ def main(argv=None):
     args = ap.parse_args(argv)
     with open(args.patch, encoding="utf-8") as fh:
         patch = json.load(fh)
-    import os
     name = args.name or os.path.splitext(os.path.basename(args.patch))[0].replace("_", " ")
     try:
         source = compile_patch(patch, name)

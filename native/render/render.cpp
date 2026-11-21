@@ -83,8 +83,15 @@ bool readWav(const char* path, Wav& wav, bool asChrome, std::string& error) {
     return false;
 }
 
-void put32(FILE* f, uint32_t v) { unsigned char b[4] = {static_cast<unsigned char>(v), static_cast<unsigned char>(v >> 8), static_cast<unsigned char>(v >> 16), static_cast<unsigned char>(v >> 24)}; std::fwrite(b, 1, 4, f); }
-void put16(FILE* f, uint16_t v) { unsigned char b[2] = {static_cast<unsigned char>(v), static_cast<unsigned char>(v >> 8)}; std::fwrite(b, 1, 2, f); }
+void put16(FILE* f, uint16_t v) {
+    const unsigned char bytes[2] = {static_cast<unsigned char>(v), static_cast<unsigned char>(v >> 8)};
+    std::fwrite(bytes, 1, 2, f);
+}
+
+void put32(FILE* f, uint32_t v) {
+    put16(f, static_cast<uint16_t>(v));
+    put16(f, static_cast<uint16_t>(v >> 16));
+}
 
 bool writeWav(const char* path, const Wav& wav, bool asFloat) {
     FILE* f = std::fopen(path, "wb");
