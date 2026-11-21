@@ -175,6 +175,7 @@ DIAL_W, DIAL_H = 44, 48
 DIAL_STEP = 50
 CARD_Y, CARD_H = 6, 157
 TITLE_Y = 14
+NAME_Y = 75       # the device's name, alone at the left, level with the middle of the cards
 DIAL_Y = 72
 
 UNITSTYLE = {"": "FLOAT", "x": "FLOAT", "Hz": "HERTZ", "ms": "MS", "%": "PERCENT", "dB": "DB", "bit": "INT"}
@@ -945,14 +946,14 @@ def script(settings):
     s.emit(PREAMBLE)
     s.emit()
     s.emit("ACCENT = %r" % _rgba(st["accent"]))
-    s.emit("CARD = [0.11, 0.12, 0.14, 1.0]")
-    s.emit("INK = [0.93, 0.94, 0.96, 1.0]")
-    s.emit("DIM = [0.55, 0.58, 0.63, 1.0]")
+    # The device's colours: pale blue cards with navy lettering, and the accent on top.
+    s.emit("CARD = [0.925, 0.945, 0.976, 1.0]")
+    s.emit("INK = [0.075, 0.137, 0.239, 1.0]")
+    s.emit("DIM = [0.4, 0.455, 0.549, 1.0]")
 
     # the name, in the device view
-    brand = []
-    brand.append('label(%s, (%d, %d), (8, 62, %d), size=12.0, bold=True, color=INK)' % (json.dumps(st["name"]), XP, dev.park_y, BRAND_W - 8))
-    brand.append('label("MaxPyLang", (%d, %d), (8, 82, %d), size=9.0, color=DIM)' % (XP + 60, dev.park_y, BRAND_W - 8))
+    brand = ['label(%s, (%d, %d), (8, %d, %d), size=12.0, bold=True, color=INK)'
+             % (json.dumps(st["name"]), XP, dev.park_y, NAME_Y, BRAND_W - 8)]
     dev.park_y += 30
 
     # where the sound comes from: the track (an effect) or the synth's voices (an instrument)

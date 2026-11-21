@@ -166,7 +166,7 @@ export class Keyboard {
   listenToComputerKeys(active: () => boolean): void {
     const typing = (e: KeyboardEvent): boolean => {
       const t = e.target as HTMLElement;
-      return t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || e.metaKey || e.ctrlKey || e.altKey;
+      return t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable || e.metaKey || e.ctrlKey || e.altKey;
     };
     window.addEventListener('keydown', (e) => {
       if (!active() || typing(e) || e.repeat) return;

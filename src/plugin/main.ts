@@ -88,8 +88,8 @@ const capitalize = (s: string): string => (s ? s[0].toUpperCase() + s.slice(1) :
 // ── status, toast ───────────────────────────────────────────────────────────────
 
 function setStatus(state: 'loading' | 'building' | 'ready' | 'error', text: string): void {
-  $('status').dataset.state = state;
-  $('status-text').textContent = text;
+  // Nothing on the page shows this any more; it is kept on <body> for styling and scripts.
+  document.body.dataset.state = state;
   if (state === 'loading') $('boot-text').textContent = text;
 }
 
@@ -205,16 +205,55 @@ function syncHash(): void {
 
 function renderHead(): void {
   $('device-title').textContent = settings.name;
-  const on = settings.chain.filter((e) => e.on).map((e) => moduleSpec(e.module)?.label ?? e.module);
-  const voices = settings.instrument?.osc.options.voices;
-  const source = voices ? ['notein', voices === '1' ? 'Synth, one voice' : `Synth, ${voices} voices`] : ['plugin~'];
-  const flow = $('device-flow');
-  flow.replaceChildren();
-  for (const [i, part] of [...source, ...on, 'Output', 'plugout~'].entries()) {
-    if (i) flow.append(Object.assign(document.createElement('i'), { textContent: '→' }));
-    const io = part.endsWith('~') || part === 'notein';
-    flow.append(Object.assign(document.createElement('span'), { textContent: part, className: io ? 'io' : '' }));
-  }
+}
+
+/** Give the device a new name, from wherever it was typed. */
+function rename(typed: string): void {
+  const name = normalize({ kind: settings.kind, name: typed }).name;
+  if (name === settings.name) return;
+  settings.name = name;
+  $<HTMLInputElement>('name').value = name;
+  markCustom();
+  renderHead();
+  renderDownloads();
+  scheduleBuild(450);
+}
+
+/**
+ * Let a name on the page be edited where it stands: double-click it, type, and press
+ * Enter or click away to keep the new name, Escape to keep the old one.
+ */
+function editName(el: HTMLElement): void {
+  if (el.isContentEditable) return;
+  const before = el.textContent ?? '';
+  el.contentEditable = 'true';
+  el.spellcheck = false;
+  el.classList.add('is-editing');
+  el.focus();
+  getSelection()?.selectAllChildren(el);
+
+  const finish = (keep: boolean): void => {
+    el.removeEventListener('keydown', onKey);
+    el.removeEventListener('blur', onBlur);
+    el.contentEditable = 'false';
+    el.classList.remove('is-editing');
+    const typed = el.textContent ?? '';
+    if (keep) rename(typed);
+    else el.textContent = before;
+    // Show the name as the settings now have it (tidied, or unchanged), not as it was typed.
+    el.textContent = keep ? settings.name : before;
+    renderHead();
+  };
+  const onKey = (e: KeyboardEvent): void => {
+    if (e.key === 'Enter' || e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      finish(e.key === 'Enter');
+    }
+  };
+  const onBlur = (): void => finish(true);
+  el.addEventListener('keydown', onKey);
+  el.addEventListener('blur', onBlur);
 }
 
 function stat(value: string | number, label: string, tone = ''): HTMLElement {
@@ -908,7 +947,7 @@ function setDrawer(open: boolean): void {
   $('btn-python').setAttribute('aria-expanded', String(open));
   $('scrim').hidden = !open;
   if (open) $('drawer-close').focus();
-  else $('btn-python').focus();
+  else $('btn-settings').focus();
 }
 
 async function copy(text: string, done: string): Promise<void> {
@@ -976,10 +1015,19 @@ function init(): void {
 
   $('name').addEventListener('input', () => {
     const typed = $<HTMLInputElement>('name').value;
-    settings.name = normalize({ name: typed }).name;
+    settings.name = normalize({ kind: settings.kind, name: typed }).name;
     markCustom();
     renderHead();
+    renderDownloads();
     scheduleBuild(450);
+  });
+
+  // The name can also be changed where it is shown: above the stage, and on the device.
+  $('device-title').title = 'Double-click to rename';
+  $('device-title').addEventListener('dblclick', () => editName($('device-title')));
+  $('device').addEventListener('dblclick', (e) => {
+    const label = (e.target as HTMLElement).closest<HTMLElement>('.dv-label');
+    if (label && label.textContent === settings.name) editName(label);
   });
   $('name').addEventListener('blur', () => { $<HTMLInputElement>('name').value = settings.name; });
 
@@ -1014,7 +1062,10 @@ function init(): void {
 
   $('dl-amxd').addEventListener('click', () => void download());
   $('dl-settings').addEventListener('click', saveSettings);
-  $('btn-python').addEventListener('click', () => setDrawer(!$('drawer').classList.contains('open')));
+  $('btn-python').addEventListener('click', () => {
+    closeSettings();
+    setDrawer(true);
+  });
   $('drawer-close').addEventListener('click', () => setDrawer(false));
   $('scrim').addEventListener('click', () => setDrawer(false));
   $('btn-copy').addEventListener('click', () => { if (result) void copy(result.script, 'Script copied.'); });
@@ -1027,8 +1078,9 @@ function init(): void {
   });
 
   // The three popovers. The help also peeks on hover or focus (CSS).
+  const closeSettings = popover('settings', 'btn-settings');
   const popovers = [
-    popover('help', 'btn-help'), popover('settings', 'btn-settings'),
+    popover('help', 'btn-help'), closeSettings,
     popover('library', 'btn-library'), popover('downloads', 'btn-download'),
   ];
 
@@ -1046,7 +1098,7 @@ function init(): void {
     }
     if (e.key === 'Escape' && $('drawer').classList.contains('open')) setDrawer(false);
     const target = e.target as HTMLElement;
-    const typing = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA';
+    const typing = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
     const onControl = target.tagName === 'BUTTON' || target.getAttribute('role') === 'slider';
     if (e.code === 'Space' && !typing && !onControl) {
       e.preventDefault();
