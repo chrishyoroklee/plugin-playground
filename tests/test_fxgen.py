@@ -23,6 +23,7 @@ spec.loader.exec_module(fxgen)
 
 SCHEMA = json.loads((PLUGIN / "schema.json").read_text())
 PRESETS = json.loads((PLUGIN / "presets.json").read_text())
+INSTRUMENTS = json.loads((PLUGIN / "instruments.json").read_text())
 
 
 def everything_on():
@@ -271,3 +272,48 @@ def test_named_gaps_are_the_ones_the_page_explains():
     assert named == {"M4L-01", "M4L-02", "M4L-03", "M4L-04"}
     for gap_id in named:
         assert "'%s':" % gap_id in page
+
+
+# ── instruments ─────────────────────────────────────────────────────────────────
+
+@pytest.mark.parametrize("preset", INSTRUMENTS, ids=[p["id"] for p in INSTRUMENTS])
+def test_every_instrument_builds_checks_clean_and_loads(preset, tmp_path):
+    import base64
+
+    result = fxgen.run(preset["settings"])
+    cords = result["coverage"]["cords"]
+    assert cords["flagged"] == 0 and cords["not_checked"] == 0, cords["not_checked_because"]
+    assert cords["checked"] == cords["total"] > 0
+    assert result["warnings"] == []
+
+    data = base64.b64decode(result["amxd"])
+    assert data[:4] == b"ampf" and data[8:12] == b"iiii"  # an instrument, not an audio effect
+    path = tmp_path / result["filename"]
+    path.write_bytes(data)
+    assert mp.load_amxd(str(path)) == result["json"]
+
+
+def test_an_instrument_takes_notes_and_has_one_voice_per_setting():
+    for voices in ("1", "4", "8"):
+        settings = fxgen.default_settings("instrument")
+        settings["instrument"]["osc"]["options"]["voices"] = voices
+        result = fxgen.run(settings, want_amxd=False)
+        texts = [b.get("text", "") for b in boxes(result)]
+        assert "notein" in texts and "plugin~" not in texts and "plugout~" in texts
+        assert "poly %s 1" % voices in texts
+        assert len([t for t in texts if t.startswith("adsr~")]) == int(voices)
+
+
+def test_instrument_dials_are_the_schemas():
+    result = fxgen.run(fxgen.default_settings("instrument"), want_amxd=False)
+    want = ["%s %s" % (m["label"], p["label"]) for m in SCHEMA["instrument"]["modules"] for p in m["params"]]
+    assert dial_names(result) == want + ["Output Gain"]
+
+
+def test_instrument_settings_are_bounded_like_any_other():
+    st = fxgen.normalize({"kind": "instrument", "instrument": {"osc": {"options": {"wave": "nope", "voices": "99"},
+                                                               "values": {"detune": 1e9}}}})
+    assert st["kind"] == "instrument" and st["name"] == "MaxPy Synth"
+    assert st["instrument"]["osc"]["options"] == {"wave": "saw", "second": "unison", "voices": "6"}
+    assert st["instrument"]["osc"]["values"]["detune"] == 50
+    assert "instrument" not in fxgen.normalize({}) and "kind" not in fxgen.normalize({})

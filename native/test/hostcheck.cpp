@@ -3,9 +3,9 @@
 //
 //   hostcheck <the plugin's binary>     (on macOS, the file inside Contents/MacOS)
 //
-// It plays noise through the plugin in blocks, moving every parameter part-way through a
-// block, and through a bare Effect given the same moves at the same samples; the two
-// must agree exactly. Then it checks what a host relies on: the parameter list and its
+// It plays noise through the plugin in blocks (or, for an instrument, plays it notes),
+// moving every parameter part-way through a block, and does the same to a bare Effect at
+// the same samples; the two must agree exactly. Then it checks what a host relies on: the parameter list and its
 // text, and that saved state restores every value in a second instance.
 //
 // clap-validator covers the CLAP rules far more widely. This covers the one thing it
@@ -59,8 +59,14 @@ const clap_host_t kHost = {CLAP_VERSION_INIT, nullptr, "hostcheck", "Plugin Play
 
 // ── event lists and streams ─────────────────────────────────────────────────────
 
+// One block's events, in time order: parameter moves and notes.
 struct Events {
-    std::vector<clap_event_param_value_t> list;
+    union Any {
+        clap_event_header_t header;
+        clap_event_param_value_t param;
+        clap_event_note_t note;
+    };
+    std::vector<Any> list;
     clap_input_events_t in;
     Events() {
         in.ctx = this;
@@ -71,9 +77,25 @@ struct Events {
             return &static_cast<Events*>(e->ctx)->list[i].header;
         };
     }
+    void note(uint32_t time, bool on, int key, double velocity) {
+        Any any;
+        std::memset(&any, 0, sizeof any);
+        clap_event_note_t& ev = any.note;
+        ev.header.size = sizeof ev;
+        ev.header.time = time;
+        ev.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+        ev.header.type = on ? CLAP_EVENT_NOTE_ON : CLAP_EVENT_NOTE_OFF;
+        ev.note_id = -1;
+        ev.port_index = 0;
+        ev.channel = 0;
+        ev.key = static_cast<int16_t>(key);
+        ev.velocity = velocity;
+        list.push_back(any);
+    }
     void add(uint32_t time, clap_id id, double value) {
-        clap_event_param_value_t ev;
-        std::memset(&ev, 0, sizeof ev);
+        Any any;
+        std::memset(&any, 0, sizeof any);
+        clap_event_param_value_t& ev = any.param;
         ev.header.size = sizeof ev;
         ev.header.time = time;
         ev.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
@@ -81,7 +103,7 @@ struct Events {
         ev.param_id = id;
         ev.note_id = -1; ev.port_index = -1; ev.channel = -1; ev.key = -1;
         ev.value = value;
-        list.push_back(ev);
+        list.push_back(any);
     }
 };
 
@@ -160,8 +182,21 @@ int main(int argc, char** argv) {
 
     for (bool input : {true, false}) {
         clap_audio_port_info_t info;
+        if (input && Effect::kIsInstrument) {
+            check(ports->count(plugin, true) == 0, "an instrument has no audio input");
+            continue;
+        }
         check(ports->count(plugin, input) == 1 && ports->get(plugin, 0, input, &info) && info.channel_count == 2,
               "one stereo port each way");
+    }
+    const auto* notes = static_cast<const clap_plugin_note_ports_t*>(plugin->get_extension(plugin, CLAP_EXT_NOTE_PORTS));
+    if (Effect::kIsInstrument) {
+        clap_note_port_info_t info;
+        check(notes && notes->count(plugin, true) == 1 && notes->get(plugin, 0, true, &info) &&
+                  (info.supported_dialects & CLAP_NOTE_DIALECT_CLAP),
+              "an instrument has one note input");
+    } else {
+        check(!notes, "an effect takes no notes");
     }
 
     // The parameter list is the dials, in order, and text survives a round trip.
@@ -217,7 +252,28 @@ int main(int argc, char** argv) {
         Events events;
         const float* directIn[2] = {inL.data(), inR.data()};
         float* directOut[2] = {wantL.data(), wantR.data()};
-        if (b == moveBlock) {
+        // An instrument is played a rising chord, more notes than it has voices so that
+        // some are stolen, each landing mid-block; all are let go halfway through.
+        const bool chord = Effect::kIsInstrument && b % 8 == 2 && b < 100 && b != moveBlock;
+        const bool letGo = Effect::kIsInstrument && b == blocks / 2;
+        if (chord || letGo) {
+            const uint32_t at = 37;
+            direct.process(directIn, directOut, static_cast<int>(at));
+            if (chord) {
+                const int key = 48 + static_cast<int>(b / 8) * 3 % 36;
+                const double velocity = 0.4 + 0.05 * (b / 8 % 10);
+                events.note(at, true, key, velocity);
+                direct.noteOn(key, velocity * 127.0);
+            } else {
+                for (int key = 0; key < 128; key++) {
+                    events.note(at, false, key, 0.0);
+                    direct.noteOff(key);
+                }
+            }
+            const float* restIn[2] = {inL.data() + at, inR.data() + at};
+            float* restOut[2] = {wantL.data() + at, wantR.data() + at};
+            direct.process(restIn, restOut, static_cast<int>(block - at));
+        } else if (b == moveBlock) {
             for (int i = 0; i < n; i++) {
                 // Somewhere between 30 % and 70 % of the way up, different for each parameter.
                 const double way = 0.3 + 0.4 * i / (n > 1 ? n - 1 : 1);
@@ -227,7 +283,8 @@ int main(int argc, char** argv) {
             for (int i = 0; i < n; i++) {
                 const mxrt::ParamInfo& p = Effect::kParams[i];
                 const bool curved = p.exponent != 1.0 && !p.integer;
-                direct.setParam(i, curved ? mxrt::positionToValue(p, events.list[i].value) : events.list[i].value);
+                const double v = events.list[i].param.value;
+                direct.setParam(i, curved ? mxrt::positionToValue(p, v) : v);
             }
             const float* restIn[2] = {inL.data() + moveAt, inR.data() + moveAt};
             float* restOut[2] = {wantL.data() + moveAt, wantR.data() + moveAt};
@@ -247,13 +304,15 @@ int main(int argc, char** argv) {
         in.channel_count = out.channel_count = 2;
         if (wide) { in.data64 = inout64; out.data64 = inout64; }
         else { in.data32 = in32; out.data32 = out32; }
+        const bool hasInput = !Effect::kIsInstrument;
         clap_process_t process;
         std::memset(&process, 0, sizeof process);
         process.steady_time = -1;
         process.frames_count = block;
-        process.audio_inputs = &in;
+        process.audio_inputs = hasInput ? &in : nullptr;
         process.audio_outputs = &out;
-        process.audio_inputs_count = process.audio_outputs_count = 1;
+        process.audio_inputs_count = hasInput ? 1 : 0;
+        process.audio_outputs_count = 1;
         process.in_events = &events.in;
         process.out_events = &kOutEvents;
         check(plugin->process(plugin, &process) != CLAP_PROCESS_ERROR, "a block is processed");

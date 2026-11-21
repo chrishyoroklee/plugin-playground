@@ -27,12 +27,16 @@
           <span class="brand-sep">/</span>
           <span class="brand-page">Plugin Generator</span>
         </a>
+        <div class="modes" role="tablist" aria-label="What to make">
+          <button id="mode-effect" type="button" role="tab" aria-selected="true" title="An audio effect: it changes the sound of a track">Effect</button>
+          <button id="mode-instrument" type="button" role="tab" aria-selected="false" title="A MIDI instrument: a synth you play with notes">Instrument</button>
+        </div>
         <div class="topbar-right">
           <span id="status" class="status" data-state="loading" role="status" aria-live="polite">
             <i></i><span id="status-text">Starting Python</span>
           </span>
           <button id="btn-share" class="btn ghost" type="button" title="Copy a link to this exact device">Copy link</button>
-          <button id="btn-python" class="btn ghost" type="button" aria-controls="drawer" aria-expanded="false"><span><span class="wide">View </span>Python</span></button>
+          <button id="btn-python" class="btn ghost" type="button" aria-controls="drawer" aria-expanded="false">View Python</button>
           <div id="help" class="pop help">
             <button id="btn-help" class="btn ghost icon" type="button" aria-label="How to use it in Ableton Live" aria-expanded="false" aria-controls="help-pop">
               <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><circle cx="8" cy="8" r="6.3" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M6.2 6.3a1.9 1.9 0 113 1.5c-.7.5-1.2.9-1.2 1.7" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="8" cy="11.6" r=".9" fill="currentColor"/></svg>
@@ -40,10 +44,11 @@
             <div id="help-pop" class="popover" role="region" aria-labelledby="use-h">
               <h2 id="use-h">Use it in Ableton Live</h2>
               <ol class="steps">
-                <li>Press <b>Download .amxd</b>.</li>
-                <li>Drag the file onto an audio track in Live (Suite, or Standard with Max for Live).</li>
+                <li>Press <b>Download</b> and take the Max for Live device.</li>
+                <li>Drag the file onto a track in Live (Suite, or Standard with Max for Live): an audio track for an effect, a MIDI track for an instrument.</li>
                 <li>Every dial here is a Live parameter: automate it, map it, save it with your set.</li>
               </ol>
+              <p class="muted small">For other hosts, the same device compiles to a VST3, CLAP or Audio Unit plugin: see Download.</p>
               <p class="muted small">What you hear is checked against Max itself: the filter, distortion, crush, delay and reverb match a Max 9 render sample for sample. Chorus, flanger and tremolo differ only in where their sweep starts.</p>
               <p class="muted small foot">
                 Open source, built on <a href="https://github.com/Barnard-PL-Labs/MaxPyLang">MaxPyLang</a>.
@@ -63,10 +68,27 @@
               </div>
             </div>
           </div>
-          <button id="btn-download" class="btn primary" type="button" disabled>
-            <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M8 2v8m0 0L4.8 6.8M8 10l3.2-3.2M3 13h10" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            <span><span class="wide">Download </span>.amxd</span>
-          </button>
+          <div id="downloads" class="pop">
+            <button id="btn-download" class="btn primary" type="button" disabled aria-label="Download" aria-expanded="false" aria-controls="download-pop">
+              <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M8 2v8m0 0L4.8 6.8M8 10l3.2-3.2M3 13h10" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <span>Download</span>
+            </button>
+            <div id="download-pop" class="popover downloads" role="region" aria-labelledby="download-h">
+              <h2 id="download-h">Download</h2>
+              <button id="dl-amxd" class="dl" type="button">
+                <b>Max for Live device</b>
+                <span id="dl-amxd-note">An .amxd for Ableton Live, with every dial where it stands now</span>
+              </button>
+              <div class="dl">
+                <b>Plugin for any host</b>
+                <span>VST3 and CLAP, and an Audio Unit on macOS</span>
+                <div id="dl-builds" class="dl-builds" hidden></div>
+                <p id="dl-how" class="muted small"></p>
+                <code id="dl-command"></code>
+                <button id="dl-settings" class="btn" type="button">Download settings (.json)</button>
+              </div>
+            </div>
+          </div>
         </div>
       </header>
 
@@ -93,6 +115,11 @@
                 <span>Colour</span>
                 <div id="accents" class="accents" role="radiogroup" aria-label="Accent colour"></div>
               </div>
+            </section>
+
+            <section id="synth-group" class="group" hidden>
+              <h2>Synth <small>every voice has these</small></h2>
+              <ol id="synth" class="chain"></ol>
             </section>
 
             <section class="group">
@@ -136,7 +163,15 @@
               <svg class="i-play" viewBox="0 0 16 16" width="18" height="18" aria-hidden="true"><path d="M4.5 2.8v10.4L13 8z" fill="currentColor"/></svg>
               <svg class="i-stop" viewBox="0 0 16 16" width="18" height="18" aria-hidden="true"><rect x="3.5" y="3.5" width="9" height="9" rx="1.5" fill="currentColor"/></svg>
             </button>
-            <div class="samples">
+            <div id="play-keys" class="keys" hidden>
+              <div id="piano" class="piano" role="group" aria-label="Piano. The keys A S D F and the row above play it too; Z and X change octave."></div>
+              <label class="chip phrase" title="What the play button loops">
+                <span class="label">Loop</span>
+                <select id="phrase" aria-label="Phrase to loop"></select>
+              </label>
+              <button id="btn-midi" class="chip" type="button" title="Play it from a MIDI keyboard plugged into this computer">MIDI</button>
+            </div>
+            <div id="play-sample" class="samples">
               <span class="label">Play it on</span>
               <div id="library" class="pop library">
                 <button id="btn-library" class="chip library-btn" type="button" title="Sound library: pick what plays through the device" aria-expanded="false" aria-controls="library-pop">

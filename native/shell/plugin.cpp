@@ -1,4 +1,6 @@
-// The plugin shell: one compiled Effect.h, wrapped as a CLAP audio effect.
+// The plugin shell: one compiled Effect.h, wrapped as a CLAP plugin. An effect gets a
+// stereo input and output; an instrument (Effect::kIsInstrument) gets a note input and a
+// stereo output, and is played by the host's notes or by raw MIDI.
 //
 // Hand-written and the same for every effect. The Effect.h it includes is whichever one
 // patchc generated for this build; clap-wrapper turns the result into VST3 and Audio
@@ -62,9 +64,30 @@ struct Plugin {
         }
     }
 
-    // A parameter event, wherever it arrived. `live` means the audio thread owns the Effect now.
+    // A key going down or coming up. Only while audio is running: a note has no meaning
+    // to an instrument that is not sounding.
+    void note(const clap_event_header_t* header) {
+        if (header->type == CLAP_EVENT_NOTE_ON || header->type == CLAP_EVENT_NOTE_OFF ||
+            header->type == CLAP_EVENT_NOTE_CHOKE) {
+            const auto* ev = reinterpret_cast<const clap_event_note_t*>(header);
+            if (ev->key < 0 || ev->key > 127) return;
+            if (header->type == CLAP_EVENT_NOTE_ON) effect.noteOn(ev->key, ev->velocity * 127.0);
+            else effect.noteOff(ev->key);
+        } else if (header->type == CLAP_EVENT_MIDI) {
+            const auto* ev = reinterpret_cast<const clap_event_midi_t*>(header);
+            const int status = ev->data[0] & 0xF0, key = ev->data[1] & 0x7F, velocity = ev->data[2] & 0x7F;
+            if (status == 0x90 && velocity > 0) effect.noteOn(key, velocity);
+            else if (status == 0x80 || status == 0x90) effect.noteOff(key);
+        }
+    }
+
+    // An event, wherever it arrived. `live` means the audio thread owns the Effect now.
     void event(const clap_event_header_t* header, bool live) {
-        if (header->space_id != CLAP_CORE_EVENT_SPACE_ID || header->type != CLAP_EVENT_PARAM_VALUE) return;
+        if (header->space_id != CLAP_CORE_EVENT_SPACE_ID) return;
+        if (header->type != CLAP_EVENT_PARAM_VALUE) {
+            if (live && Effect::kIsInstrument) note(header);
+            return;
+        }
         const auto* ev = reinterpret_cast<const clap_event_param_value_t*>(header);
         const int i = indexOf(ev->param_id);
         if (i < 0) return;
@@ -82,12 +105,17 @@ struct Plugin {
     template <typename Sample>
     void render(Sample** in, uint32_t inChannels, Sample** out, uint32_t outChannels, std::vector<Sample>& spare,
                 uint32_t from, uint32_t to) {
-        if (to <= from || inChannels == 0 || outChannels == 0) return;
+        const bool fed = Effect::kIsInstrument || (in && inChannels > 0);
+        if (to <= from || !fed || outChannels == 0) return;
         const uint32_t frames = to - from;
         const bool room = spare.size() >= frames;
-        const Sample* ins[2] = {in[0] + from, (inChannels > 1 ? in[1] : in[0]) + from};
         Sample* outs[2] = {out[0] + from, outChannels > 1 ? out[1] + from : spare.data()};
         if (outChannels < 2 && !room) return;  // more frames than the host said it would send
+        if (Effect::kIsInstrument) {
+            effect.process(static_cast<const Sample* const*>(nullptr), outs, static_cast<int>(frames));
+            return;
+        }
+        const Sample* ins[2] = {in[0] + from, (inChannels > 1 ? in[1] : in[0]) + from};
         effect.process(ins, outs, static_cast<int>(frames));
     }
 };
@@ -130,9 +158,9 @@ clap_process_status pluginProcess(const clap_plugin_t* plugin, const clap_proces
     const uint32_t frames = process->frames_count;
     const clap_input_events_t* events = process->in_events;
     const uint32_t count = events ? events->size(events) : 0;
-    const bool wired = process->audio_inputs_count > 0 && process->audio_outputs_count > 0;
-    const clap_audio_buffer_t* in = wired ? &process->audio_inputs[0] : nullptr;
-    clap_audio_buffer_t* out = wired ? &process->audio_outputs[0] : nullptr;
+    const clap_audio_buffer_t* in = process->audio_inputs_count > 0 ? &process->audio_inputs[0] : nullptr;
+    clap_audio_buffer_t* out = process->audio_outputs_count > 0 ? &process->audio_outputs[0] : nullptr;
+    const bool wired = out && (in || Effect::kIsInstrument);
 
     // Render up to each event, apply it, carry on: a parameter change lands on its sample.
     uint32_t next = 0, at = 0;
@@ -146,10 +174,14 @@ clap_process_status pluginProcess(const clap_plugin_t* plugin, const clap_proces
         }
         if (at >= frames) break;
         if (wired) {
-            if (in->data32 && out->data32)
-                p->render(in->data32, in->channel_count, out->data32, out->channel_count, p->spare32, at, until);
-            else if (in->data64 && out->data64)
-                p->render(in->data64, in->channel_count, out->data64, out->channel_count, p->spare64, at, until);
+            // An instrument has no input buffer to say which width the host is using.
+            const bool narrow = out->data32 && (!in || in->data32);
+            const bool wide = out->data64 && (!in || in->data64);
+            const uint32_t channels = in ? in->channel_count : 0;
+            if (narrow)
+                p->render(in ? in->data32 : nullptr, channels, out->data32, out->channel_count, p->spare32, at, until);
+            else if (wide)
+                p->render(in ? in->data64 : nullptr, channels, out->data64, out->channel_count, p->spare64, at, until);
         }
         at = until;
     }
@@ -159,23 +191,40 @@ clap_process_status pluginProcess(const clap_plugin_t* plugin, const clap_proces
     return Effect::kHasTail ? CLAP_PROCESS_CONTINUE : CLAP_PROCESS_CONTINUE_IF_NOT_QUIET;
 }
 
-// ── audio ports: one stereo input, one stereo output ────────────────────────────
+// ── audio ports: a stereo output, and for an effect a stereo input ──────────────
 
-uint32_t portsCount(const clap_plugin_t*, bool) { return 1; }
+uint32_t portsCount(const clap_plugin_t*, bool isInput) { return isInput && Effect::kIsInstrument ? 0 : 1; }
 
-bool portsGet(const clap_plugin_t*, uint32_t index, bool isInput, clap_audio_port_info_t* info) {
-    if (index != 0) return false;
+bool portsGet(const clap_plugin_t* plugin, uint32_t index, bool isInput, clap_audio_port_info_t* info) {
+    if (index >= portsCount(plugin, isInput)) return false;
     std::memset(info, 0, sizeof *info);
     info->id = 0;
     std::strncpy(info->name, isInput ? "Input" : "Output", sizeof info->name - 1);
     info->flags = CLAP_AUDIO_PORT_IS_MAIN | CLAP_AUDIO_PORT_SUPPORTS_64BITS;
     info->channel_count = 2;
     info->port_type = CLAP_PORT_STEREO;
-    info->in_place_pair = 0;  // the Effect reads a frame before it writes it
+    // An effect reads a frame before it writes it, so the host may use one buffer for both.
+    info->in_place_pair = Effect::kIsInstrument ? CLAP_INVALID_ID : 0;
     return true;
 }
 
 const clap_plugin_audio_ports_t kAudioPorts = {portsCount, portsGet};
+
+// ── note port: an instrument's way in ───────────────────────────────────────────
+
+uint32_t notePortsCount(const clap_plugin_t*, bool isInput) { return isInput && Effect::kIsInstrument ? 1 : 0; }
+
+bool notePortsGet(const clap_plugin_t* plugin, uint32_t index, bool isInput, clap_note_port_info_t* info) {
+    if (index >= notePortsCount(plugin, isInput)) return false;
+    std::memset(info, 0, sizeof *info);
+    info->id = 0;
+    info->supported_dialects = CLAP_NOTE_DIALECT_CLAP | CLAP_NOTE_DIALECT_MIDI;
+    info->preferred_dialect = CLAP_NOTE_DIALECT_CLAP;
+    std::strncpy(info->name, "Notes", sizeof info->name - 1);
+    return true;
+}
+
+const clap_plugin_note_ports_t kNotePorts = {notePortsCount, notePortsGet};
 
 // ── parameters ──────────────────────────────────────────────────────────────────
 
@@ -302,6 +351,7 @@ const clap_plugin_tail_t kTail = {tailGet};
 
 const void* pluginExtension(const clap_plugin_t*, const char* id) {
     if (std::strcmp(id, CLAP_EXT_AUDIO_PORTS) == 0) return &kAudioPorts;
+    if (std::strcmp(id, CLAP_EXT_NOTE_PORTS) == 0 && Effect::kIsInstrument) return &kNotePorts;
     if (std::strcmp(id, CLAP_EXT_PARAMS) == 0) return &kParams;
     if (std::strcmp(id, CLAP_EXT_STATE) == 0) return &kState;
     if (std::strcmp(id, CLAP_EXT_TAIL) == 0) return &kTail;
@@ -310,7 +360,9 @@ const void* pluginExtension(const clap_plugin_t*, const char* id) {
 
 // ── descriptor and factory ──────────────────────────────────────────────────────
 
-const char* const kFeatures[] = {CLAP_PLUGIN_FEATURE_AUDIO_EFFECT, CLAP_PLUGIN_FEATURE_STEREO, nullptr};
+const char* const kEffectFeatures[] = {CLAP_PLUGIN_FEATURE_AUDIO_EFFECT, CLAP_PLUGIN_FEATURE_STEREO, nullptr};
+const char* const kInstrumentFeatures[] = {CLAP_PLUGIN_FEATURE_INSTRUMENT, CLAP_PLUGIN_FEATURE_SYNTHESIZER,
+                                           CLAP_PLUGIN_FEATURE_STEREO, nullptr};
 
 const clap_plugin_descriptor_t* descriptor() {
     static const std::string id = std::string("com.plugin-playground.") + Effect::kSlug;
@@ -323,8 +375,9 @@ const clap_plugin_descriptor_t* descriptor() {
         "",
         "",
         FX_VERSION,
-        "An audio effect generated as a Max patch and compiled to C++.",
-        kFeatures,
+        Effect::kIsInstrument ? "An instrument generated as a Max patch and compiled to C++."
+                              : "An audio effect generated as a Max patch and compiled to C++.",
+        Effect::kIsInstrument ? kInstrumentFeatures : kEffectFeatures,
     };
     return &desc;
 }

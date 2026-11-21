@@ -101,8 +101,9 @@ register('curve~', (args, { ctx }) => {
 });
 
 // adsr~ : attack/decay/sustain/release envelope. inlet 0 is the gate (nonzero =
-// note on -> attack then decay to sustain; 0 = note off -> release to 0). inlets
-// 1..4 set A/D/S/R. Outlet 0 is the envelope signal, outlet 1 mirrors it (a
+// note on -> attack then decay to sustain; 0 = note off -> release to 0). The gate's
+// value is the envelope's height, as in Max: a note at half velocity peaks at half and
+// sustains at half the sustain level. inlets 1..4 set A/D/S/R. Outlet 0 is the envelope signal, outlet 1 mirrors it (a
 // second signal tap), outlets 2/3 (control) bang at end-of-attack-phase and
 // end-of-release respectively.
 register('adsr~', (args, { ctx }) => {
@@ -131,10 +132,10 @@ register('adsr~', (args, { ctx }) => {
     env.offset.cancelScheduledValues(now);
     env.offset.setValueAtTime(env.offset.value, now);
     if (on !== 0) {
-      // attack to peak (1), then decay to sustain level.
+      // attack to the peak (the gate's value), then decay to the sustain level.
       const aEnd = now + attack / 1000;
-      env.offset.linearRampToValueAtTime(1, aEnd);
-      env.offset.linearRampToValueAtTime(sustain, aEnd + decay / 1000);
+      env.offset.linearRampToValueAtTime(on, aEnd);
+      env.offset.linearRampToValueAtTime(sustain * on, aEnd + decay / 1000);
       cancelAttackDone = scheduler.afterMs(attack + decay, () => {
         cancelAttackDone = undefined; o.emit(2, BANG);
       });

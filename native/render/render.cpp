@@ -5,7 +5,12 @@
 // and its output goes through the same compare.py.
 //
 //   render in.wav out.wav [--float] [--block N] [--as-chrome] [--set INDEX=VALUE ...]
+//   render --notes NOTES --seconds S out.wav [--rate HZ] [--float] [--block N] [--set ...]
 //   render --params            the parameter table, as JSON
+//
+// The first form is for an effect. The second plays an instrument: NOTES is a list of
+// KEY@START+LENGTH:VELOCITY, times in seconds, separated by commas. "60@0+1:100,67@0.5+1:80"
+// is middle C for a second, with the G above it joining half a second in.
 //
 // The input is 16-bit PCM, mono or stereo. The output is 16-bit stereo, the format the
 // Max side records, or 32-bit float with --float for sample-level comparison.
@@ -15,6 +20,7 @@
 //
 // Built once per effect: the Effect.h to wrap is found on the include path.
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -120,7 +126,8 @@ bool writeWav(const char* path, const Wav& wav, bool asFloat) {
 }
 
 void printParams() {
-    std::printf("{\"name\": \"%s\", \"hasTail\": %s, \"params\": [", Effect::kName, Effect::kHasTail ? "true" : "false");
+    std::printf("{\"name\": \"%s\", \"hasTail\": %s, \"instrument\": %s, \"params\": [", Effect::kName,
+                Effect::kHasTail ? "true" : "false", Effect::kIsInstrument ? "true" : "false");
     for (int i = 0; i < Effect::kNumParams; i++) {
         const mxrt::ParamInfo& p = Effect::kParams[i];
         char text[64];
@@ -135,25 +142,63 @@ void printParams() {
 
 int usage() {
     std::fprintf(stderr, "usage: render in.wav out.wav [--float] [--block N] [--as-chrome] [--set INDEX=VALUE ...]\n"
+                         "       render --notes NOTES --seconds S out.wav [--rate HZ] [--float] [--block N] [--set ...]\n"
                          "       render --params\n");
     return 2;
+}
+
+// A key going down (velocity above 0) or coming up, at a frame.
+struct NoteEvent {
+    long frame;
+    int key;
+    double velocity;
+};
+
+// "60@0+1:100,67@0.5+1:80" as events in the order they happen. At the same frame a key
+// comes up before another goes down, so a repeated note is released and then struck.
+bool parseNotes(const char* text, double rate, std::vector<NoteEvent>& events) {
+    const char* at = text;
+    while (*at) {
+        int key = 0, read = 0;
+        double start = 0, length = 0, velocity = 100;
+        if (std::sscanf(at, "%d@%lf+%lf%n", &key, &start, &length, &read) != 3) return false;
+        at += read;
+        if (*at == ':') {
+            if (std::sscanf(at, ":%lf%n", &velocity, &read) != 1) return false;
+            at += read;
+        }
+        if (key < 0 || key > 127 || start < 0 || length <= 0) return false;
+        events.push_back({std::lround(start * rate), key, velocity});
+        events.push_back({std::lround((start + length) * rate), key, 0.0});
+        if (*at == ',') at++;
+        else if (*at) return false;
+    }
+    std::stable_sort(events.begin(), events.end(), [](const NoteEvent& a, const NoteEvent& b) {
+        return a.frame != b.frame ? a.frame < b.frame : a.velocity < b.velocity;
+    });
+    return !events.empty();
 }
 
 }  // namespace
 
 int main(int argc, char** argv) {
     if (argc == 2 && std::strcmp(argv[1], "--params") == 0) { printParams(); return 0; }
-    if (argc < 3) return usage();
 
-    bool asFloat = false;
+    bool asFloat = false, asChrome = false;
     int block = 64;
-    bool asChrome = false;
+    double seconds = 0, rate = 44100;
+    const char* notes = nullptr;
+    std::vector<const char*> files;
     Effect effect;
-    for (int i = 3; i < argc; i++) {
+    for (int i = 1; i < argc; i++) {
+        const bool more = i + 1 < argc;
         if (std::strcmp(argv[i], "--float") == 0) asFloat = true;
-        else if (std::strcmp(argv[i], "--block") == 0 && i + 1 < argc) block = std::atoi(argv[++i]);
         else if (std::strcmp(argv[i], "--as-chrome") == 0) asChrome = true;
-        else if (std::strcmp(argv[i], "--set") == 0 && i + 1 < argc) {
+        else if (std::strcmp(argv[i], "--block") == 0 && more) block = std::atoi(argv[++i]);
+        else if (std::strcmp(argv[i], "--notes") == 0 && more) notes = argv[++i];
+        else if (std::strcmp(argv[i], "--seconds") == 0 && more) seconds = std::atof(argv[++i]);
+        else if (std::strcmp(argv[i], "--rate") == 0 && more) rate = std::atof(argv[++i]);
+        else if (std::strcmp(argv[i], "--set") == 0 && more) {
             const char* eq = std::strchr(argv[++i], '=');
             const int index = std::atoi(argv[i]);
             if (!eq || index < 0 || index >= Effect::kNumParams) {
@@ -161,29 +206,55 @@ int main(int argc, char** argv) {
                 return 2;
             }
             effect.setParam(index, std::atof(eq + 1));
-        } else return usage();
+        } else if (argv[i][0] == '-' && argv[i][1] == '-') return usage();
+        else files.push_back(argv[i]);
     }
     if (block < 1) block = 1;
 
-    Wav in;
-    std::string error;
-    if (!readWav(argv[1], in, asChrome, error)) { std::fprintf(stderr, "render: %s\n", error.c_str()); return 1; }
-
-    Wav out;
+    Wav in, out;
+    std::vector<NoteEvent> events;
+    const char* outPath = nullptr;
+    if (Effect::kIsInstrument) {
+        if (!notes || seconds <= 0 || rate < 8000 || files.size() != 1) {
+            std::fprintf(stderr, "render: %s is an instrument: give it --notes, --seconds and one output file\n", Effect::kName);
+            return usage();
+        }
+        if (!parseNotes(notes, rate, events)) {
+            std::fprintf(stderr, "render: notes are written KEY@START+LENGTH:VELOCITY, separated by commas\n");
+            return 2;
+        }
+        outPath = files[0];
+        in.sampleRate = static_cast<int>(rate);
+        in.left.assign(static_cast<size_t>(seconds * rate), 0.0f);
+        in.right = in.left;
+    } else {
+        if (notes || files.size() != 2) return usage();
+        std::string error;
+        if (!readWav(files[0], in, asChrome, error)) { std::fprintf(stderr, "render: %s\n", error.c_str()); return 1; }
+        outPath = files[1];
+    }
     out.sampleRate = in.sampleRate;
     out.left.resize(in.left.size());
     out.right.resize(in.right.size());
 
     effect.prepare(in.sampleRate);
     mxrt::ScopedNoDenormals quiet;
-    const int frames = static_cast<int>(in.left.size());
-    for (int at = 0; at < frames; at += block) {
-        const int n = frames - at < block ? frames - at : block;
+    const long frames = static_cast<long>(in.left.size());
+    size_t next = 0;
+    for (long at = 0; at < frames;) {
+        // Notes land on their own sample: the block is cut short where the next one starts.
+        for (; next < events.size() && events[next].frame <= at; next++) {
+            if (events[next].velocity > 0) effect.noteOn(events[next].key, events[next].velocity);
+            else effect.noteOff(events[next].key);
+        }
+        long n = std::min<long>(block, frames - at);
+        if (next < events.size()) n = std::min(n, events[next].frame - at);
         const float* ins[2] = {in.left.data() + at, in.right.data() + at};
         float* outs[2] = {out.left.data() + at, out.right.data() + at};
-        effect.process(ins, outs, n);
+        effect.process(ins, outs, static_cast<int>(n));
+        at += n;
     }
 
-    if (!writeWav(argv[2], out, asFloat)) { std::fprintf(stderr, "render: cannot write %s\n", argv[2]); return 1; }
+    if (!writeWav(outPath, out, asFloat)) { std::fprintf(stderr, "render: cannot write %s\n", outPath); return 1; }
     return 0;
 }

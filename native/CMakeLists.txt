@@ -28,6 +28,7 @@ set(FX_NAME "Effect" CACHE STRING "The plugin's name, as hosts show it")
 set(FX_SLUG "effect" CACHE STRING "The name in lower case with dashes, for identifiers")
 set(FX_FORMATS "CLAP;VST3;AUV2" CACHE STRING "CLAP is always built; VST3 and AUV2 (macOS only) are optional")
 set(FX_AU_SUBTYPE "Fx00" CACHE STRING "The Audio Unit's four-character subtype, unique per effect")
+set(FX_KIND "effect" CACHE STRING "effect or instrument: what Effect.h is, which the Audio Unit has to declare")
 option(FX_BUILD_PLUGIN "Build the plugin, which downloads the SDKs (off: only the renderer)" ON)
 
 if(NOT EXISTS "${FX_EFFECT_DIR}/Effect.h")
@@ -64,6 +65,12 @@ if(FX_BUILD_PLUGIN)
         GIT_SHALLOW TRUE)
     FetchContent_MakeAvailable(clap-wrapper)
 
+    if(FX_KIND STREQUAL "instrument")
+        set(FX_AU_TYPE "aumu")  # a music device: notes in, audio out
+    else()
+        set(FX_AU_TYPE "aufx")
+    endif()
+
     add_library(fx_impl STATIC shell/plugin.cpp)
     target_link_libraries(fx_impl PUBLIC clap clap-wrapper-extensions fx_effect)
     target_compile_definitions(fx_impl PRIVATE FX_VERSION="${PROJECT_VERSION}")
@@ -81,7 +88,7 @@ if(FX_BUILD_PLUGIN)
         AUV2_MANUFACTURER_NAME "Plugin Playground"
         AUV2_MANUFACTURER_CODE "PlPg"
         AUV2_SUBTYPE_CODE "${FX_AU_SUBTYPE}"
-        AUV2_INSTRUMENT_TYPE "aufx"
+        AUV2_INSTRUMENT_TYPE "${FX_AU_TYPE}"
     )
     add_dependencies(fx_all fx_render)
 

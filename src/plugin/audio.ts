@@ -93,6 +93,12 @@ export class Track {
     if (this.playing) this.startSource();
   }
 
+  /** Play nothing: the device makes its own sound (an instrument), and the track only listens. */
+  clearBuffer(): void {
+    this.buffer = undefined;
+    this.stopSource();
+  }
+
   private startSource(): void {
     this.stopSource();
     if (!this.buffer) return;

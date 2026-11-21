@@ -18,6 +18,9 @@ How a patch is read:
   - The signal objects are sorted so each runs after what feeds it, and written out as
     one loop over the samples. A loop in the patch is legal only where Max allows it:
     through a tapin~ / tapout~ pair, whose delay is what makes the loop computable.
+  - An instrument has a notein instead of a plugin~. Its notes are followed through
+    poly, pack, route and unpack to the voices, and what each voice does with a pitch
+    and a velocity becomes the code behind noteOn() and noteOff().
   - Panels and comments are dropped.
 
 It covers the objects fxgen.py emits and nothing else. An object, an inlet or a kind of
@@ -102,6 +105,9 @@ class Box:
             self.args = []
             self.text = maxclass
         self.ident = re.sub(r"[^0-9A-Za-z]+", "_", self.id.replace("obj-", "")).strip("_")
+        # For `+ 1.` and its kind: the C++ member holding the right operand, when a cord
+        # into the right inlet can change it. Otherwise the argument is used as written.
+        self.operand = None
 
     def __str__(self):
         return "[%s] (%s)" % (self.text, self.id)
@@ -156,10 +162,17 @@ def _arith(op):
     def build(box, value):
         x = _one(box, value)
         arg = box.num(0, 0)
+        operand = box.operand or lit(arg)
         if isinstance(arg, int):
-            return Num("mxrt::toInt(%s)" % op("mxrt::toInt(%s)" % x, lit(arg)))
-        return Num(op(x, lit(arg)))
+            return Num("mxrt::toInt(%s)" % op("mxrt::toInt(%s)" % x, operand))
+        return Num(op(x, operand))
     return build
+
+
+def _divide(box, value):
+    if isinstance(box.num(0, 0), int):
+        raise CompileError("%s divides in whole numbers; patchc models the float one (write `2.` for `2`)" % box)
+    return Num("%s / %s" % (_one(box, value), box.operand or lit(box.num(0))))
 
 
 def _unary(template):
@@ -188,10 +201,15 @@ def _pack(box, value):
     return List([first] + [lit(s) for s in slots[1:]])
 
 
+# The control objects whose right inlet stores an operand for the next number on the left.
+ARITHMETIC = {"+", "*", "!-", "/"}
+
 CONTROL = {
     "+": _arith(lambda a, b: "%s + %s" % (a, b)),
     "*": _arith(lambda a, b: "%s * %s" % (a, b)),
     "!-": _arith(lambda a, b: "%s - %s" % (b, a)),
+    "/": _divide,
+    "mtof": _unary("mxrt::mtof(%s)"),
     "pow": _pow,
     "scale": _scale,
     "sqrt": _unary("std::sqrt(%s)"),
@@ -448,16 +466,56 @@ class Allpass(Expr):
         self.expr = "%s.tick(%s)" % (self.member, self.input(0))
 
 
-class Cycle(Expr):
-    prefix = "cycle"
+class Oscillator(Expr):
+    """An oscillator: its frequency is a number in the left inlet, or a signal."""
+
+    kernel_type = None
 
     def setup(self):
-        self.kernel("mxrt::Cycle", "sr_, %s" % lit(self.box.num(0, 0)))
+        if len(self.box.args) > 1:
+            raise CompileError("%s: patchc models the frequency argument only" % self.box)
+        self.kernel(self.kernel_type, "sr_, %s" % lit(self.box.num(0, 0)))
         if self.has_signal(0):
             self.expr = "%s.tick(%s)" % (self.member, self.input(0))
         else:
             self.call(0, "setFreq")
             self.expr = "%s.tick()" % self.member
+
+
+class Cycle(Oscillator):
+    prefix = "cycle"
+    kernel_type = "mxrt::Cycle"
+
+
+class Saw(Oscillator):
+    prefix = "saw"
+    kernel_type = "mxrt::Saw"
+
+
+class Rect(Oscillator):
+    prefix = "rect"
+    kernel_type = "mxrt::Rect"
+
+
+class Tri(Oscillator):
+    prefix = "tri"
+    kernel_type = "mxrt::Tri"
+
+
+class Adsr(Expr):
+    prefix = "adsr"
+    stateful = True
+
+    def signal_inlets(self):
+        return set()
+
+    def setup(self):
+        self.box.need(4)
+        self.kernel("mxrt::Adsr", "sr_, " + ", ".join(lit(self.box.num(i)) for i in range(4)))
+        self.call(0, "gate")
+        for inlet, name in enumerate(("attack", "decay", "sustain", "release"), start=1):
+            self.field(inlet, name)
+        self.expr = "%s.tick()" % self.member
 
 
 class Line(Expr):
@@ -560,12 +618,20 @@ SIGNAL = {
     "comb~": Comb,
     "allpass~": Allpass,
     "cycle~": Cycle,
+    "saw~": Saw,
+    "rect~": Rect,
+    "tri~": Tri,
+    "adsr~": Adsr,
     "line~": Line,
     "tapin~": TapIn,
     "tapout~": TapOut,
 }
 
-SUPPORTED = sorted(set(SIGNAL) | set(CONTROL) | UI_BOXES | {"live.dial"})
+# The boxes that carry a note from notein to a voice. They are read as one unit
+# (Compiler.find_voices), not object by object.
+NOTE_PATH = {"notein", "poly", "route", "unpack"}
+
+SUPPORTED = sorted(set(SIGNAL) | set(CONTROL) | NOTE_PATH | UI_BOXES | {"live.dial"})
 
 
 # ── parameters ──────────────────────────────────────────────────────────────────
@@ -623,19 +689,95 @@ class Compiler:
         self.params = []
         self.signals = {}    # box id -> Signal
         self.controls = {}   # box id -> Box
+        self.operands = []   # C++ members for right operands a cord can change
+        self.poly = None     # the poly box, in an instrument
+        self.voices = []     # one unpack box per voice (None where a voice goes nowhere)
+        self.note_path = self.find_voices()
         self.classify()
         self.connect_signals()
+        self.find_operands()
         for node in self.signals.values():
             node.setup()
         self.order = self.sort()
-        self.updates = [self.walk(p) for p in self.params]
+        self.updates = [self.walk([(p.box, 0, Num("v")),
+                                   (p.box, 1, Num("mxrt::valueToPosition(kParams[%d], v)" % p.index))])
+                        for p in self.params]
+        # unpack sends its right outlet first, so a voice hears the velocity, then the pitch
+        self.voice_code = [self.walk([(box, 1, self.unpacked(box, 1, "velocity")),
+                                      (box, 0, self.unpacked(box, 0, "pitch"))]) if box else []
+                           for box in self.voices]
+
+    @property
+    def instrument(self):
+        return self.poly is not None
+
+    # 0. the way in for notes -----------------------------------------------------
+
+    def cords_from(self, box, outlet):
+        return [(dst, inlet) for src, o, dst, inlet in self.cords if src is box and o == outlet]
+
+    def find_voices(self):
+        """
+        An instrument's note path, which has to be exactly this:
+
+            notein -> poly N [steal] -> pack 0 0 0 -> route 1 2 .. N -> one unpack per voice
+
+        Returns the ids of those boxes. They are not compiled one by one: poly becomes an
+        mxrt::Poly, and the rest is the switch that hands its messages to the voices.
+        """
+        noteins = [b for b in self.boxes.values() if b.cls == "notein"]
+        if not noteins:
+            return set()
+        if len(noteins) > 1:
+            raise CompileError("an instrument has one notein; this patch has %d" % len(noteins))
+        notein = noteins[0]
+        shape = "patchc reads notes through notein -> poly -> pack 0 0 0 -> route 1 2 .. -> unpack"
+
+        def only(box, outlet, cls, inlet):
+            found = self.cords_from(box, outlet)
+            if len(found) != 1 or found[0][0].cls != cls or found[0][1] != inlet:
+                raise CompileError("outlet %d of %s should go to inlet %d of one %s: %s"
+                                   % (outlet, box, inlet, cls, shape))
+            return found[0][0]
+
+        poly = only(notein, 0, "poly", 0)
+        if only(notein, 1, "poly", 1) is not poly:
+            raise CompileError("the pitch and velocity of %s should go to the same poly: %s" % (notein, shape))
+        count = poly.num(0)
+        if not isinstance(count, int) or not 1 <= count <= 64:
+            raise CompileError("%s: the number of voices should be between 1 and 64" % poly)
+        pack = only(poly, 0, "pack", 0)
+        if only(poly, 1, "pack", 1) is not pack or only(poly, 2, "pack", 2) is not pack or len(pack.args) != 3:
+            raise CompileError("the three outlets of %s should go to one `pack 0 0 0`: %s" % (poly, shape))
+        route = only(pack, 0, "route", 0)
+        if route.args != list(range(1, count + 1)):
+            raise CompileError("%s should name every voice of %s, `route 1 .. %d`: %s" % (route, poly, count, shape))
+
+        self.poly = poly
+        path = {notein.id, poly.id, pack.id, route.id}
+        for voice in range(count):
+            found = self.cords_from(route, voice)
+            if not found:
+                self.voices.append(None)
+                continue
+            unpack = only(route, voice, "unpack", 0)
+            if len(unpack.args) != 2:
+                raise CompileError("%s should be `unpack 0 0`: a pitch and a velocity" % unpack)
+            self.voices.append(unpack)
+            path.add(unpack.id)
+        return path
+
+    @staticmethod
+    def unpacked(box, outlet, name):
+        """A pitch or velocity leaving an unpack: whole if that slot is an int, as it is in Max."""
+        return Num("mxrt::toInt(%s)" % name if isinstance(box.args[outlet], int) else name)
 
     # 1. what each box is --------------------------------------------------------
 
     def classify(self):
         unknown = {}
         for box in self.boxes.values():
-            if box.cls in UI_BOXES:
+            if box.cls in UI_BOXES or box.id in self.note_path:
                 continue
             if box.cls == "live.dial":
                 self.params.append(Param(box, len(self.params)))
@@ -657,10 +799,13 @@ class Compiler:
                 raise CompileError("the dials %r and %r need different varnames" % (ids.get(p.id), p.key))
             ids[p.id] = p.key
 
-        for cls, what in (("plugin~", "input"), ("plugout~", "output")):
-            found = [n for n in self.signals.values() if n.box.cls == cls]
-            if len(found) != 1:
-                raise CompileError("an effect has one %s (its %s); this patch has %d" % (cls, what, len(found)))
+        count = lambda cls: len([n for n in self.signals.values() if n.box.cls == cls])
+        if count("plugout~") != 1:
+            raise CompileError("a device has one plugout~ (its output); this patch has %d" % count("plugout~"))
+        if self.instrument and count("plugin~") != 0:
+            raise CompileError("an instrument takes notes, not audio: it has a notein, so it cannot have a plugin~")
+        if not self.instrument and count("plugin~") != 1:
+            raise CompileError("an effect has one plugin~ (its input); this patch has %d" % count("plugin~"))
 
     # 2. signal cords ------------------------------------------------------------
 
@@ -740,10 +885,20 @@ class Compiler:
                                % ", ".join(str(self.boxes[id_]) for id_ in stuck))
         return order
 
-    # 4. what a dial does --------------------------------------------------------
+    # 4. what a dial or a note does ---------------------------------------------
 
-    def walk(self, param):
-        """The statements that run when `param` changes: its control chain, in cord order."""
+    def find_operands(self):
+        """Give a member to every `+ 1.` whose right inlet a cord can reach."""
+        for src, outlet, dst, inlet in self.cords:
+            if dst.id in self.controls and inlet == 1 and dst.cls in ARITHMETIC and dst.operand is None:
+                dst.operand = "c_%s_operand_" % dst.ident
+                self.operands.append((dst, dst.operand))
+
+    def walk(self, sources):
+        """
+        The statements that run when a number leaves one of `sources`, a list of
+        (box, outlet, value): everything downstream of it, in cord order.
+        """
         lines = []
         names = {}
 
@@ -760,9 +915,16 @@ class Compiler:
                         raise CompileError("inlet %d of %s has both a signal and a number arriving" % (inlet, dst))
                     lines.append("%s  // %s" % (setter(value), dst.text))
                 elif dst.id in self.controls:
+                    if inlet == 1 and dst.operand:
+                        # a right inlet: remembered for the next number on the left
+                        stored = _one(dst, value)
+                        if isinstance(dst.num(0, 0), int):
+                            stored = "mxrt::toInt(%s)" % stored
+                        lines.append("%s = %s;  // %s, right inlet" % (dst.operand, stored, dst.text))
+                        continue
                     if inlet != 0:
                         raise CompileError("a cord from %s goes into inlet %d of %s; patchc only models the left inlet "
-                                           "of a control object" % (src, inlet, dst))
+                                           "of a control object, and the right inlet of + * / !-" % (src, inlet, dst))
                     if dst.id in path:
                         raise CompileError("the control objects around %s feed each other in a loop" % dst)
                     result = CONTROL[dst.cls](dst, value)
@@ -775,10 +937,13 @@ class Compiler:
                 elif dst.cls == "live.dial":
                     raise CompileError("%s is driven by %s; patchc models dials the host sets, not each other"
                                        % (dst, src))
+                elif dst.id in self.note_path:
+                    raise CompileError("a number from %s goes into %s; patchc only feeds the note path from notein"
+                                       % (src, dst))
                 # a cord into a comment or panel does nothing
 
-        follow(param.box, 0, Num("v"), frozenset())
-        follow(param.box, 1, Num("mxrt::valueToPosition(kParams[%d], v)" % param.index), frozenset())
+        for box, outlet, value in sources:
+            follow(box, outlet, value, frozenset())
         return lines
 
     # 5. the C++ -----------------------------------------------------------------
@@ -809,6 +974,8 @@ class Compiler:
         w("    static constexpr int kNumParams = %d;" % len(params))
         w("    // Whether sound can keep coming out after the input stops (filters, delays, reverb).")
         w("    static constexpr bool kHasTail = %s;" % ("true" if tail else "false"))
+        w("    // An instrument is played with noteOn() and noteOff(); an effect is given audio.")
+        w("    static constexpr bool kIsInstrument = %s;" % ("true" if self.instrument else "false"))
         w("")
         w("    // id, name, short name, min, max, initial, exponent, unit, integer")
         w("    static constexpr mxrt::ParamInfo kParams[%d] = {" % max(1, len(params)))
@@ -828,6 +995,11 @@ class Compiler:
         w("    // function here that allocates. Parameter values are kept.")
         w("    void prepare(double sampleRate) {")
         w("        sr_ = sampleRate;")
+        if self.instrument:
+            w("        poly_.prepare(%d, %s);  // %s" % (self.poly.num(0), "true" if self.poly.num(1, 0) else "false",
+                                                        self.poly.text))
+        for box, member in self.operands:
+            w("        %s = %s;" % (member, lit(box.num(0, 0))))
         for n in nodes:
             for line in n.prepare:
                 w("        " + line)
@@ -839,6 +1011,8 @@ class Compiler:
         w("")
         w("    // Silence everything still ringing. Parameter values are kept.")
         w("    void reset() {")
+        if self.instrument:
+            w("        poly_.reset();")
         for n in nodes:
             for line in n.reset:
                 w("        " + line)
@@ -856,11 +1030,26 @@ class Compiler:
         w("        return index >= 0 && index < kNumParams ? value_[index] : 0.0;")
         w("    }")
         w("")
-        w("    // Stereo in, stereo out. `in` and `out` may be the same buffers.")
+        if self.instrument:
+            w("    // A key going down, with a velocity from 1 to 127, and the same key coming up.")
+            w("    // Call them from the thread that calls process(), between calls.")
+            w("    void noteOn(int key, double velocity) { note(key, velocity < 1.0 ? 1.0 : velocity); }")
+            w("    void noteOff(int key) { note(key, 0.0); }")
+            w("")
+            w("    // Stereo out. `in` is not read: an instrument has no audio input.")
+        else:
+            w("    // Here so that code holding any Effect can be written once. An effect ignores notes.")
+            w("    void noteOn(int, double) {}")
+            w("    void noteOff(int) {}")
+            w("")
+            w("    // Stereo in, stereo out. `in` and `out` may be the same buffers.")
         w("    template <typename Sample>")
         w("    void process(const Sample* const* in, Sample* const* out, int frames) {")
+        if self.instrument:
+            w("        (void)in;")
         w("        for (int i = 0; i < frames; i++) {")
-        w("            const double in_l = in[0][i], in_r = in[1][i];")
+        if not self.instrument:
+            w("            const double in_l = in[0][i], in_r = in[1][i];")
         for n in nodes:
             for line in n.tick():
                 w("            %s%s" % (line, "" if isinstance(n, PlugOut) else "  // " + n.box.text))
@@ -868,6 +1057,30 @@ class Compiler:
         w("    }")
         w("")
         w("private:")
+        if self.instrument:
+            w("    // notein -> poly -> pack -> route: the note goes to the voice poly picks for it.")
+            w("    void note(int key, double velocity) {")
+            w("        mxrt::Poly::Message sent[2];")
+            w("        const int count = poly_.note(key, velocity, sent);")
+            w("        for (int k = 0; k < count; k++) voice(sent[k].voice, sent[k].pitch, sent[k].velocity);")
+            w("    }")
+            w("")
+            w("    // What each voice does with a note. A velocity of 0 is the note being let go.")
+            w("    void voice(int number, double pitch, double velocity) {")
+            w("        (void)pitch;")
+            w("        (void)velocity;")
+            w("        switch (number) {")
+            for number, lines in enumerate(self.voice_code, start=1):
+                w("            case %d: {" % number)
+                for line in lines:
+                    w("                " + line)
+                w("                break;")
+                w("            }")
+            w("            default:")
+            w("                break;")
+            w("        }")
+            w("    }")
+            w("")
         w("    void update(int index) {")
         w("        const double v = value_[index];")
         w("        (void)v;")
@@ -885,6 +1098,10 @@ class Compiler:
         w("")
         w("    double sr_ = 44100.0;")
         w("    double value_[%d] = {};" % max(1, len(params)))
+        if self.instrument:
+            w("    mxrt::Poly poly_;  // %s" % self.poly.text)
+        for box, member in self.operands:
+            w("    double %s = %s;  // %s, right inlet" % (member, lit(box.num(0, 0)), box.text))
         for n in nodes:
             for line in n.members:
                 w("    " + line)

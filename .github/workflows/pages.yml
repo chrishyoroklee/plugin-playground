@@ -1,4 +1,5 @@
-# Builds the site with Vite and publishes dist/ to GitHub Pages.
+# Builds the site with Vite and publishes it to GitHub Pages, together with ready-made
+# plugin builds of every preset (native.yml), which the page offers under Download.
 # Pages must be set to "GitHub Actions" as its source (Settings > Pages): the page is
 # TypeScript, so serving the repository root as it is cannot work.
 name: Deploy to GitHub Pages
@@ -29,13 +30,43 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: site
+          path: dist
+
+  # Every preset as a plugin, on each system. Its zips are this run's downloads-* artifacts.
+  plugins:
+    uses: ./.github/workflows/native.yml
+
+  # The site, plus whichever plugin builds succeeded. A system whose build failed is left
+  # out of the downloads; the site is published all the same.
+  site:
+    needs: [build, plugins]
+    if: ${{ !cancelled() && needs.build.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: site
+          path: dist
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          pattern: downloads-*
+          path: dist/downloads
+          merge-multiple: true
+      # downloads/index.json: which preset has a build for which system. The page reads it.
+      - run: mkdir -p dist/downloads && python3 scripts/plugin.py --index dist/downloads
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
 
   deploy:
-    needs: build
+    needs: site
+    if: ${{ !cancelled() && needs.site.result == 'success' }}
     runs-on: ubuntu-latest
     environment:
       name: github-pages

@@ -189,9 +189,10 @@ register('midiformat', (args) => {
 
 // ── MIDI "in" fan-outs (message injection until Web MIDI is wired) ─────────────
 
-// Split a MIDI-semantic list injected at inlet 0 across N outlets, left-to-right.
-// A shared shape for notein/ctlin/bendin/pgmin: `layout` names the atom order of
-// the injected list; each atom is routed to the outlet of the same index.
+// Split a MIDI-semantic list injected at inlet 0 across N outlets. `layout` names the
+// atom order of the injected list; each atom goes to the outlet of the same index. The
+// outlets fire right to left, as every Max object's do: a `poly` or `pack` below a
+// notein has the velocity in hand before the pitch arrives and sets it off.
 function makeSplit(layout: number): (args: Atom[]) => MaxNode {
   return (): MaxNode => {
     const o = makeOutlets();
@@ -202,7 +203,7 @@ function makeSplit(layout: number): (args: Atom[]) => MaxNode {
         (m) => {
           const ns = nums(m);
           if (ns.length === 0) return;
-          for (let i = 0; i < layout; i++) if (ns[i] !== undefined) o.emit(i, [ns[i]]);
+          for (let i = layout - 1; i >= 0; i--) if (ns[i] !== undefined) o.emit(i, [ns[i]]);
         },
       ],
       onControlOut: o.onControlOut,

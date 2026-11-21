@@ -1,7 +1,9 @@
 # Plugin Playground
 
-Build a Max for Live audio effect in the browser: pick a preset or build an effect
-chain, hear it on a sample, download the `.amxd`.
+Build a Max for Live device in the browser and download it: an **audio effect** (pick a
+preset or build an effect chain, hear it on a sample) or a **MIDI instrument** (a
+polyphonic synth you play on the page). Either one downloads as an `.amxd` for Ableton
+Live, and compiles to a VST3, CLAP or Audio Unit plugin for any other host.
 
 It was first built inside the [MaxPyLang](https://github.com/Barnard-PL-Labs/MaxPyLang)
 repo (as `web/interactive-plugin.html`) and moved here to be its own project.
@@ -16,6 +18,7 @@ pip install public/py/maxpylang-*.whl pytest numpy   # the wheel the page loads
 pytest tests       # the generator, and the C++ compiled from its patches
 
 npm run plugin -- --preset "Tape Lo-Fi"   # a native CLAP / VST3 / Audio Unit plugin
+npm run plugin -- --preset "Soft Pad"     # ...an instrument works the same way
 ```
 
 The site is at <https://chrishyoroklee.github.io/plugin-playground/>. Every push to `main`
@@ -46,10 +49,16 @@ settings ──▶ src/plugin/fxgen.py (maxpylang, in Pyodide) ──▶ patcher
 - **The engine plays the device as a host would.** `src/runtime/host.ts` is a pair of
   buses standing in for the Live track: the page plays a sample into `plugin~` and
   listens to `plugout~`.
+- **An instrument is the same thing with notes in front.** Under the Instrument tab the
+  generator puts a synth where `plugin~` was: `notein`, a `poly` that hands each note a
+  voice, and the voices laid out side by side (two oscillators, a filter, an envelope),
+  followed by the same effect chain. The page plays it from an on-screen piano, the
+  computer keyboard, a MIDI keyboard or a looping phrase (`src/plugin/keys.ts`).
 - **The same patch compiles to a native plugin.** `src/plugin/patchc.py` turns the
   patcher JSON into C++ (one readable `Effect.h` per effect, on the kernels in
   `native/mxrt.h`), and `npm run plugin` builds that as CLAP, VST3 and Audio Unit, so the
   effect runs outside Ableton Live. No Max or RNBO is needed to build.
+  The site also carries ready-made builds of every preset, made by CI on each deploy.
   [`native/README.md`](native/README.md) has the design and its limits.
 - **The sound is checked against Max.** `scripts/maxcheck/` renders a test signal through
   the same generated patches in Max and in this engine and compares the recordings. Its

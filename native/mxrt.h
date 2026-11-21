@@ -137,6 +137,9 @@ inline double toInt(double v) { return std::trunc(v); }
 
 inline double dbtoa(double db) { return std::pow(10.0, db / 20.0); }
 
+// mtof: a MIDI note number, fractions allowed, as a frequency. 69 is A at 440 Hz.
+inline double mtof(double note) { return 440.0 * std::pow(2.0, (note - 69.0) / 12.0); }
+
 inline double scale(double x, double inLo, double inHi, double outLo, double outHi) {
     const double span = inHi - inLo != 0 ? inHi - inLo : 1.0;
     return outLo + ((x - inLo) / span) * (outHi - outLo);
@@ -417,6 +420,65 @@ struct Cycle {
     }
 };
 
+// saw~, rect~ and tri~: the classic waveforms at a frequency in Hz, between -1 and 1.
+// The saw and the square have their edges rounded off by one sample either side
+// (PolyBLEP), which removes most of the aliasing a plain ramp or step would add. Max's
+// versions are band-limited too, by a method of their own, so these match in pitch,
+// level and character, not sample for sample.
+struct Wave {
+    double sr = 44100, freq = 0, phase = 0;
+
+    void prepare(double sampleRate, double hz) { sr = sampleRate; freq = hz; reset(); }
+    void reset() { phase = 0; }
+    void setFreq(double hz) { freq = hz; }
+
+protected:
+    // Advance by one sample at `hz`; returns the phase before the step, and the step.
+    double advance(double hz, double* step) {
+        *step = std::min(0.5, std::max(0.0, hz / sr));
+        const double at = phase;
+        phase += *step;
+        phase -= std::floor(phase);
+        return at;
+    }
+    // The correction that rounds off a unit step at phase 0.
+    static double blep(double t, double step) {
+        if (step <= 0) return 0.0;
+        if (t < step) { const double x = t / step; return x + x - x * x - 1.0; }
+        if (t > 1.0 - step) { const double x = (t - 1.0) / step; return x * x + x + x + 1.0; }
+        return 0.0;
+    }
+};
+
+struct Saw : Wave {
+    double tick() { return tick(freq); }
+    double tick(double hz) {
+        double step;
+        const double t = advance(hz, &step);
+        return 2.0 * t - 1.0 - blep(t, step);
+    }
+};
+
+struct Rect : Wave {  // a square: high for the first half of each cycle
+    double tick() { return tick(freq); }
+    double tick(double hz) {
+        double step;
+        const double t = advance(hz, &step);
+        const double half = t + 0.5 - std::floor(t + 0.5);
+        return (t < 0.5 ? 1.0 : -1.0) + blep(t, step) - blep(half, step);
+    }
+};
+
+struct Tri : Wave {  // rises from zero, as a sine does
+    double tick() { return tick(freq); }
+    double tick(double hz) {
+        double step;
+        const double t = advance(hz, &step);
+        const double q = t + 0.25 - std::floor(t + 0.25);
+        return 1.0 - 4.0 * std::fabs(q - 0.5);
+    }
+};
+
 // line~: holds a value, or ramps to a new one in a straight line over a time in ms.
 struct Line {
     double sr = 44100, value = 0, from = 0, target = 0;
@@ -439,6 +501,107 @@ struct Line {
             value = done == total ? target : from + (target - from) * progress;
         }
         return y;
+    }
+};
+
+// ── notes ───────────────────────────────────────────────────────────────────────
+
+// adsr~: a note's level over time, in straight lines. A number that is not zero starts
+// it: up to that number over the attack time, down to that number times the sustain level
+// over the decay time, and held. Zero lets go: down to nothing over the release time.
+// Each stage starts from wherever the envelope is, so a note played over a dying one
+// does not click. The four settings are read when a stage starts.
+struct Adsr {
+    double sr = 44100, attack = 0, decay = 0, sustain = 1, release = 0;
+    double value = 0, from = 0, to = 0, peak = 0;
+    long total = 0, done = 0;
+    enum Stage { kIdle, kAttack, kDecay, kHold, kRelease } stage = kIdle;
+
+    void prepare(double sampleRate, double a, double d, double s, double r) {
+        sr = sampleRate; attack = a; decay = d; sustain = s; release = r;
+        reset();
+    }
+    void reset() { value = from = to = peak = 0; total = done = 0; stage = kIdle; }
+    void gate(double amplitude) {
+        if (amplitude != 0) { peak = amplitude; begin(kAttack, peak, attack); }
+        else if (stage != kIdle) begin(kRelease, 0.0, release);
+    }
+    double tick() {
+        const double y = value;
+        if (done < total) {
+            done++;
+            value = done == total ? to : from + (to - from) * (static_cast<double>(done) / static_cast<double>(total));
+        }
+        if (done >= total) {
+            if (stage == kAttack) begin(kDecay, sustain * peak, decay);
+            else if (stage == kDecay) stage = kHold;
+            else if (stage == kRelease) stage = kIdle;
+        }
+        return y;
+    }
+
+private:
+    void begin(Stage next, double target, double ms) {
+        stage = next;
+        from = value; to = target; done = 0;
+        total = std::lround(std::max(0.0, ms) * sr / 1000);
+        if (total == 0) value = target;
+    }
+};
+
+// poly: give each note a voice. A note-on takes the lowest-numbered free voice. With
+// stealing on and every voice busy it takes the one held longest, which is sent a
+// note-off first; with stealing off the note is dropped. A note-off goes to the voice
+// holding that pitch. Voices count from 1, as poly's left outlet does.
+//
+// The browser engine's poly (src/objects/control/poly.ts) allocates the same way. Neither
+// has been compared with Max's, which may hand out free voices in another order.
+struct Poly {
+    static constexpr int kMaxVoices = 64;
+    struct Message { int voice; double pitch, velocity; };
+
+    int voices = 1;
+    bool steal = false;
+    long clock = 0;
+    int held[kMaxVoices];      // the pitch a voice is playing, or -1
+    long started[kMaxVoices];
+
+    Poly() { reset(); }
+    void prepare(int count, bool stealing) {
+        voices = std::max(1, std::min(kMaxVoices, count));
+        steal = stealing;
+        reset();
+    }
+    void reset() {
+        clock = 0;
+        for (int v = 0; v < kMaxVoices; v++) { held[v] = -1; started[v] = 0; }
+    }
+    // What poly sends for one note: nothing, one message, or a note-off and a note-on.
+    int note(int pitch, double velocity, Message out[2]) {
+        if (velocity <= 0) {
+            int found = -1;
+            for (int v = 0; v < voices; v++)
+                if (held[v] == pitch && (found < 0 || started[v] < started[found])) found = v;
+            if (found < 0) return 0;
+            held[found] = -1;
+            out[0] = {found + 1, static_cast<double>(pitch), 0.0};
+            return 1;
+        }
+        int count = 0;
+        int voice = -1;
+        for (int v = 0; v < voices && voice < 0; v++)
+            if (held[v] < 0) voice = v;
+        if (voice < 0) {
+            if (!steal) return 0;
+            voice = 0;
+            for (int v = 1; v < voices; v++)
+                if (started[v] < started[voice]) voice = v;
+            out[count++] = {voice + 1, static_cast<double>(held[voice]), 0.0};
+        }
+        held[voice] = pitch;
+        started[voice] = ++clock;
+        out[count++] = {voice + 1, static_cast<double>(pitch), velocity};
+        return count;
     }
 };
 

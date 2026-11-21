@@ -1,14 +1,22 @@
 # Builds native plugins from the generator's patches on Linux, macOS and Windows, and
-# holds them to the rules their hosts check: the patch compiler's tests, then two presets
-# built as CLAP, VST3 and (on macOS) Audio Unit, each loaded by hostcheck, clap-validator,
-# pluginval and auval. The plugins are kept as artifacts of the run.
+# holds them to the rules their hosts check.
+#
+#   - the Python tests: the generator, the patch compiler, and the C++ it writes
+#   - every preset, effects and instruments, built as CLAP, VST3 and (on macOS) Audio
+#     Unit; each build loads its own .clap and compares it with the C++ (hostcheck)
+#   - three of them installed and put through clap-validator, pluginval and auval
+#
+# The builds are zipped and kept as the run's artifacts. pages.yml calls this workflow
+# and publishes those zips with the site, as the page's ready-made downloads.
 name: Native plugins
 
 on:
   push:
+    branches-ignore: [main]   # on main, pages.yml runs this as part of the deploy
     paths:
       - native/**
       - src/plugin/**
+      - src/objects/**
       - scripts/plugin.*
       - scripts/maxcheck/**
       - tests/**
@@ -17,17 +25,19 @@ on:
     paths:
       - native/**
       - src/plugin/**
+      - src/objects/**
       - scripts/plugin.*
       - scripts/maxcheck/**
       - tests/**
       - .github/workflows/native.yml
+  workflow_call:
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: native-${{ github.ref }}
+  group: native-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -52,6 +62,16 @@ jobs:
       # The generator, the compiler, and the C++ it writes against the browser engine's rendering.
       - run: python -m pytest tests -q
 
+      # Every preset, each checked against its Effect.h as it is built, zipped for download.
+      - name: Build every preset
+        run: python scripts/plugin.py --all --package downloads
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: downloads-${{ matrix.os }}
+          path: downloads/*.zip
+          if-no-files-found: error
+
       - name: Install the validators
         run: |
           mkdir -p "$RUNNER_TEMP/tools"
@@ -67,20 +87,11 @@ jobs:
           echo "$RUNNER_TEMP/tools/$bin" >> "$GITHUB_PATH"
           if [ "$RUNNER_OS" = Linux ]; then sudo apt-get update -q && sudo apt-get install -y -q xvfb; fi
 
-      # A feedback delay through two lines, and a chain of three modules.
-      - name: Build, install and validate two presets
+      # A feedback delay through two lines, a chain of three effects, and an instrument.
+      - name: Install and validate three presets
         run: |
           run=""
           if [ "$RUNNER_OS" = Linux ]; then run="xvfb-run -a"; fi
           $run python scripts/plugin.py --preset pingpong --install --validate
           $run python scripts/plugin.py --preset "Tape Lo-Fi" --install --validate
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: plugins-${{ matrix.os }}
-          path: |
-            build/plugins/*/*.clap
-            build/plugins/*/*.vst3
-            build/plugins/*/*.component
-            build/plugins/*/Effect.h
-          if-no-files-found: error
+          $run python scripts/plugin.py --preset "Soft Pad" --install --validate

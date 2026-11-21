@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "modules": [
     {
       "id": "filter",
@@ -144,5 +144,75 @@
     "#38bdf8",
     "#a78bfa",
     "#f472b6"
-  ]
+  ],
+  "instrument": {
+    "modules": [
+      {
+        "id": "osc",
+        "label": "Oscillators",
+        "blurb": "Two oscillators for every voice. The second sits a few cents, or an octave, away from the first; Blend sets how much of it you hear.",
+        "options": [
+          {
+            "id": "wave",
+            "label": "Wave",
+            "default": "saw",
+            "choices": [
+              { "id": "saw", "label": "Saw" },
+              { "id": "square", "label": "Square" },
+              { "id": "triangle", "label": "Triangle" },
+              { "id": "sine", "label": "Sine" }
+            ]
+          },
+          {
+            "id": "second",
+            "label": "Second oscillator",
+            "default": "unison",
+            "choices": [
+              { "id": "unison", "label": "Unison" },
+              { "id": "up", "label": "Octave up" },
+              { "id": "down", "label": "Octave down" }
+            ]
+          },
+          {
+            "id": "voices",
+            "label": "Voices",
+            "default": "6",
+            "choices": [
+              { "id": "1", "label": "Mono" },
+              { "id": "4", "label": "4 voices" },
+              { "id": "6", "label": "6 voices" },
+              { "id": "8", "label": "8 voices" }
+            ]
+          }
+        ],
+        "params": [
+          { "id": "detune", "label": "Detune", "min": 0, "max": 50, "default": 8, "unit": "", "exponent": 1.0 },
+          { "id": "blend", "label": "Blend", "min": 0, "max": 100, "default": 50, "unit": "%", "exponent": 1.0 }
+        ]
+      },
+      {
+        "id": "tone",
+        "label": "Tone",
+        "blurb": "A low-pass filter on every voice (svf~). Env is how far each note's envelope opens it.",
+        "options": [],
+        "params": [
+          { "id": "cutoff", "label": "Cutoff", "min": 60, "max": 10000, "default": 2400, "unit": "Hz", "exponent": 3.0 },
+          { "id": "res", "label": "Reso", "min": 0, "max": 100, "default": 20, "unit": "%", "exponent": 1.0 },
+          { "id": "env", "label": "Env", "min": 0, "max": 100, "default": 30, "unit": "%", "exponent": 1.0 }
+        ]
+      },
+      {
+        "id": "env",
+        "label": "Envelope",
+        "blurb": "How a note's level moves (adsr~): the time to rise, the time to fall to the held level, that level, and the time to die away after the key is let go.",
+        "options": [],
+        "params": [
+          { "id": "attack", "label": "Attack", "min": 1, "max": 2000, "default": 5, "unit": "ms", "exponent": 3.0 },
+          { "id": "decay", "label": "Decay", "min": 5, "max": 3000, "default": 250, "unit": "ms", "exponent": 3.0 },
+          { "id": "sustain", "label": "Sustain", "min": 0, "max": 100, "default": 70, "unit": "%", "exponent": 1.0 },
+          { "id": "release", "label": "Release", "min": 5, "max": 5000, "default": 300, "unit": "ms", "exponent": 3.0 }
+        ]
+      }
+    ]
+  }
 }

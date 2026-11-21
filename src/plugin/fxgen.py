@@ -1,5 +1,10 @@
 """
-fxgen: turn a settings dict into a Max for Live audio effect, using maxpylang.
+fxgen: turn a settings dict into a Max for Live device, using maxpylang.
+
+Two kinds of device come out of it. An effect ("kind": "effect", the default) takes the
+track's audio from plugin~. An instrument ("kind": "instrument") takes notes from notein
+and makes its own sound: a polyphonic synth whose voices are laid out one beside the
+other, followed by the same effect chain. Both end in an output gain and plugout~.
 
 The interactive plugin page (web/interactive-plugin.html) runs this file in the browser
 under Pyodide. It works in two steps, and the split is the point:
@@ -50,6 +55,7 @@ def schema():
 # ── settings ────────────────────────────────────────────────────────────────────
 
 DEFAULT_NAME = "MaxPy FX"
+DEFAULT_INSTRUMENT_NAME = "MaxPy Synth"
 NAME_OK = re.compile(r"[^A-Za-z0-9 _\-]")
 HEX_OK = re.compile(r"^#[0-9a-fA-F]{6}$")
 
@@ -72,8 +78,15 @@ def _clamp_param(param, value):
     return float(round(v)) if param.get("integer") else v
 
 
-def default_settings():
-    return normalize({})
+def default_settings(kind="effect"):
+    return normalize({"kind": kind})
+
+
+def _instrument_module(module_id):
+    for m in schema()["instrument"]["modules"]:
+        if m["id"] == module_id:
+            return m
+    return None
 
 
 def normalize(settings):
@@ -88,7 +101,9 @@ def normalize(settings):
     sch = schema()
     settings = settings if isinstance(settings, dict) else {}
 
-    name = NAME_OK.sub("", str(settings.get("name") or DEFAULT_NAME)).strip()[:32] or DEFAULT_NAME
+    kind = "instrument" if settings.get("kind") == "instrument" else "effect"
+    fallback = DEFAULT_INSTRUMENT_NAME if kind == "instrument" else DEFAULT_NAME
+    name = NAME_OK.sub("", str(settings.get("name") or fallback)).strip()[:32] or fallback
     accent = settings.get("accent")
     if not (isinstance(accent, str) and HEX_OK.match(accent)):
         accent = sch["accents"][0]
@@ -110,7 +125,17 @@ def normalize(settings):
     out_values = (settings.get("output") or {}) if isinstance(settings.get("output"), dict) else {}
     output = {p["id"]: _clamp_param(p, out_values.get(p["id"], p["default"])) for p in sch["output"]["params"]}
 
-    return {"name": name, "accent": accent.lower(), "chain": chain, "output": output}
+    out = {"name": name, "accent": accent.lower(), "chain": chain, "output": output}
+    if kind == "instrument":
+        # The synth's three sections are always there, in a fixed order.
+        given = settings.get("instrument") if isinstance(settings.get("instrument"), dict) else {}
+        out["kind"] = kind
+        out["instrument"] = {}
+        for mod in sch["instrument"]["modules"]:
+            entry = given.get(mod["id"]) if isinstance(given.get(mod["id"]), dict) else {}
+            entry = _normalize_entry(mod, entry)
+            out["instrument"][mod["id"]] = {"options": entry["options"], "values": entry["values"]}
+    return out
 
 
 def _normalize_entry(mod, entry):
@@ -747,6 +772,143 @@ def m_reverb(dev, src, opt, val):
     return dev.mix("reverb", d["mix"], val["mix"], src, wet, half + 2 + len(ALLPASSES), equal_power=True)
 
 
+# ── the instrument ──────────────────────────────────────────────────────────────
+#
+# A polyphonic synth as one flat patch. notein feeds poly, which gives each note a voice
+# number; pack and route send the note to that voice. A voice is two oscillators, a
+# low-pass filter that its envelope opens, and the envelope on its level:
+#
+#     pitch ──▶ mtof ──▶ osc 1 ─┐
+#     pitch ──▶ + offset ▶ mtof ▶ osc 2 ─┴▶ svf~ ──▶ *~ ──▶ (all voices summed)
+#     velocity ──▶ / 127. ──▶ adsr~ ──────────┴──────────┘
+#
+# Max would usually wrap the voice in poly~, which needs a second patch file. Laying the
+# voices out side by side keeps the device one file, and one flat graph that the page can
+# play and patchc can compile.
+
+WAVES = {"saw": "saw~", "square": "rect~", "triangle": "tri~", "sine": "cycle~"}
+SECOND_OSC = {"unison": 0.0, "up": 12.0, "down": -12.0}   # semitones from the first
+ENV_REACH = 80.0     # Hz the filter opens per percent of Env, at the top of a full-velocity note
+VOICE_DX = 230       # between voices in the patching view
+
+
+def voice_gain(voices):
+    """What the summed voices are scaled by, so a full chord stays under full scale."""
+    return 0.7 / voices ** 0.5
+
+
+def osc_offset(second, detune):
+    """Where the second oscillator sits, in semitones: its octave, plus the detune in cents."""
+    return SECOND_OSC[second] + float(detune) / 100.0
+
+
+def m_synth(dev, inst):
+    """The note path and the voices. Returns the summed signal, as both channels."""
+    s = dev.s
+    osc, tone, env = inst["osc"], inst["tone"], inst["env"]
+    voices = int(osc["options"]["voices"])
+    wave = WAVES[osc["options"]["wave"]]
+    blend = osc["values"]["blend"] / 100.0
+    offset = osc_offset(osc["options"]["second"], osc["values"]["detune"])
+    res = svf_resonance(tone["values"]["res"])
+    sustain = env["values"]["sustain"] / 100.0
+
+    # Each section's dials, with the control maths that follows them.
+    dev.header("oscillators")
+    d_osc = dev.dials(_instrument_module("osc"), osc["values"], math_rows=2)
+    s.place("osc_semitones", "* 0.01", XC, dev.ctl(0))
+    s.place("osc_offset", "+ %s" % fnum(SECOND_OSC[osc["options"]["second"]]), XC, dev.ctl(1))
+    s.place("osc_second", "* 0.01", XC + DX, dev.ctl(0))
+    s.place("osc_first", "!- 1.", XC + DX, dev.ctl(1))
+    s.wire(d_osc["detune"] + ".outs[0]", "osc_semitones.ins[0]")
+    s.wire("osc_semitones.outs[0]", "osc_offset.ins[0]")
+    s.wire(d_osc["blend"] + ".outs[0]", "osc_second.ins[0]")
+    s.wire("osc_second.outs[0]", "osc_first.ins[0]")
+    dev.y += dev.end(0)
+
+    dev.header("tone")
+    d_tone = dev.dials(_instrument_module("tone"), tone["values"], math_rows=1)
+    s.place("tone_reso", "scale 0. 100. %s %s" % (fnum(SVF_RES[0]), fnum(SVF_RES[1])), XC + DX, dev.ctl(0))
+    s.place("tone_reach", "* %s" % fnum(ENV_REACH), XC + 2 * DX + 40, dev.ctl(0))
+    s.wire(d_tone["res"] + ".outs[0]", "tone_reso.ins[0]")
+    s.wire(d_tone["env"] + ".outs[0]", "tone_reach.ins[0]")
+    dev.y += dev.end(0)
+
+    dev.header("envelope")
+    d_env = dev.dials(_instrument_module("env"), env["values"], math_rows=1)
+    s.place("env_level", "* 0.01", XC + 2 * DX, dev.ctl(0))
+    s.wire(d_env["sustain"] + ".outs[0]", "env_level.ins[0]")
+    dev.y += dev.end(0)
+
+    # Notes in, one voice each.
+    dev.header("voices")
+    dev.math_rows = 0
+    s.place("note_in", "notein", X["L"], dev.sig(0))
+    s.place("note_poly", "poly %d 1" % voices, X["L"], dev.sig(1))
+    s.place("note_pack", "pack 0 0 0", X["L"], dev.sig(2))
+    s.place("note_route", "route %s" % " ".join(str(v + 1) for v in range(voices)), X["L"], dev.sig(3))
+    s.wire("note_in.outs[0]", "note_poly.ins[0]")
+    s.wire("note_in.outs[1]", "note_poly.ins[1]")
+    for i in range(3):
+        s.wire("note_poly.outs[%d]" % i, "note_pack.ins[%d]" % i)
+    s.wire("note_pack.outs[0]", "note_route.ins[0]")
+
+    s.place("synth_bus", "*~ %s" % fnum(voice_gain(voices)), X["L"], dev.sig(14))
+    for v in range(voices):
+        n = "v%d_" % (v + 1)
+        x, x2 = X["L"] + v * VOICE_DX, X["L"] + v * VOICE_DX + SUB + 10
+        s.place(n + "note", "unpack 0 0", x, dev.sig(4))
+        s.place(n + "pitch", "mtof", x, dev.sig(5))
+        s.place(n + "shift", "+ %s" % fnum(offset), x2, dev.sig(5))
+        s.place(n + "pitch2", "mtof", x2, dev.sig(6))
+        s.place(n + "osc", "%s 220." % wave, x, dev.sig(7))
+        s.place(n + "osc2", "%s 220." % wave, x2, dev.sig(7))
+        s.place(n + "first", "*~ %s" % fnum(1 - blend), x, dev.sig(8))
+        s.place(n + "second", "*~ %s" % fnum(blend), x2, dev.sig(8))
+        s.place(n + "mix", "+~", x, dev.sig(9))
+        s.place(n + "vel", "/ 127.", x2, dev.sig(9))
+        s.place(n + "env", "adsr~ %s %s %s %s" % (fnum(env["values"]["attack"]), fnum(env["values"]["decay"]),
+                                                  fnum(sustain), fnum(env["values"]["release"])), x2, dev.sig(10))
+        s.place(n + "reach", "*~ %s" % fnum(tone["values"]["env"] * ENV_REACH), x2, dev.sig(11))
+        s.place(n + "cutoff", "+~ %s" % fnum(tone["values"]["cutoff"]), x2, dev.sig(12))
+        # The cutoff arrives as a signal (the dial plus the envelope), so the argument is 0.
+        s.place(n + "filter", "svf~ 0. %s" % fnum(res), x, dev.sig(12))
+        s.place(n + "amp", "*~ 0.", x, dev.sig(13))
+
+        s.wire("note_route.outs[%d]" % v, n + "note.ins[0]")
+        s.wire(n + "note.outs[0]", n + "pitch.ins[0]")
+        s.wire(n + "note.outs[0]", n + "shift.ins[0]")
+        s.wire("osc_offset.outs[0]", n + "shift.ins[1]")
+        s.wire(n + "shift.outs[0]", n + "pitch2.ins[0]")
+        s.wire(n + "pitch.outs[0]", n + "osc.ins[0]")
+        s.wire(n + "pitch2.outs[0]", n + "osc2.ins[0]")
+        s.wire(n + "osc.outs[0]", n + "first.ins[0]")
+        s.wire("osc_first.outs[0]", n + "first.ins[1]")
+        s.wire(n + "osc2.outs[0]", n + "second.ins[0]")
+        s.wire("osc_second.outs[0]", n + "second.ins[1]")
+        s.wire(n + "first.outs[0]", n + "mix.ins[0]")
+        s.wire(n + "second.outs[0]", n + "mix.ins[1]")
+        s.wire(n + "note.outs[1]", n + "vel.ins[0]")
+        s.wire(n + "vel.outs[0]", n + "env.ins[0]")
+        s.wire(d_env["attack"] + ".outs[0]", n + "env.ins[1]")
+        s.wire(d_env["decay"] + ".outs[0]", n + "env.ins[2]")
+        s.wire("env_level.outs[0]", n + "env.ins[3]")
+        s.wire(d_env["release"] + ".outs[0]", n + "env.ins[4]")
+        s.wire(n + "env.outs[0]", n + "reach.ins[0]")
+        s.wire("tone_reach.outs[0]", n + "reach.ins[1]")
+        s.wire(n + "reach.outs[0]", n + "cutoff.ins[0]")
+        s.wire(d_tone["cutoff"] + ".outs[0]", n + "cutoff.ins[1]")
+        s.wire(n + "mix.outs[0]", n + "filter.ins[0]")
+        s.wire(n + "cutoff.outs[0]", n + "filter.ins[1]")
+        s.wire("tone_reso.outs[0]", n + "filter.ins[2]")
+        s.wire(n + "filter.outs[0]", n + "amp.ins[0]")
+        s.wire(n + "env.outs[0]", n + "amp.ins[1]")
+        s.wire(n + "amp.outs[0]", "synth_bus.ins[0]")
+    s.flush()
+    dev.y += dev.end(15)
+    return {"L": "synth_bus.outs[0]", "R": "synth_bus.outs[0]"}
+
+
 MODULES = {
     "filter": m_filter,
     "drive": m_drive,
@@ -765,12 +927,19 @@ def script(settings):
     dev = Device(st)
     s = dev.s
     active = [e for e in st["chain"] if e["on"]]
+    instrument = st.get("kind") == "instrument"
+    stages = [_module(e["module"])["label"].lower() for e in active] + ["output gain"]
 
     s.emit('"""')
-    s.emit("%s: a Max for Live audio effect, generated with MaxPyLang." % st["name"])
-    s.emit("")
-    s.emit("Signal flow: plugin~ -> %s -> clip~ -> plugout~"
-           % " -> ".join([_module(e["module"])["label"].lower() for e in active] + ["output gain"]))
+    if instrument:
+        s.emit("%s: a Max for Live instrument, generated with MaxPyLang." % st["name"])
+        s.emit("")
+        s.emit("Signal flow: notein -> poly -> %s voices -> %s -> clip~ -> plugout~"
+               % (st["instrument"]["osc"]["options"]["voices"], " -> ".join(stages)))
+    else:
+        s.emit("%s: a Max for Live audio effect, generated with MaxPyLang." % st["name"])
+        s.emit("")
+        s.emit("Signal flow: plugin~ -> %s -> clip~ -> plugout~" % " -> ".join(stages))
     s.emit("Run it with `pip install maxpylang`; it writes %s next to this file." % filename(st))
     s.emit('"""')
     s.emit(PREAMBLE)
@@ -780,14 +949,24 @@ def script(settings):
     s.emit("INK = [0.93, 0.94, 0.96, 1.0]")
     s.emit("DIM = [0.55, 0.58, 0.63, 1.0]")
 
-    # input
-    dev.header("input")
-    s.place("plug_in", "plugin~", X["L"], dev.y + ROW)
-    s.emit('label(%s, (%d, %d), (8, 62, %d), size=12.0, bold=True, color=INK)' % (json.dumps(st["name"]), XP, dev.park_y, BRAND_W - 8))
-    s.emit('label("MaxPyLang", (%d, %d), (8, 82, %d), size=9.0, color=DIM)' % (XP + 60, dev.park_y, BRAND_W - 8))
+    # the name, in the device view
+    brand = []
+    brand.append('label(%s, (%d, %d), (8, 62, %d), size=12.0, bold=True, color=INK)' % (json.dumps(st["name"]), XP, dev.park_y, BRAND_W - 8))
+    brand.append('label("MaxPyLang", (%d, %d), (8, 82, %d), size=9.0, color=DIM)' % (XP + 60, dev.park_y, BRAND_W - 8))
     dev.park_y += 30
-    sig = {"L": "plug_in.outs[0]", "R": "plug_in.outs[1]"}
-    dev.y += 2 * ROW + GAP
+
+    # where the sound comes from: the track (an effect) or the synth's voices (an instrument)
+    if instrument:
+        for line in brand:
+            s.emit(line)
+        sig = m_synth(dev, st["instrument"])
+    else:
+        dev.header("input")
+        s.place("plug_in", "plugin~", X["L"], dev.y + ROW)
+        for line in brand:
+            s.emit(line)
+        sig = {"L": "plug_in.outs[0]", "R": "plug_in.outs[1]"}
+        dev.y += 2 * ROW + GAP
 
     for entry in active:
         mod = _module(entry["module"])
@@ -823,7 +1002,8 @@ def script(settings):
     s.emit('patcher["openinpresentation"] = 1')
     s.emit('patcher["devicewidth"] = %s' % pynum(width))
     s.emit()
-    s.emit('patch.save(%s, device_type="audio_effect", verbose=False)' % json.dumps(filename(st)))
+    s.emit('patch.save(%s, device_type="%s", verbose=False)'
+           % (json.dumps(filename(st)), "instrument" if instrument else "audio_effect"))
     return s.text()
 
 

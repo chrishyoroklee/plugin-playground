@@ -16,6 +16,7 @@ Three layers, each needing more than the last:
 
 import importlib.util
 import json
+import re
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
@@ -39,12 +40,13 @@ plugin = _load("plugin_cli", ROOT / "scripts" / "plugin.py")
 fxgen, patchc = plugin.fxgen, plugin.patchc
 
 PRESETS = plugin.PRESETS
+INSTRUMENTS = plugin.INSTRUMENTS
 REFERENCE = json.loads((ROOT / "tests" / "reference" / "browser.json").read_text())
 REF_TESTS = {t["name"]: t for t in REFERENCE["tests"]}
 
 
 def preset(preset_id):
-    return next(p for p in PRESETS if p["id"] == preset_id)["settings"]
+    return next(p for p in PRESETS + INSTRUMENTS if p["id"] == preset_id)["settings"]
 
 
 def patch_of(settings):
@@ -71,7 +73,7 @@ def test_every_preset_compiles(entry):
 
 def test_the_presets_use_every_object_patchc_knows():
     used = set()
-    for entry in PRESETS:
+    for entry in PRESETS + INSTRUMENTS:
         used |= set(patchc.objects(patch_of(entry["settings"])))
     assert used == set(patchc.SUPPORTED)
 
@@ -172,6 +174,46 @@ def test_parameters_keep_their_range_unit_and_curve():
     assert "0x%08Xu" % patchc.fnv1a("filter_cutoff") in source
 
 
+# ── instruments ─────────────────────────────────────────────────────────────────
+
+@pytest.mark.parametrize("entry", INSTRUMENTS, ids=[p["id"] for p in INSTRUMENTS])
+def test_every_instrument_compiles(entry):
+    patch = patch_of(entry["settings"])
+    source = patchc.compile_patch(patch, entry["name"])
+    voices = int(entry["settings"]["instrument"]["osc"]["options"]["voices"])
+    assert "static constexpr bool kIsInstrument = true;" in source
+    assert "poly_.prepare(%d, true);" % voices in source
+    # one case per voice, each setting two oscillators and opening an envelope
+    assert source.count(".gate(") == voices and source.count("mxrt::mtof(") == 2 * voices
+    assert "in_l" not in source   # an instrument reads no audio
+
+
+def test_an_effect_is_not_an_instrument():
+    source = patchc.compile_patch(patch_of(preset("tube")))
+    assert "static constexpr bool kIsInstrument = false;" in source and "poly_" not in source
+
+
+def test_the_note_path_has_to_be_the_one_patchc_reads():
+    patch = patch_of(preset("plain-synth"))
+    cut = json.loads(json.dumps(patch))
+    poly, pack = _ids(cut, "poly")[0], _ids(cut, "pack 0 0 0")[0]
+    cut["patcher"]["lines"] = [l for l in cut["patcher"]["lines"]
+                               if not (l["patchline"]["source"] == [poly, 2] and l["patchline"]["destination"][0] == pack)]
+    with pytest.raises(patchc.CompileError, match="notein -> poly -> pack 0 0 0 -> route"):
+        patchc.compile_patch(cut)
+    with pytest.raises(patchc.CompileError, match="cannot have a plugin~"):
+        patchc.compile_patch(_with_box(patch, "plugin~", 2, 2))
+    with pytest.raises(patchc.CompileError, match="one notein"):
+        patchc.compile_patch(_with_box(patch, "notein", 1, 3))
+
+
+def test_a_right_inlet_is_remembered_for_the_next_note():
+    """The detune dial reaches each voice's `+` by its right inlet: stored, used by the next pitch."""
+    source = patchc.compile_patch(patch_of(preset("plain-synth")))
+    assert re.search(r"c_\d+_operand_ = c_\d+;  // \+ 0\.08, right inlet", source)
+    assert re.search(r"mxrt::toInt\(pitch\) \+ c_\d+_operand_", source)
+
+
 # ── the generated C++ ───────────────────────────────────────────────────────────
 
 needs_compiler = pytest.mark.skipif(plugin.compiler() is None, reason="no C++ compiler on this machine")
@@ -270,3 +312,98 @@ def test_setting_a_parameter_is_the_same_as_building_it_in(rendered, tmp_path):
     out = tmp_path / "quiet.wav"
     plugin.render(renderer, rendered["__signal__"], out, values={0: -24})
     assert out.read_bytes() == rendered["out_m24"].read_bytes()
+
+
+# ── the generated C++, played ───────────────────────────────────────────────────
+
+def _float_wav(path):
+    import numpy as np
+    return np.frombuffer(path.read_bytes()[44:], dtype="<f4").reshape(-1, 2).astype(float)
+
+
+def _rms(x, start, end, rate=44100):
+    import numpy as np
+    return float(np.sqrt((x[int(start * rate):int(end * rate)] ** 2).mean()))
+
+
+@pytest.fixture(scope="session")
+def instruments(tmp_path_factory):
+    """Every instrument preset, compiled into its renderer: id -> the renderer's path."""
+    pytest.importorskip("numpy")
+    work = tmp_path_factory.mktemp("instruments")
+    made = [(p["id"], plugin.generate(p["settings"], work / p["id"])) for p in INSTRUMENTS]
+    with ThreadPoolExecutor() as pool:
+        built = dict(pool.map(lambda item: (item[0], plugin.build_renderer(item[1]["dir"])), made))
+    built["__work__"] = work
+    return built
+
+
+@needs_compiler
+@pytest.mark.parametrize("entry", INSTRUMENTS, ids=[p["id"] for p in INSTRUMENTS])
+def test_every_instrument_plays(instruments, entry):
+    import numpy as np
+    out = instruments["__work__"] / (entry["id"] + ".wav")
+    # a chord half a second in, held for a second
+    plugin.play(instruments[entry["id"]], "48@0.5+1:100,60@0.5+1:100,64@0.5+1:100,67@0.5+1:100", 4, out, as_float=True)
+    y = _float_wav(out)
+    assert np.isfinite(y).all() and np.abs(y).max() <= 1.0
+    assert np.abs(y[:int(0.49 * 44100)]).max() == 0, "it makes sound before it is played"
+    assert _rms(y, 0.6, 1.5) > 0.01, "the chord cannot be heard"
+
+
+@needs_compiler
+def test_a_note_is_in_tune(instruments, tmp_path):
+    import numpy as np
+    out = tmp_path / "a.wav"
+    # Detune (0) and Blend (1) at zero leave one oscillator; Tone Env (4) at zero holds the filter still.
+    plugin.play(instruments["plain-synth"], "69@0+2:100", 2, out, as_float=True, values={0: 0, 1: 0, 4: 0})
+    y = _float_wav(out)[44100 // 2:, 0]
+    spectrum = np.abs(np.fft.rfft(y * np.hanning(len(y))))
+    peak = np.fft.rfftfreq(len(y), 1 / 44100)[spectrum.argmax()]
+    assert abs(peak - 440.0) < 1.0
+
+
+@needs_compiler
+def test_the_envelope_follows_its_dials_and_the_velocity(instruments, tmp_path):
+    out = tmp_path / "env.wav"
+    # Attack 200 ms (5), Decay 5 ms (6), Sustain 100 % (7), Release 100 ms (8); filter held still (4).
+    shape = {4: 0, 5: 200, 6: 5, 7: 100, 8: 100}
+    plugin.play(instruments["plain-synth"], "57@0.5+1:127", 2.5, out, as_float=True, values=shape)
+    loud = _float_wav(out)[:, 0]
+    assert _rms(loud, 0.5, 0.55) < 0.5 * _rms(loud, 0.8, 1.4), "the attack is not a slow rise"
+    assert _rms(loud, 1.62, 2.4) < 1e-4 * _rms(loud, 0.8, 1.4), "the note rings past its release"
+    plugin.play(instruments["plain-synth"], "57@0.5+1:64", 2.5, out, as_float=True, values=shape)
+    soft = _float_wav(out)[:, 0]
+    ratio = _rms(loud, 0.8, 1.4) / _rms(soft, 0.8, 1.4)
+    assert abs(ratio - 127 / 64) < 0.02, "level does not follow velocity"
+
+
+@needs_compiler
+def test_a_mono_instrument_gives_its_voice_to_the_newest_note(instruments, tmp_path):
+    import numpy as np
+    out = tmp_path / "mono.wav"
+    # Sub Bass has one voice. A second key pressed while the first is held takes it over.
+    plugin.play(instruments["sub-bass"], "45@0+2:100,57@1+1:100", 2, out, as_float=True)
+    y = _float_wav(out)[:, 0]
+
+    def pitch(start, end):
+        seg = y[int(start * 44100):int(end * 44100)]
+        spectrum = np.abs(np.fft.rfft(seg * np.hanning(len(seg))))
+        return np.fft.rfftfreq(len(seg), 1 / 44100)[spectrum.argmax()]
+
+    assert abs(pitch(0.3, 0.9) - 110) < 3 or abs(pitch(0.3, 0.9) - 55) < 3   # A2, or its octave-down partner
+    assert abs(pitch(1.3, 1.9) - 220) < 3 or abs(pitch(1.3, 1.9) - 110) < 3   # A3 took the voice
+
+
+@needs_compiler
+def test_more_keys_than_voices_steals_the_oldest(instruments, tmp_path):
+    out = tmp_path / "steal.wav"
+    # Hollow Lead has four voices. Five keys: the first is let go to make room for the fifth,
+    # so releasing the first key later changes nothing, and the result is the same as never
+    # holding it past that point.
+    held = "48@0+3:100,52@0.1+3:100,55@0.2+3:100,59@0.3+3:100,62@1+2:100"
+    cut = "48@0+1:100,52@0.1+3:100,55@0.2+3:100,59@0.3+3:100,62@1+2:100"
+    plugin.play(instruments["square-lead"], held, 2.5, out, as_float=True)
+    a = out.read_bytes()
+    plugin.play(instruments["square-lead"], cut, 2.5, out, as_float=True)
+    assert out.read_bytes() == a

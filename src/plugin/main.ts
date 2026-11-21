@@ -21,9 +21,10 @@ import { preloadWorklets } from '../runtime/worklet';
 import { firstNum } from '../runtime/atoms';
 import { Track } from './audio';
 import { DEVICE_HEIGHT, highlightPython, renderDevice, renderPatch } from './device-view';
+import { Keyboard, PHRASES, Sequencer } from './keys';
 import {
-  PRESETS, SCHEMA, decodeSettings, dialIndex, encodeSettings, moduleSpec, normalize,
-  type ChainEntry, type Preset, type Settings,
+  SCHEMA, decodeSettings, dialIndex, encodeSettings, kindOf, moduleSpec, normalize, presetsOf, valuesOf,
+  type ChainEntry, type Kind, type ModuleSpec, type Preset, type Section, type Settings,
 } from './model';
 import { PyRuntime, base64ToBytes, type RunResult } from './python';
 import { SOUNDS, findSound } from './sounds';
@@ -50,8 +51,16 @@ let sampleId = 'piano';
 let customBuffer: AudioBuffer | undefined;
 let dialOffs: (() => void)[] = [];
 let deviceWidth = 0;
+/** The running device's notein, when it is an instrument: where played notes are sent. */
+let noteIn: MaxNode | undefined;
+/** The device of the kind not on screen, kept for when its tab is chosen again. */
+const parked: Partial<Record<Kind, { settings: Settings; preset: string | undefined }>> = {};
+/** Ready-made plugin builds, by preset id and system, if this site was published with any. */
+let builds: Record<string, Record<string, string>> = {};
 // Last, because choosing the starting device also sets the preset and sample above.
 let settings: Settings = initialSettings();
+
+const kind = (): Kind => kindOf(settings);
 
 const engine = new Engine();
 const track = new Track(engine.ctx as AudioContext);
@@ -63,7 +72,12 @@ function initialSettings(): Settings {
   const fragment = location.hash.match(/^#s=(.+)$/)?.[1];
   const shared = fragment ? decodeSettings(fragment) : undefined;
   if (shared) return shared;
-  const first = PRESETS[0];
+  return firstPreset('effect');
+}
+
+/** The device a tab opens with: its first preset. */
+function firstPreset(which: Kind): Settings {
+  const first = presetsOf(which)[0];
   activePreset = first.id;
   if (first.sample) sampleId = first.sample;
   return normalize(first.settings);
@@ -125,6 +139,9 @@ async function apply(next: RunResult): Promise<void> {
   dialOffs = [];
 
   const report = await track.duck(() => engine.build(patch));
+  const noteInId = patch.nodes.find((n) => n.className === 'notein')?.id;
+  noteIn = noteInId ? report.built.get(noteInId) : undefined;
+  keyboard.forget(); // the voices are new: nothing is sounding
 
   // Listen to each dial, so a knob turned here becomes the value that gets saved.
   for (const node of patch.nodes) {
@@ -153,7 +170,7 @@ async function apply(next: RunResult): Promise<void> {
 
 let scriptTimer = 0;
 function dialMoved(module: string, param: string, value: number): void {
-  const store = module === SCHEMA.output.id ? settings.output : settings.chain.find((e) => e.module === module)?.values;
+  const store = valuesOf(settings, module);
   if (!store || Math.abs((store[param] ?? NaN) - value) < 1e-9) return;
   store[param] = value;
   markCustom();
@@ -189,11 +206,14 @@ function syncHash(): void {
 function renderHead(): void {
   $('device-title').textContent = settings.name;
   const on = settings.chain.filter((e) => e.on).map((e) => moduleSpec(e.module)?.label ?? e.module);
+  const voices = settings.instrument?.osc.options.voices;
+  const source = voices ? ['notein', voices === '1' ? 'Synth, one voice' : `Synth, ${voices} voices`] : ['plugin~'];
   const flow = $('device-flow');
   flow.replaceChildren();
-  for (const [i, part] of ['plugin~', ...on, 'Output', 'plugout~'].entries()) {
+  for (const [i, part] of [...source, ...on, 'Output', 'plugout~'].entries()) {
     if (i) flow.append(Object.assign(document.createElement('i'), { textContent: '→' }));
-    flow.append(Object.assign(document.createElement('span'), { textContent: part, className: part.endsWith('~') ? 'io' : '' }));
+    const io = part.endsWith('~') || part === 'notein';
+    flow.append(Object.assign(document.createElement('span'), { textContent: part, className: io ? 'io' : '' }));
   }
 }
 
@@ -317,17 +337,18 @@ function markCustom(): void {
   if (!activePreset) return;
   activePreset = undefined;
   for (const el of document.querySelectorAll('.preset.is-active')) el.classList.remove('is-active');
+  renderDownloads();
 }
 
-/** The preset sections, in file order: one per effect, as the left panel lists them. */
-const SECTIONS = [...new Set(PRESETS.map((p) => p.group))];
+/** The preset sections of the tab on screen, in file order, as the left panel lists them. */
+const sections = (): string[] => [...new Set(presetsOf(kind()).map((p) => p.group))];
 let section = 'All';
 
 function renderSections(): void {
   const host = $('sections');
   host.replaceChildren();
   // 'Start' holds only the empty device; it is listed under All and needs no chip.
-  for (const name of ['All', ...SECTIONS.filter((g) => g !== 'Start')]) {
+  for (const name of ['All', ...sections().filter((g) => g !== 'Start')]) {
     const b = document.createElement('button');
     b.type = 'button';
     b.className = 'section-chip';
@@ -347,9 +368,9 @@ function renderSections(): void {
 function renderPresets(): void {
   const host = $('presets');
   host.replaceChildren();
-  for (const group of SECTIONS) {
+  for (const group of sections()) {
     if (section !== 'All' && section !== group) continue;
-    const list = PRESETS.filter((p) => p.group === group);
+    const list = presetsOf(kind()).filter((p) => p.group === group);
     const head = document.createElement('h3');
     head.append(group, Object.assign(document.createElement('small'), { textContent: String(list.length) }));
     host.append(head);
@@ -377,6 +398,7 @@ function loadPreset(p: Preset): void {
   activePreset = p.id;
   if (p.sample && !customBuffer) void chooseSample(p.sample);
   renderSide();
+  renderDownloads();
   scheduleBuild();
 }
 
@@ -412,6 +434,60 @@ function renderChain(): void {
   const host = $('chain');
   host.replaceChildren();
   settings.chain.forEach((entry, index) => host.append(chainItem(entry, index)));
+}
+
+/** One row of choices per option of a module ("Type: Chorus | Flanger"). */
+function optionRows(mod: ModuleSpec, chosen: Record<string, string>, redraw: () => void): HTMLElement[] {
+  return mod.options.map((opt) => {
+    const seg = document.createElement('div');
+    seg.className = 'seg';
+    seg.setAttribute('role', 'radiogroup');
+    seg.setAttribute('aria-label', `${mod.label} ${opt.label}`);
+    for (const choice of opt.choices) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = choice.label;
+      b.setAttribute('role', 'radio');
+      b.setAttribute('aria-checked', String(chosen[opt.id] === choice.id));
+      b.addEventListener('click', () => {
+        if (chosen[opt.id] === choice.id) return;
+        chosen[opt.id] = choice.id;
+        markCustom();
+        redraw();
+        renderHead();
+        scheduleBuild();
+      });
+      seg.append(b);
+    }
+    return seg;
+  });
+}
+
+/** The synth's sections. Unlike the chain they are always on and always in this order. */
+function renderSynth(): void {
+  const host = $('synth');
+  host.replaceChildren();
+  for (const mod of SCHEMA.instrument.modules) {
+    const section: Section | undefined = settings.instrument?.[mod.id];
+    if (!section) continue;
+    const li = document.createElement('li');
+    li.className = 'mod is-on is-fixed';
+    const name = document.createElement('div');
+    name.className = 'mod-name';
+    name.append(
+      Object.assign(document.createElement('b'), { textContent: mod.label }),
+      Object.assign(document.createElement('span'), { textContent: mod.params.map((p) => p.label).join(' · ') }),
+    );
+    const row = document.createElement('div');
+    row.className = 'mod-row';
+    row.append(name);
+    const body = document.createElement('div');
+    body.className = 'mod-body';
+    if (mod.blurb) body.append(Object.assign(document.createElement('p'), { textContent: mod.blurb }));
+    body.append(...optionRows(mod, section.options, renderSynth));
+    li.append(row, body);
+    host.append(li);
+  }
 }
 
 function chainItem(entry: ChainEntry, index: number): HTMLElement {
@@ -469,28 +545,7 @@ function chainItem(entry: ChainEntry, index: number): HTMLElement {
     const body = document.createElement('div');
     body.className = 'mod-body';
     if (mod.blurb) body.append(Object.assign(document.createElement('p'), { textContent: mod.blurb }));
-    for (const opt of mod.options) {
-      const seg = document.createElement('div');
-      seg.className = 'seg';
-      seg.setAttribute('role', 'radiogroup');
-      seg.setAttribute('aria-label', `${mod.label} ${opt.label}`);
-      for (const choice of opt.choices) {
-        const b = document.createElement('button');
-        b.type = 'button';
-        b.textContent = choice.label;
-        b.setAttribute('role', 'radio');
-        b.setAttribute('aria-checked', String(entry.options[opt.id] === choice.id));
-        b.addEventListener('click', () => {
-          if (entry.options[opt.id] === choice.id) return;
-          entry.options[opt.id] = choice.id;
-          markCustom();
-          renderChain();
-          scheduleBuild();
-        });
-        seg.append(b);
-      }
-      body.append(seg);
-    }
+    body.append(...optionRows(mod, entry.options, renderChain));
     li.append(body);
   }
 
@@ -550,8 +605,73 @@ function renderSide(): void {
   $<HTMLInputElement>('name').value = settings.name;
   applyAccent();
   renderAccents();
+  renderSynth();
   renderChain();
   renderHead();
+}
+
+// ── effect or instrument ────────────────────────────────────────────────────────
+
+/** Show the page for the kind of device in `settings`: its tab, its controls, its way of being played. */
+function renderKind(): void {
+  const instrument = kind() === 'instrument';
+  $('mode-effect').setAttribute('aria-selected', String(!instrument));
+  $('mode-instrument').setAttribute('aria-selected', String(instrument));
+  document.body.dataset.kind = kind();
+  $('synth-group').hidden = !instrument;
+  $('play-keys').hidden = !instrument;
+  $('play-sample').hidden = instrument;
+  $('btn-bypass').hidden = instrument;
+  $('btn-play').title = instrument ? 'Loop a phrase, so your hands are free for the dials' : '';
+}
+
+/** Switch tabs. Each kind keeps its own device, so coming back finds it as it was left. */
+async function setKind(next: Kind): Promise<void> {
+  if (next === kind()) return;
+  await setPlaying(false);
+  await quiet();
+  parked[kind()] = { settings, preset: activePreset };
+  const back = parked[next];
+  if (back) {
+    settings = back.settings;
+    activePreset = back.preset;
+  } else {
+    settings = firstPreset(next);
+  }
+  section = 'All';
+  if (next === 'instrument') track.clearBuffer(); // an instrument is played, not fed a sample
+  else void chooseSample(sampleId);
+  renderKind();
+  renderSide();
+  renderDownloads();
+  scheduleBuild();
+}
+
+// ── playing an instrument ───────────────────────────────────────────────────────
+
+/** A note for the running instrument. Velocity 0 lets the key go. Starts the audio if it is off. */
+function sendNote(key: number, velocity: number): void {
+  if (kind() !== 'instrument') return;
+  const send = (): void => noteIn?.controlIns?.[0]?.([key, velocity, 1]);
+  if (track.playing) send();
+  else if (velocity > 0) void listen().then(send);
+}
+
+const keyboard = new Keyboard($('piano'), sendNote);
+const sequencer = new Sequencer(keyboard);
+
+/** Switch the audio on, without the play button: enough for a key to be heard. */
+async function listen(): Promise<void> {
+  await engine.start();
+  track.play();
+  startScope();
+}
+
+/** Let go of every key and switch the audio off. */
+async function quiet(): Promise<void> {
+  keyboard.releaseAll();
+  track.stop();
+  await engine.stop();
 }
 
 // ── transport ───────────────────────────────────────────────────────────────────
@@ -621,15 +741,24 @@ async function useFile(file: File): Promise<void> {
   }
 }
 
+/**
+ * The play button. For an effect it plays the chosen sound through the device. For an
+ * instrument it loops the chosen phrase; stopping the loop leaves the audio on, so the
+ * last notes ring out and the keys stay playable.
+ */
 async function setPlaying(on: boolean): Promise<void> {
   const btn = $('btn-play');
-  if (on) {
-    await engine.start();
-    track.play();
-    startScope();
+  if (kind() === 'instrument') {
+    if (on) {
+      await listen();
+      sequencer.start(PHRASES.find((p) => p.id === $<HTMLSelectElement>('phrase').value) ?? PHRASES[0]);
+    } else {
+      sequencer.stop();
+    }
+  } else if (on) {
+    await listen();
   } else {
-    track.stop();
-    await engine.stop();
+    await quiet();
   }
   btn.setAttribute('aria-pressed', String(on));
   btn.setAttribute('aria-label', on ? 'Stop' : 'Play');
@@ -730,7 +859,7 @@ async function download(): Promise<void> {
     save(base64ToBytes(out.amxd), out.filename, 'application/octet-stream');
     result = out;
     renderCode(out);
-    toast(`Saved ${out.filename}. Drag it onto an audio track in Live.`);
+    toast(`Saved ${out.filename}. Drag it onto ${kind() === 'instrument' ? 'a MIDI' : 'an audio'} track in Live.`);
   } catch (err) {
     console.error(err);
     toast('The download failed. The error is under View Python.');
@@ -739,6 +868,37 @@ async function download(): Promise<void> {
     btn.disabled = false;
     btn.classList.remove('is-busy');
   }
+}
+
+/** A system's name for a ready-made build, and the label its link gets. */
+const SYSTEMS: [id: string, label: string][] = [['macos', 'macOS'], ['windows', 'Windows'], ['linux', 'Linux']];
+
+/**
+ * The plugin half of the download menu. A plugin is compiled code, so the page cannot
+ * make one itself. An untouched preset may have builds published with the site; anything
+ * else is built on the visitor's machine from the settings, with one command.
+ */
+function renderDownloads(): void {
+  const ready = activePreset ? builds[activePreset] : undefined;
+  const links = $('dl-builds');
+  links.replaceChildren();
+  links.hidden = !ready;
+  for (const [id, label] of SYSTEMS) {
+    if (!ready?.[id]) continue;
+    const a = Object.assign(document.createElement('a'), { className: 'btn', textContent: label, href: ready[id] });
+    a.setAttribute('download', '');
+    links.append(a);
+  }
+  const file = `${settings.name.replace(/ /g, '_')}.json`;
+  $('dl-how').textContent = ready
+    ? 'Ready-made builds of this preset, unsigned. To build your own version, with your changes, save the settings and run this in a copy of the project:'
+    : 'A plugin is compiled code, so it is built on your machine. Save the settings and run this in a copy of the project:';
+  $('dl-command').textContent = `npm run plugin -- --settings ${file} --install`;
+}
+
+function saveSettings(): void {
+  save(JSON.stringify(settings, null, 1), `${settings.name.replace(/ /g, '_')}.json`, 'application/json');
+  toast('Saved the settings. Build the plugin with the command shown.');
 }
 
 function setDrawer(open: boolean): void {
@@ -780,9 +940,35 @@ function popover(rootId: string, buttonId: string): () => void {
 }
 
 function init(): void {
+  renderKind();
   renderSide();
   renderLibrary();
+  renderDownloads();
   setView('device');
+
+  $('mode-effect').addEventListener('click', () => void setKind('effect'));
+  $('mode-instrument').addEventListener('click', () => void setKind('instrument'));
+
+  // Playing an instrument: the phrase the play button loops, a MIDI keyboard, and A S D F.
+  const phrase = $<HTMLSelectElement>('phrase');
+  for (const p of PHRASES) phrase.append(Object.assign(document.createElement('option'), { value: p.id, textContent: p.label }));
+  phrase.addEventListener('change', () => { if (sequencer.playing) void setPlaying(true); });
+  $('btn-midi').addEventListener('click', () => {
+    keyboard.connectMidi().then(
+      (names) => {
+        $('btn-midi').classList.toggle('is-active', names.length > 0);
+        toast(names.length ? `Listening to ${names.join(', ')}.` : 'No MIDI keyboard found. Plug one in and press MIDI again.');
+      },
+      () => toast('This browser would not open MIDI. Chrome and Edge can, if you allow it.'),
+    );
+  });
+  keyboard.listenToComputerKeys(() => kind() === 'instrument');
+
+  // Ready-made plugin builds, if the site was published with them (.github/workflows/pages.yml).
+  fetch(`${import.meta.env.BASE_URL}downloads/index.json`)
+    .then((r) => (r.ok ? r.json() : {}))
+    .then((found: typeof builds) => { builds = found; renderDownloads(); })
+    .catch(() => { /* none published: the menu offers the command instead */ });
 
   $('name').addEventListener('input', () => {
     const typed = $<HTMLInputElement>('name').value;
@@ -798,7 +984,8 @@ function init(): void {
   $('view-device').addEventListener('click', () => setView('device'));
   $('view-patch').addEventListener('click', () => setView('patch'));
 
-  $('btn-play').addEventListener('click', () => void setPlaying(!track.playing));
+  const playing = (): boolean => (kind() === 'instrument' ? sequencer.playing : track.playing);
+  $('btn-play').addEventListener('click', () => void setPlaying(!playing()));
   $('btn-bypass').addEventListener('click', () => {
     track.bypass = !track.bypass;
     $('btn-bypass').setAttribute('aria-pressed', String(track.bypass));
@@ -821,7 +1008,8 @@ function init(): void {
     void useFile(file);
   });
 
-  $('btn-download').addEventListener('click', () => void download());
+  $('dl-amxd').addEventListener('click', () => void download());
+  $('dl-settings').addEventListener('click', saveSettings);
   $('btn-python').addEventListener('click', () => setDrawer(!$('drawer').classList.contains('open')));
   $('drawer-close').addEventListener('click', () => setDrawer(false));
   $('scrim').addEventListener('click', () => setDrawer(false));
@@ -835,7 +1023,10 @@ function init(): void {
   });
 
   // The three popovers. The help also peeks on hover or focus (CSS).
-  const popovers = [popover('help', 'btn-help'), popover('settings', 'btn-settings'), popover('library', 'btn-library')];
+  const popovers = [
+    popover('help', 'btn-help'), popover('settings', 'btn-settings'),
+    popover('library', 'btn-library'), popover('downloads', 'btn-download'),
+  ];
 
   const dark = $('dark-mode');
   dark.setAttribute('aria-checked', String(getTheme() === 'dark'));
@@ -855,7 +1046,7 @@ function init(): void {
     const onControl = target.tagName === 'BUTTON' || target.getAttribute('role') === 'slider';
     if (e.code === 'Space' && !typing && !onControl) {
       e.preventDefault();
-      void setPlaying(!track.playing);
+      void setPlaying(!playing());
     }
   });
 
@@ -867,7 +1058,8 @@ function init(): void {
     showCheckError(String(err.message || err));
   });
 
-  void chooseSample(sampleId);
+  if (kind() === 'instrument') track.clearBuffer();
+  else void chooseSample(sampleId);
   scheduleBuild();
 }
 

@@ -12,7 +12,10 @@ import { hostBus } from '../src/runtime/host';
 import type { IRNode } from '../src/ir/types';
 import type { Msg } from '../src/runtime/atoms';
 import { highlightPython } from '../src/plugin/device-view';
-import { PRESETS, SCHEMA, decodeSettings, dialIndex, encodeSettings, normalize } from '../src/plugin/model';
+import {
+  INSTRUMENTS, PRESETS, SCHEMA, decodeSettings, dialIndex, encodeSettings, kindOf, normalize, valuesOf,
+} from '../src/plugin/model';
+import '../src/objects/control/poly';
 import { SOUNDS, SOUND_RATE, findSound } from '../src/plugin/sounds';
 
 const ctx = new (globalThis as any).OfflineAudioContext(2, 128, 44100) as BaseAudioContext;
@@ -199,7 +202,7 @@ describe('settings model', () => {
 
   it('every dial fxgen names maps back to a setting', () => {
     const index = dialIndex();
-    const count = SCHEMA.modules.reduce((n, m) => n + m.params.length, 0) + SCHEMA.output.params.length;
+    const count = [...SCHEMA.modules, ...SCHEMA.instrument.modules].reduce((n, m) => n + m.params.length, SCHEMA.output.params.length);
     expect(index.size).toBe(count);
     expect(index.get('filter_cutoff')).toEqual({ module: 'filter', param: 'cutoff' });
     expect(index.get('delay_feedback')).toEqual({ module: 'delay', param: 'feedback' });
@@ -266,5 +269,77 @@ describe('sound library', () => {
       const sound = findSound(id)!;
       expect(sound.render!()[0]).toEqual(sound.render!()[0]);
     }
+  });
+});
+
+describe('instruments', () => {
+  it('an instrument has the synth sections, and an effect does not', () => {
+    const synth = normalize({ kind: 'instrument' });
+    expect(kindOf(synth)).toBe('instrument');
+    expect(synth.name).toBe('MaxPy Synth');
+    expect(Object.keys(synth.instrument!)).toEqual(SCHEMA.instrument.modules.map((m) => m.id));
+    const effect = normalize({});
+    expect(kindOf(effect)).toBe('effect');
+    expect(effect.kind).toBeUndefined();
+    expect(effect.instrument).toBeUndefined();
+  });
+
+  it('bounds what it is given, like any other setting', () => {
+    const s = normalize({ kind: 'instrument', instrument: { osc: { options: { wave: 'nope', voices: '99' }, values: { detune: 1e9 } } } });
+    expect(s.instrument!.osc.options).toEqual({ wave: 'saw', second: 'unison', voices: '6' });
+    expect(s.instrument!.osc.values.detune).toBe(50);
+  });
+
+  it('every instrument preset is complete, and survives a shared link', () => {
+    expect(new Set(INSTRUMENTS.map((p) => p.id)).size).toBe(INSTRUMENTS.length);
+    for (const p of INSTRUMENTS) {
+      const s = normalize(p.settings);
+      expect(kindOf(s), p.id).toBe('instrument');
+      expect(decodeSettings(encodeSettings(s)), p.id).toEqual(s);
+    }
+  });
+
+  it('finds a dial\'s value in the synth, the chain or the output', () => {
+    const s = normalize(INSTRUMENTS[0].settings);
+    expect(dialIndex().get('tone_cutoff')).toEqual({ module: 'tone', param: 'cutoff' });
+    expect(valuesOf(s, 'tone')).toBe(s.instrument!.tone.values);
+    expect(valuesOf(s, 'delay')).toBe(s.chain.find((e) => e.module === 'delay')!.values);
+    expect(valuesOf(s, 'output')).toBe(s.output);
+  });
+});
+
+describe('poly', () => {
+  // What leaves the object for each note: [voice, pitch, velocity], as the pack below it sees them.
+  function poly(...args: number[]) {
+    const node = getFactory('poly')!(args, { ctx });
+    const sent: number[][] = [];
+    const latest = [0, 0, 0];
+    for (const outlet of [2, 1]) node.onControlOut!(outlet, (m) => { latest[outlet] = m[0] as number; });
+    node.onControlOut!(0, (m) => sent.push([m[0] as number, latest[1], latest[2]]));
+    const note = (pitch: number, velocity: number): void => {
+      node.controlIns![1]!([velocity]);
+      node.controlIns![0]!([pitch]);
+    };
+    return { sent, note };
+  }
+
+  it('gives each note the lowest free voice, and its note-off to the same one', () => {
+    const { sent, note } = poly(3, 1);
+    note(60, 100); note(64, 90); note(60, 0); note(67, 80);
+    expect(sent).toEqual([[1, 60, 100], [2, 64, 90], [1, 60, 0], [1, 67, 80]]);
+  });
+
+  it('steals the voice held longest, letting its note go first', () => {
+    const { sent, note } = poly(2, 1);
+    note(60, 100); note(64, 100); note(67, 100);
+    expect(sent.slice(2)).toEqual([[1, 60, 0], [1, 67, 100]]);
+    note(60, 0); // already stolen: nothing to let go
+    expect(sent).toHaveLength(4);
+  });
+
+  it('drops the extra note when stealing is off', () => {
+    const { sent, note } = poly(1, 0);
+    note(60, 100); note(64, 100);
+    expect(sent).toEqual([[1, 60, 100]]);
   });
 });
