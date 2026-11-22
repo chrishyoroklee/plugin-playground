@@ -34,6 +34,10 @@ Try it at <https://chrishyoroklee.github.io/plugin-playground/>.
   machine, under the name you gave it, with every dial where it stood. On macOS the plugin
   opens with the same face it has on the page; on Windows and Linux the DAW shows its
   own sliders for now.
+- **Motion** makes dials move by themselves. Press **Edit** above the device and click a
+  dial, or use the Motion section under Customize: point an LFO, the volume of what is
+  coming in, or a knob of your own at any dial, and say how far it should move it. A knob
+  you add is a dial on the device like any other, and one knob can move several dials.
 - **Settings** (the gear) has dark mode, a link that reopens this exact device, and the
   Python that built it.
 

@@ -20,7 +20,7 @@
 //   registers N                       how many numbers the program keeps
 //   n REGISTER VALUE                  a register that does not start at zero
 //   k NUMBER TYPE                     a kernel: OnePole, Svf, Comb ...
-//   @prepare, @settle, @reset, @process, @update I, @voice N    then that section's code
+//   @prepare, @settle, @reset, @process, @update I, @voice N, @every I    then that section's code
 //   @end
 //   face ...                          what the plugin's window draws: JSON in base64
 //   settings ...                      for the page; not read here
@@ -31,6 +31,7 @@
 //   + D A B   - D A B   * D A B   / D A B   neg D A
 //   f NAME D A...                     D = a function of mxrt.h or <cmath>
 //   pos D I A                         D = where a value A puts dial I, 0 to 1
+//   every I C P                       count down in C; at zero refill it from P and run @every I
 //   c K METHOD D A...                 call a kernel; D is -1 if nothing comes back
 //   g D K FIELD                       read a kernel's outlet
 //   s K FIELD A                       set a kernel's field
@@ -53,15 +54,15 @@ namespace mxvm {
 
 // The newest device a build of this file understands. patchc's PROGRAM_RUNTIME is what
 // a device asks for.
-constexpr int kRuntimeVersion = 1;
+constexpr int kRuntimeVersion = 2;  // 2: `every`, and the functions abs, max and floor
 constexpr int kFormat = 1;
 
 enum Register { kSampleRate, kValue, kPitch, kVelocity, kInL, kInR, kOutL, kOutR, kFixedRegisters };
 
 enum Op : int {
-    kMov, kAdd, kSub, kMul, kDiv, kNeg, kPos,
+    kMov, kAdd, kSub, kMul, kDiv, kNeg, kPos, kEvery,
     // functions
-    kClip, kPong, kOverdrive, kScale, kToInt, kMtof, kDbtoa, kPow, kTanh, kSqrt, kSin, kCos,
+    kClip, kPong, kOverdrive, kScale, kToInt, kMtof, kDbtoa, kPow, kTanh, kSqrt, kSin, kCos, kAbs, kMax, kFloor,
     // kernels
     kOnePolePrepare, kOnePoleReset, kOnePoleSetFreq, kOnePoleTick,
     kSvfPrepare, kSvfReset, kSvfSetFreq, kSvfSetRes, kSvfTick, kSvfLp, kSvfHp, kSvfBp, kSvfNotch,
@@ -101,6 +102,7 @@ struct Device {
     int kernels[kKernelTypes] = {};      // how many of each type
     Code prepare, settle, reset, process;
     std::vector<Code> update, voice;
+    std::vector<Code> every;             // what each snapshot~ runs when its countdown ends
     std::string face;                    // what the window draws: JSON in base64, or empty
 
     // Read a device file's text. On failure `error` says why, in words for a person.
@@ -131,6 +133,7 @@ inline const Named* function(const std::string& name) {
         {"clip", kClip, 3}, {"pong", kPong, 4}, {"overdrive", kOverdrive, 2}, {"scale", kScale, 5},
         {"toInt", kToInt, 1}, {"mtof", kMtof, 1}, {"dbtoa", kDbtoa, 1}, {"pow", kPow, 2},
         {"tanh", kTanh, 1}, {"sqrt", kSqrt, 1}, {"sin", kSin, 1}, {"cos", kCos, 1},
+        {"abs", kAbs, 1}, {"max", kMax, 2}, {"floor", kFloor, 1},
     };
     for (const Named& f : table)
         if (name == f.name) return &f;
@@ -263,6 +266,9 @@ inline bool Device::parse(const std::string& text, std::string* error) {
             } else if (w[0] == "@voice" && whole(1) >= 1 && whole(1) <= mxrt::Poly::kMaxVoices) {
                 if (static_cast<int>(voice.size()) < whole(1)) voice.resize(whole(1));
                 code = &voice[whole(1) - 1];
+            } else if (w[0] == "@every" && whole(1) >= 0 && whole(1) < 4096) {
+                if (static_cast<int>(every.size()) <= whole(1)) every.resize(whole(1) + 1);
+                code = &every[whole(1)];
             } else return bad();
             continue;
         }
@@ -309,6 +315,14 @@ inline bool Device::parse(const std::string& text, std::string* error) {
         } else if (op == "+" || op == "-" || op == "*" || op == "/") {
             ins.op = op == "+" ? kAdd : op == "-" ? kSub : op == "*" ? kMul : kDiv;
             if (w.size() != 4 || !reg(1, &ins.d) || !reg(2, &ins.a[0]) || !reg(3, &ins.a[1])) return bad();
+        } else if (op == "every") {
+            // every I COUNT PERIOD: count down in COUNT; at zero, refill it from PERIOD and run @every I
+            ins.op = kEvery;
+            ins.d = -1;
+            ins.k = whole(1);
+            if (w.size() != 4 || ins.k < 0 || ins.k >= 4096 || !reg(2, &ins.a[0]) || !reg(3, &ins.a[1])) return bad();
+            // A section may not run another: that is all the nesting the countdown needs.
+            if (code != &process) return bad();
         } else if (op == "pos") {
             ins.op = kPos;
             ins.k = whole(2);
@@ -343,6 +357,8 @@ inline bool Device::parse(const std::string& text, std::string* error) {
     }
     if (!headed) return fail("this is not a Plugin Playground device file");
     if (!ended) return fail("the device file is cut short");
+    for (const Ins& ins : process)
+        if (ins.op == kEvery && ins.k >= static_cast<int>(every.size())) return fail("the device file is cut short");
     update.resize(params.size());
     if (instrument && (voices < 1 || voices > mxrt::Poly::kMaxVoices)) return fail("the device file names no voices");
     for (size_t i = 0; i < params.size(); i++) {
@@ -388,6 +404,13 @@ public:
                 case kDiv: out = r[a[0]] / r[a[1]]; break;
                 case kNeg: out = -r[a[0]]; break;
                 case kPos: out = mxrt::valueToPosition(d_->params[i.k], r[a[0]]); break;
+                case kEvery:
+                    if (r[a[0]] <= 0.0) {
+                        r[a[0]] = r[a[1]];
+                        run(d_->every[i.k]);
+                    }
+                    r[a[0]] -= 1.0;
+                    break;
 
                 case kClip: out = mxrt::clip(r[a[0]], r[a[1]], r[a[2]]); break;
                 case kPong: out = mxrt::pong(r[a[0]], static_cast<int>(r[a[1]]), r[a[2]], r[a[3]]); break;
@@ -401,6 +424,9 @@ public:
                 case kSqrt: out = std::sqrt(r[a[0]]); break;
                 case kSin: out = std::sin(r[a[0]]); break;
                 case kCos: out = std::cos(r[a[0]]); break;
+                case kAbs: out = std::fabs(r[a[0]]); break;
+                case kMax: out = std::max(r[a[0]], r[a[1]]); break;
+                case kFloor: out = std::floor(r[a[0]]); break;
 
                 case kOnePolePrepare: onePole_[i.k].prepare(r[a[0]], r[a[1]]); break;
                 case kOnePoleReset: onePole_[i.k].reset(); break;

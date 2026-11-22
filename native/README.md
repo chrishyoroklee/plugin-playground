@@ -165,6 +165,20 @@ move a dial and requires the window to show it, then turns a dial in the window 
 requires the host to be told. Every `npm run plugin -- --runtime` device goes through it
 on macOS.
 
+## Motion
+
+A dial that something moves (an LFO, the follower, a user's knob) is worked out in the
+patch, under the dial, by `Device.moved()` in fxgen.py: the dial's position as a signal,
+plus each source times its amount, clipped to 0..1, read off every 5 ms by a
+`snapshot~`, and put back through the dial's curve and range. So it is the same in Live,
+in the browser and in a plugin, and nothing here knows the word "modulation".
+
+`snapshot~` is the one object that goes from the signal side of a patch back to the
+control side. patchc compiles it as a countdown in the sample loop that runs, when it
+reaches zero, the statements a number leaving the box would run. In a device file that
+is the instruction `every`, with a section of its own. It is what runtime 2 added; a
+device that uses none of it still asks for runtime 1.
+
 ## Adding an object
 
 One kernel in `mxrt.h` if the object has state, and one class in `patchc.py` (ten lines
@@ -224,6 +238,8 @@ not directly with Max recordings.
   agree in pitch, level and envelope, not waveform for waveform.
 - LFOs start at zero phase. In Max a `cycle~` has been running since audio was switched
   on, so where a sweep starts there is arbitrary.
+- A moved dial's value reaches its module every 5 ms, in steps. That is inaudible on a
+  filter sweep or a level, but a fast LFO far up a delay time would be heard as steps.
 - A dial moved by the host sets its numbers at once, as it does in Max: there is no
   smoothing beyond what the patch has (the delay time glides through its `line~`).
 - The runtime costs more than compiled code: about 1 to 2 % of one core for the heaviest

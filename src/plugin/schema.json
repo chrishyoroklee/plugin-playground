@@ -11,16 +11,44 @@
           "label": "Type",
           "default": "lowpass",
           "choices": [
-            { "id": "lowpass", "label": "Low-pass" },
-            { "id": "highpass", "label": "High-pass" },
-            { "id": "bandpass", "label": "Band-pass" },
-            { "id": "notch", "label": "Notch" }
+            {
+              "id": "lowpass",
+              "label": "Low-pass"
+            },
+            {
+              "id": "highpass",
+              "label": "High-pass"
+            },
+            {
+              "id": "bandpass",
+              "label": "Band-pass"
+            },
+            {
+              "id": "notch",
+              "label": "Notch"
+            }
           ]
         }
       ],
       "params": [
-        { "id": "cutoff", "label": "Cutoff", "min": 40, "max": 10000, "default": 1800, "unit": "Hz", "exponent": 3.0 },
-        { "id": "res", "label": "Reso", "min": 0, "max": 100, "default": 30, "unit": "%", "exponent": 1.0 }
+        {
+          "id": "cutoff",
+          "label": "Cutoff",
+          "min": 40,
+          "max": 10000,
+          "default": 1800,
+          "unit": "Hz",
+          "exponent": 3.0
+        },
+        {
+          "id": "res",
+          "label": "Reso",
+          "min": 0,
+          "max": 100,
+          "default": 30,
+          "unit": "%",
+          "exponent": 1.0
+        }
       ]
     },
     {
@@ -33,17 +61,48 @@
           "label": "Type",
           "default": "soft",
           "choices": [
-            { "id": "soft", "label": "Overdrive" },
-            { "id": "tube", "label": "Tube" },
-            { "id": "hard", "label": "Hard clip" },
-            { "id": "fuzz", "label": "Fuzz" },
-            { "id": "fold", "label": "Fold" }
+            {
+              "id": "soft",
+              "label": "Overdrive"
+            },
+            {
+              "id": "tube",
+              "label": "Tube"
+            },
+            {
+              "id": "hard",
+              "label": "Hard clip"
+            },
+            {
+              "id": "fuzz",
+              "label": "Fuzz"
+            },
+            {
+              "id": "fold",
+              "label": "Fold"
+            }
           ]
         }
       ],
       "params": [
-        { "id": "amount", "label": "Drive", "min": 1, "max": 10, "default": 3, "unit": "x", "exponent": 1.5 },
-        { "id": "tone", "label": "Tone", "min": 400, "max": 10000, "default": 8000, "unit": "Hz", "exponent": 3.0 }
+        {
+          "id": "amount",
+          "label": "Drive",
+          "min": 1,
+          "max": 10,
+          "default": 3,
+          "unit": "x",
+          "exponent": 1.5
+        },
+        {
+          "id": "tone",
+          "label": "Tone",
+          "min": 400,
+          "max": 10000,
+          "default": 8000,
+          "unit": "Hz",
+          "exponent": 3.0
+        }
       ]
     },
     {
@@ -52,8 +111,25 @@
       "blurb": "Bit depth and sample rate reduction with degrade~. Lo-fi on demand.",
       "options": [],
       "params": [
-        { "id": "rate", "label": "Rate", "min": 2, "max": 100, "default": 35, "unit": "%", "exponent": 2.0 },
-        { "id": "bits", "label": "Bits", "min": 2, "max": 16, "default": 8, "unit": "bit", "exponent": 1.0, "integer": true }
+        {
+          "id": "rate",
+          "label": "Rate",
+          "min": 2,
+          "max": 100,
+          "default": 35,
+          "unit": "%",
+          "exponent": 2.0
+        },
+        {
+          "id": "bits",
+          "label": "Bits",
+          "min": 2,
+          "max": 16,
+          "default": 8,
+          "unit": "bit",
+          "exponent": 1.0,
+          "integer": true
+        }
       ]
     },
     {
@@ -66,15 +142,45 @@
           "label": "Type",
           "default": "chorus",
           "choices": [
-            { "id": "chorus", "label": "Chorus" },
-            { "id": "flanger", "label": "Flanger" }
+            {
+              "id": "chorus",
+              "label": "Chorus"
+            },
+            {
+              "id": "flanger",
+              "label": "Flanger"
+            }
           ]
         }
       ],
       "params": [
-        { "id": "rate", "label": "Rate", "min": 0.05, "max": 8, "default": 0.6, "unit": "Hz", "exponent": 2.0 },
-        { "id": "depth", "label": "Depth", "min": 0, "max": 8, "default": 3, "unit": "ms", "exponent": 1.0 },
-        { "id": "mix", "label": "Mix", "min": 0, "max": 100, "default": 50, "unit": "%", "exponent": 1.0 }
+        {
+          "id": "rate",
+          "label": "Rate",
+          "min": 0.05,
+          "max": 8,
+          "default": 0.6,
+          "unit": "Hz",
+          "exponent": 2.0
+        },
+        {
+          "id": "depth",
+          "label": "Depth",
+          "min": 0,
+          "max": 8,
+          "default": 3,
+          "unit": "ms",
+          "exponent": 1.0
+        },
+        {
+          "id": "mix",
+          "label": "Mix",
+          "min": 0,
+          "max": 100,
+          "default": 50,
+          "unit": "%",
+          "exponent": 1.0
+        }
       ]
     },
     {
@@ -87,14 +193,36 @@
           "label": "Mode",
           "default": "tremolo",
           "choices": [
-            { "id": "tremolo", "label": "Tremolo" },
-            { "id": "autopan", "label": "Auto-pan" }
+            {
+              "id": "tremolo",
+              "label": "Tremolo"
+            },
+            {
+              "id": "autopan",
+              "label": "Auto-pan"
+            }
           ]
         }
       ],
       "params": [
-        { "id": "rate", "label": "Rate", "min": 0.1, "max": 20, "default": 5, "unit": "Hz", "exponent": 2.0 },
-        { "id": "depth", "label": "Depth", "min": 0, "max": 100, "default": 60, "unit": "%", "exponent": 1.0 }
+        {
+          "id": "rate",
+          "label": "Rate",
+          "min": 0.1,
+          "max": 20,
+          "default": 5,
+          "unit": "Hz",
+          "exponent": 2.0
+        },
+        {
+          "id": "depth",
+          "label": "Depth",
+          "min": 0,
+          "max": 100,
+          "default": 60,
+          "unit": "%",
+          "exponent": 1.0
+        }
       ]
     },
     {
@@ -107,15 +235,46 @@
           "label": "Style",
           "default": "stereo",
           "choices": [
-            { "id": "stereo", "label": "Stereo" },
-            { "id": "pingpong", "label": "Ping-pong" }
+            {
+              "id": "stereo",
+              "label": "Stereo"
+            },
+            {
+              "id": "pingpong",
+              "label": "Ping-pong"
+            }
           ]
         }
       ],
       "params": [
-        { "id": "time", "label": "Time", "min": 10, "max": 1500, "default": 320, "unit": "ms", "exponent": 2.0 },
-        { "id": "feedback", "label": "Feedback", "short": "Fdbk", "min": 0, "max": 90, "default": 40, "unit": "%", "exponent": 1.0 },
-        { "id": "mix", "label": "Mix", "min": 0, "max": 100, "default": 30, "unit": "%", "exponent": 1.0 }
+        {
+          "id": "time",
+          "label": "Time",
+          "min": 10,
+          "max": 1500,
+          "default": 320,
+          "unit": "ms",
+          "exponent": 2.0
+        },
+        {
+          "id": "feedback",
+          "label": "Feedback",
+          "short": "Fdbk",
+          "min": 0,
+          "max": 90,
+          "default": 40,
+          "unit": "%",
+          "exponent": 1.0
+        },
+        {
+          "id": "mix",
+          "label": "Mix",
+          "min": 0,
+          "max": 100,
+          "default": 30,
+          "unit": "%",
+          "exponent": 1.0
+        }
       ]
     },
     {
@@ -124,9 +283,33 @@
       "blurb": "Freeverb's layout: eight comb~ filters into four allpass~ stages per channel, level-matched so a long tail is not a loud one.",
       "options": [],
       "params": [
-        { "id": "size", "label": "Size", "min": 0, "max": 100, "default": 55, "unit": "%", "exponent": 1.0 },
-        { "id": "damp", "label": "Damp", "min": 500, "max": 10000, "default": 6000, "unit": "Hz", "exponent": 3.0 },
-        { "id": "mix", "label": "Mix", "min": 0, "max": 100, "default": 25, "unit": "%", "exponent": 1.0 }
+        {
+          "id": "size",
+          "label": "Size",
+          "min": 0,
+          "max": 100,
+          "default": 55,
+          "unit": "%",
+          "exponent": 1.0
+        },
+        {
+          "id": "damp",
+          "label": "Damp",
+          "min": 500,
+          "max": 10000,
+          "default": 6000,
+          "unit": "Hz",
+          "exponent": 3.0
+        },
+        {
+          "id": "mix",
+          "label": "Mix",
+          "min": 0,
+          "max": 100,
+          "default": 25,
+          "unit": "%",
+          "exponent": 1.0
+        }
       ]
     }
   ],
@@ -134,7 +317,15 @@
     "id": "output",
     "label": "Output",
     "params": [
-      { "id": "gain", "label": "Gain", "min": -24, "max": 12, "default": 0, "unit": "dB", "exponent": 1.0 }
+      {
+        "id": "gain",
+        "label": "Gain",
+        "min": -24,
+        "max": 12,
+        "default": 0,
+        "unit": "dB",
+        "exponent": 1.0
+      }
     ]
   },
   "accents": [
@@ -157,10 +348,22 @@
             "label": "Wave",
             "default": "saw",
             "choices": [
-              { "id": "saw", "label": "Saw" },
-              { "id": "square", "label": "Square" },
-              { "id": "triangle", "label": "Triangle" },
-              { "id": "sine", "label": "Sine" }
+              {
+                "id": "saw",
+                "label": "Saw"
+              },
+              {
+                "id": "square",
+                "label": "Square"
+              },
+              {
+                "id": "triangle",
+                "label": "Triangle"
+              },
+              {
+                "id": "sine",
+                "label": "Sine"
+              }
             ]
           },
           {
@@ -168,9 +371,18 @@
             "label": "Second oscillator",
             "default": "unison",
             "choices": [
-              { "id": "unison", "label": "Unison" },
-              { "id": "up", "label": "Octave up" },
-              { "id": "down", "label": "Octave down" }
+              {
+                "id": "unison",
+                "label": "Unison"
+              },
+              {
+                "id": "up",
+                "label": "Octave up"
+              },
+              {
+                "id": "down",
+                "label": "Octave down"
+              }
             ]
           },
           {
@@ -178,16 +390,44 @@
             "label": "Voices",
             "default": "6",
             "choices": [
-              { "id": "1", "label": "Mono" },
-              { "id": "4", "label": "4 voices" },
-              { "id": "6", "label": "6 voices" },
-              { "id": "8", "label": "8 voices" }
+              {
+                "id": "1",
+                "label": "Mono"
+              },
+              {
+                "id": "4",
+                "label": "4 voices"
+              },
+              {
+                "id": "6",
+                "label": "6 voices"
+              },
+              {
+                "id": "8",
+                "label": "8 voices"
+              }
             ]
           }
         ],
         "params": [
-          { "id": "detune", "label": "Detune", "min": 0, "max": 50, "default": 8, "unit": "", "exponent": 1.0 },
-          { "id": "blend", "label": "Blend", "min": 0, "max": 100, "default": 50, "unit": "%", "exponent": 1.0 }
+          {
+            "id": "detune",
+            "label": "Detune",
+            "min": 0,
+            "max": 50,
+            "default": 8,
+            "unit": "",
+            "exponent": 1.0
+          },
+          {
+            "id": "blend",
+            "label": "Blend",
+            "min": 0,
+            "max": 100,
+            "default": 50,
+            "unit": "%",
+            "exponent": 1.0
+          }
         ]
       },
       {
@@ -196,9 +436,33 @@
         "blurb": "A low-pass filter on every voice (svf~). Env is how far each note's envelope opens it.",
         "options": [],
         "params": [
-          { "id": "cutoff", "label": "Cutoff", "min": 60, "max": 10000, "default": 2400, "unit": "Hz", "exponent": 3.0 },
-          { "id": "res", "label": "Reso", "min": 0, "max": 100, "default": 20, "unit": "%", "exponent": 1.0 },
-          { "id": "env", "label": "Env", "min": 0, "max": 100, "default": 30, "unit": "%", "exponent": 1.0 }
+          {
+            "id": "cutoff",
+            "label": "Cutoff",
+            "min": 60,
+            "max": 10000,
+            "default": 2400,
+            "unit": "Hz",
+            "exponent": 3.0
+          },
+          {
+            "id": "res",
+            "label": "Reso",
+            "min": 0,
+            "max": 100,
+            "default": 20,
+            "unit": "%",
+            "exponent": 1.0
+          },
+          {
+            "id": "env",
+            "label": "Env",
+            "min": 0,
+            "max": 100,
+            "default": 30,
+            "unit": "%",
+            "exponent": 1.0
+          }
         ]
       },
       {
@@ -207,12 +471,164 @@
         "blurb": "How a note's level moves (adsr~): the time to rise, the time to fall to the held level, that level, and the time to die away after the key is let go.",
         "options": [],
         "params": [
-          { "id": "attack", "label": "Attack", "min": 1, "max": 2000, "default": 5, "unit": "ms", "exponent": 3.0 },
-          { "id": "decay", "label": "Decay", "min": 5, "max": 3000, "default": 250, "unit": "ms", "exponent": 3.0 },
-          { "id": "sustain", "label": "Sustain", "min": 0, "max": 100, "default": 70, "unit": "%", "exponent": 1.0 },
-          { "id": "release", "label": "Release", "min": 5, "max": 5000, "default": 300, "unit": "ms", "exponent": 3.0 }
+          {
+            "id": "attack",
+            "label": "Attack",
+            "min": 1,
+            "max": 2000,
+            "default": 5,
+            "unit": "ms",
+            "exponent": 3.0
+          },
+          {
+            "id": "decay",
+            "label": "Decay",
+            "min": 5,
+            "max": 3000,
+            "default": 250,
+            "unit": "ms",
+            "exponent": 3.0
+          },
+          {
+            "id": "sustain",
+            "label": "Sustain",
+            "min": 0,
+            "max": 100,
+            "default": 70,
+            "unit": "%",
+            "exponent": 1.0
+          },
+          {
+            "id": "release",
+            "label": "Release",
+            "min": 5,
+            "max": 5000,
+            "default": 300,
+            "unit": "ms",
+            "exponent": 3.0
+          }
         ]
       }
     ]
+  },
+  "motion": {
+    "sources": [
+      {
+        "id": "lfo1",
+        "label": "LFO 1",
+        "kind": "lfo",
+        "blurb": "Sweeps up and down at a steady rate.",
+        "options": [
+          {
+            "id": "shape",
+            "label": "Shape",
+            "default": "sine",
+            "choices": [
+              {
+                "id": "sine",
+                "label": "Sine"
+              },
+              {
+                "id": "triangle",
+                "label": "Triangle"
+              },
+              {
+                "id": "square",
+                "label": "Square"
+              },
+              {
+                "id": "saw",
+                "label": "Saw"
+              }
+            ]
+          }
+        ],
+        "params": [
+          {
+            "id": "rate",
+            "label": "Rate",
+            "min": 0.05,
+            "max": 20,
+            "default": 1,
+            "unit": "Hz",
+            "exponent": 3.0
+          }
+        ]
+      },
+      {
+        "id": "lfo2",
+        "label": "LFO 2",
+        "kind": "lfo",
+        "blurb": "A second sweep, for a different speed.",
+        "options": [
+          {
+            "id": "shape",
+            "label": "Shape",
+            "default": "sine",
+            "choices": [
+              {
+                "id": "sine",
+                "label": "Sine"
+              },
+              {
+                "id": "triangle",
+                "label": "Triangle"
+              },
+              {
+                "id": "square",
+                "label": "Square"
+              },
+              {
+                "id": "saw",
+                "label": "Saw"
+              }
+            ]
+          }
+        ],
+        "params": [
+          {
+            "id": "rate",
+            "label": "Rate",
+            "min": 0.05,
+            "max": 20,
+            "default": 6,
+            "unit": "Hz",
+            "exponent": 3.0
+          }
+        ]
+      },
+      {
+        "id": "follow",
+        "label": "Follow",
+        "kind": "follower",
+        "effectOnly": true,
+        "blurb": "Rises with the volume of what is coming in.",
+        "options": [],
+        "params": [
+          {
+            "id": "sens",
+            "label": "Sens",
+            "min": 1,
+            "max": 30,
+            "default": 6,
+            "unit": "x",
+            "exponent": 2.0
+          }
+        ]
+      }
+    ],
+    "knobs": {
+      "id": "knobs",
+      "label": "Knob",
+      "max": 4,
+      "param": {
+        "min": 0,
+        "max": 100,
+        "default": 0,
+        "unit": "%",
+        "exponent": 1.0
+      }
+    },
+    "maxRoutes": 16
   }
 }

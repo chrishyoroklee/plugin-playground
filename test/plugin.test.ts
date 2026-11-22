@@ -13,7 +13,7 @@ import type { IRNode } from '../src/ir/types';
 import type { Msg } from '../src/runtime/atoms';
 import { highlightPython } from '../src/plugin/device-view';
 import {
-  INSTRUMENTS, PRESETS, SCHEMA, decodeSettings, dialIndex, encodeSettings, kindOf, normalize, valuesOf,
+  INSTRUMENTS, PRESETS, SCHEMA, decodeSettings, dialIndex, encodeSettings, kindOf, normalize, toWire, valuesOf,
 } from '../src/plugin/model';
 import '../src/objects/control/poly';
 import { SOUNDS, SOUND_RATE, findSound } from '../src/plugin/sounds';
@@ -202,8 +202,10 @@ describe('settings model', () => {
 
   it('every dial fxgen names maps back to a setting', () => {
     const index = dialIndex();
-    const count = [...SCHEMA.modules, ...SCHEMA.instrument.modules].reduce((n, m) => n + m.params.length, SCHEMA.output.params.length);
+    // the modules' dials, the output's, and the ones motion's sources add (LFO 1 Rate ...)
+    const count = [...SCHEMA.modules, ...SCHEMA.instrument.modules, ...SCHEMA.motion.sources].reduce((n, m) => n + m.params.length, SCHEMA.output.params.length);
     expect(index.size).toBe(count);
+    expect(index.get('lfo_1_rate')).toEqual({ module: 'lfo1', param: 'rate' });
     expect(index.get('filter_cutoff')).toEqual({ module: 'filter', param: 'cutoff' });
     expect(index.get('delay_feedback')).toEqual({ module: 'delay', param: 'feedback' });
     expect(index.get('output_gain')).toEqual({ module: 'output', param: 'gain' });
@@ -341,5 +343,76 @@ describe('poly', () => {
     const { sent, note } = poly(1, 0);
     note(60, 100); note(64, 100);
     expect(sent).toEqual([[1, 60, 100]]);
+  });
+});
+
+describe('motion: what moves the dials', () => {
+  const moving = {
+    chain: [{ module: 'filter', on: true }, { module: 'drive', on: true }],
+    motion: {
+      lfo1: { options: { shape: 'triangle' }, values: { rate: 2 } },
+      knobs: [{ id: 'a', name: 'Wobble!' }, { id: 'b', name: 'wobble' }],
+      knobValues: { a: 30 },
+      routes: [
+        { source: 'lfo1', target: 'filter.cutoff', amount: 30 },
+        { source: 'a', target: 'filter.cutoff', amount: 50 },
+        { source: 'follow', target: 'drive.amount', amount: 60 },
+        { source: 'lfo9', target: 'filter.cutoff', amount: 10 },
+        { source: 'lfo1', target: 'crush.bits', amount: 10 },
+        { source: 'lfo1', target: 'filter.cutoff', amount: 99 },
+        { source: 'lfo2', target: 'filter.res', amount: 900 },
+      ],
+    },
+  };
+
+  it('a device with none has the settings it always had', () => {
+    expect(normalize({ chain: [{ module: 'filter', on: true }] }).motion).toBeUndefined();
+    expect(normalize({ motion: { routes: [] } }).motion).toBeUndefined();
+  });
+
+  it('is bounded the way fxgen.py bounds it', () => {
+    // the same input and the same answers as test_motion_is_bounded_like_everything_else in tests/test_fxgen.py
+    const m = normalize(moving).motion!;
+    expect(m.routes).toEqual([
+      { source: 'lfo1', target: 'filter.cutoff', amount: 30 },
+      { source: 'k1', target: 'filter.cutoff', amount: 50 },
+      { source: 'follow', target: 'drive.amount', amount: 60 },
+      { source: 'lfo2', target: 'filter.res', amount: 100 },
+    ]);
+    expect(m.knobs).toEqual([{ id: 'k1', name: 'Wobble' }, { id: 'k2', name: 'wobble 2' }]);
+    expect(m.knobValues).toEqual({ k1: 30, k2: 0 });
+    expect(m.sources.lfo1.options.shape).toBe('triangle');
+    expect(m.sources.lfo2.values.rate).toBe(6);
+  });
+
+  it('an instrument has no input to follow', () => {
+    const m = normalize({ kind: 'instrument', motion: { routes: [
+      { source: 'follow', target: 'tone.cutoff', amount: 40 }, { source: 'lfo1', target: 'tone.cutoff', amount: 40 }] } }).motion!;
+    expect(m.routes.map((r) => r.source)).toEqual(['lfo1']);
+  });
+
+  it('goes to Python worded its way, and comes back the same', () => {
+    const s = normalize(moving);
+    const wire = toWire(s) as { motion: Record<string, unknown> };
+    expect(wire.motion.lfo1).toEqual(s.motion!.sources.lfo1);
+    expect(wire.motion.sources).toBeUndefined();
+    expect(normalize(wire)).toEqual(s);
+    expect(toWire(normalize({}))).toEqual(normalize({}));
+  });
+
+  it('survives a shared link, and its dials map back to its settings', () => {
+    const s = normalize(moving);
+    expect(decodeSettings(encodeSettings(s))).toEqual(s);
+    const index = dialIndex(s.motion);
+    expect(index.get('knobs_wobble')).toEqual({ module: 'knobs', param: 'k1' });
+    expect(index.get('follow_sens')).toEqual({ module: 'follow', param: 'sens' });
+    expect(valuesOf(s, 'knobs')).toBe(s.motion!.knobValues);
+    expect(valuesOf(s, 'lfo1')).toBe(s.motion!.sources.lfo1.values);
+  });
+
+  it('every preset under Motion moves something', () => {
+    const presets = PRESETS.filter((p) => p.group === 'Motion');
+    expect(presets.length).toBeGreaterThanOrEqual(4);
+    for (const p of presets) expect(normalize(p.settings).motion!.routes.length).toBeGreaterThan(0);
   });
 });

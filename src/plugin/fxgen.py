@@ -126,6 +126,9 @@ def normalize(settings):
     output = {p["id"]: _clamp_param(p, out_values.get(p["id"], p["default"])) for p in sch["output"]["params"]}
 
     out = {"name": name, "accent": accent.lower(), "chain": chain, "output": output}
+    motion = _normalize_motion(settings.get("motion"), kind)
+    if motion:
+        out["motion"] = motion
     if kind == "instrument":
         # The synth's three sections are always there, in a fixed order.
         given = settings.get("instrument") if isinstance(settings.get("instrument"), dict) else {}
@@ -147,6 +150,75 @@ def _normalize_entry(mod, entry):
         opts[opt["id"]] = options.get(opt["id"]) if options.get(opt["id"]) in ids else opt["default"]
     vals = {p["id"]: _clamp_param(p, values.get(p["id"], p["default"])) for p in mod["params"]}
     return {"module": mod["id"], "on": bool(entry.get("on", True)), "options": opts, "values": vals}
+
+
+KNOB_NAME_OK = re.compile(r"[^A-Za-z0-9 ]")
+
+
+def motion_targets(kind="effect"):
+    """Every dial something can move, as "module.dial" -> (module, dial). Whole-number dials are left out."""
+    sch = schema()
+    mods = list(sch["modules"]) + [sch["output"]] + (sch["instrument"]["modules"] if kind == "instrument" else [])
+    return {"%s.%s" % (m["id"], p["id"]): (m, p) for m in mods for p in m["params"] if not p.get("integer")}
+
+
+def _normalize_motion(given, kind):
+    """
+    The part of the settings that makes dials move by themselves: the sources (two LFOs,
+    a follower of the incoming volume, and knobs the user adds and names), and the routes
+    from a source to a dial. Returns None when nothing is routed and no knob exists, so a
+    device without any of this has exactly the settings it had before there was such a thing.
+    """
+    spec = schema().get("motion")
+    if not spec or not isinstance(given, dict):
+        return None
+    out = {}
+    for source in spec["sources"]:
+        entry = given.get(source["id"]) if isinstance(given.get(source["id"]), dict) else {}
+        entry = _normalize_entry(source, entry)
+        out[source["id"]] = {"options": entry["options"], "values": entry["values"]}
+
+    knobs, values, taken = [], {}, set()
+    given_values = given.get("knobValues") if isinstance(given.get("knobValues"), dict) else {}
+    for index, knob in enumerate(given.get("knobs") if isinstance(given.get("knobs"), list) else []):
+        if len(knobs) >= spec["knobs"]["max"] or not isinstance(knob, dict):
+            continue
+        knob_id = "k%d" % (len(knobs) + 1)
+        # A knob's name becomes a dial's name and a variable in the script, so it is kept to
+        # letters, digits and spaces, and no two knobs may share one.
+        name = KNOB_NAME_OK.sub("", str(knob.get("name") or "")).strip()[:10] or "Knob %d" % (len(knobs) + 1)
+        while name.lower() in taken:
+            name = (name[:8] + " %d" % (len(knobs) + 1)).strip()
+        taken.add(name.lower())
+        knobs.append({"id": knob_id, "name": name, "was": str(knob.get("id") or knob_id)})
+        values[knob_id] = _clamp_param(dict(spec["knobs"]["param"]), given_values.get(str(knob.get("id") or knob_id), 0))
+    renamed = {k.pop("was"): k["id"] for k in knobs}
+
+    targets = motion_targets(kind)
+    sources = {src["id"] for src in spec["sources"] if not (src.get("effectOnly") and kind == "instrument")}
+    sources |= {k["id"] for k in knobs}
+    routes, seen = [], set()
+    for route in given.get("routes") if isinstance(given.get("routes"), list) else []:
+        if not isinstance(route, dict) or len(routes) >= spec["maxRoutes"]:
+            continue
+        source = renamed.get(str(route.get("source")), str(route.get("source")))
+        target = str(route.get("target"))
+        try:
+            amount = float(route.get("amount", 0))
+        except (TypeError, ValueError):
+            continue
+        amount = max(-100.0, min(100.0, amount))
+        if source not in sources or target not in targets or (source, target) in seen or amount != amount or amount == 0:
+            continue
+        seen.add((source, target))
+        routes.append({"source": source, "target": target, "amount": amount})
+
+    if not routes and not knobs:
+        return None
+    out["knobs"] = knobs
+    out["knobValues"] = values
+    out["routes"] = routes
+    return out
 
 
 def filename(settings):
@@ -335,6 +407,9 @@ class Device:
         self.math_rows = 0
         self.card_x = BRAND_W + CARD_GAP
         self.park_y = 30
+        self.mod_rows = 0
+        self.sources = {}   # motion source id -> the outlet carrying its signal
+        self.routes = {}    # "module.dial" -> [(source id, amount), ...]
 
     # presentation -----------------------------------------------------------------
 
@@ -370,10 +445,55 @@ class Device:
         """
         self.math_rows = math_rows
         first_x = self.open_card(mod)
-        return {p["id"]: self.dial(mod, p, i, first_x, values[p["id"]]) for i, p in enumerate(mod["params"])}
+        moved = [p for p in mod["params"] if self.routes.get("%s.%s" % (mod["id"], p["id"]))]
+        self.mod_rows = MOTION_ROWS if moved else 0
+        out = {}
+        for i, p in enumerate(mod["params"]):
+            out[p["id"]] = self.dial(mod, p, i, first_x, values[p["id"]])
+            if p in moved:
+                out[p["id"]] = self.moved(mod, p, i, out[p["id"]], values[p["id"]])
+        return out
+
+    def moved(self, mod, param, index, dial, value):
+        """
+        A dial that something moves. What reaches the module is no longer the dial's own
+        number but this, worked out under the dial:
+
+            where the dial stands (0 to 1) + each source * its amount, kept between 0 and 1,
+            read off every few milliseconds, and put back through the dial's curve and range
+
+        It is added up as signals, so an LFO, the follower and a knob can all push the same
+        dial, and it is added to the dial's position, not its value, so a sweep of a
+        frequency sounds even the way turning the knob does. Returns the name of the last
+        object, which stands in for the dial: its left outlet carries the moved value.
+        """
+        s = self.s
+        key = "%s_%s" % (mod["id"], param["id"])
+        x = XC + index * DX
+        row = lambda k: self.y + ROW + DIAL_ROW + k * ROW
+        lo, hi, exponent = float(param["min"]), float(param["max"]), float(param.get("exponent", 1.0))
+        position = (max(0.0, min(1.0, (value - lo) / (hi - lo))) if hi != lo else 0.0) ** (1.0 / exponent)
+        s.place(key + "_pos", "sig~ %s" % fnum(position), x, row(0))
+        s.place(key + "_sum", "clip~ 0. 1.", x, row(2))
+        s.place(key + "_tick", "snapshot~ %d" % MOTION_MS, x, row(3))
+        s.wire(dial + ".outs[1]", key + "_pos.ins[0]")   # a live.dial's right outlet: its position, 0 to 1
+        s.wire(key + "_pos.outs[0]", key + "_sum.ins[0]")
+        for j, (source, amount) in enumerate(self.routes["%s.%s" % (mod["id"], param["id"])]):
+            by = s.place("%s_by%d" % (key, j + 1), "*~ %s" % fnum(amount / 100.0), x + 48 + j * 62, row(1))
+            s.wire(self.sources[source], by + ".ins[0]")
+            s.wire(by + ".outs[0]", key + "_sum.ins[0]")
+        s.wire(key + "_sum.outs[0]", key + "_tick.ins[0]")
+        last = key + "_tick"
+        if exponent != 1.0:
+            s.place(key + "_curve", "pow %s" % fnum(exponent), x, row(4))
+            s.wire(last + ".outs[0]", key + "_curve.ins[0]")
+            last = key + "_curve"
+        s.place(key + "_mod", "scale 0. 1. %s %s" % (fnum(lo), fnum(hi)), x, row(5))
+        s.wire(last + ".outs[0]", key + "_mod.ins[0]")
+        return key + "_mod"
 
     def ctl(self, k):
-        return self.y + ROW + DIAL_ROW + k * ROW
+        return self.y + ROW + DIAL_ROW + self.mod_rows * ROW + k * ROW
 
     def sig(self, k):
         return self.ctl(self.math_rows) + k * ROW
@@ -434,6 +554,93 @@ class Device:
             s.wire("%s.outs[0]" % w, "%s.ins[1]" % a)
             out[ch] = "%s.outs[0]" % a
         return out, row + 2
+
+
+# ── motion: what moves the dials ────────────────────────────────────────────────
+
+MOTION_ROWS = 6   # the rows Device.moved() takes under a dial
+MOTION_MS = 5     # how often a moved dial's value is read off and sent on
+LFO_SHAPES = {"sine": "cycle~", "triangle": "tri~", "square": "rect~", "saw": "saw~"}
+FOLLOW_SMOOTH = 12.0   # Hz: how quickly the follower lets go of a peak
+
+
+def motion_plan(st):
+    """
+    What of the settings' motion is in use: (routes by target, ids of the sources they
+    need). A route to a dial of a module that is switched off moves nothing and is left out.
+    """
+    motion = st.get("motion") or {}
+    instrument = st.get("kind") == "instrument"
+    live = {e["module"] for e in st["chain"] if e["on"]} | {schema()["output"]["id"]}
+    if instrument:
+        live |= set(st["instrument"])
+    routes, used = {}, []
+    for route in motion.get("routes", []):
+        if route["target"].split(".")[0] not in live:
+            continue
+        routes.setdefault(route["target"], []).append((route["source"], route["amount"]))
+        if route["source"] not in used:
+            used.append(route["source"])
+    return routes, used
+
+
+def m_motion(dev, st, used, incoming):
+    """
+    The sources in use, each ending in a signal that Device.moved() adds to a dial's
+    position. An LFO swings between -1 and 1. The follower and a knob run from 0 to 1.
+    Sets dev.sources. `incoming` is the device's input, for the follower.
+    """
+    s = dev.s
+    motion = st["motion"]
+    spec = schema()["motion"]
+    for source in spec["sources"]:
+        sid = source["id"]
+        if sid not in used:
+            continue
+        dev.header(source["label"])
+        d = dev.dials(source, motion[sid]["values"], math_rows=0)
+        if source["kind"] == "lfo":
+            osc = LFO_SHAPES[motion[sid]["options"]["shape"]]
+            s.place(sid + "_osc", "%s %s" % (osc, fnum(motion[sid]["values"]["rate"])), XC, dev.sig(0))
+            s.wire(d["rate"] + ".outs[0]", sid + "_osc.ins[0]")
+            dev.sources[sid] = sid + "_osc.outs[0]"
+            rows = 1
+        else:
+            # How loud the input is: both channels, the sign taken off, smoothed, scaled up
+            # by the Sens dial and stopped at 1.
+            s.place(sid + "_in", "*~ 0.5", X["L"], dev.sig(0))
+            s.place(sid + "_abs", "abs~", X["L"], dev.sig(1))
+            s.place(sid + "_smooth", "onepole~ %s" % fnum(FOLLOW_SMOOTH), X["L"], dev.sig(2))
+            s.place(sid + "_gain", "*~ %s" % fnum(motion[sid]["values"]["sens"]), X["L"], dev.sig(3))
+            s.place(sid + "_top", "clip~ 0. 1.", X["L"], dev.sig(4))
+            for ch in ("L", "R"):
+                s.wire(incoming[ch], sid + "_in.ins[0]")
+            s.wire(sid + "_in.outs[0]", sid + "_abs.ins[0]")
+            s.wire(sid + "_abs.outs[0]", sid + "_smooth.ins[0]")
+            s.wire(sid + "_smooth.outs[0]", sid + "_gain.ins[0]")
+            s.wire(d["sens"] + ".outs[0]", sid + "_gain.ins[1]")
+            s.wire(sid + "_gain.outs[0]", sid + "_top.ins[0]")
+            dev.sources[sid] = sid + "_top.outs[0]"
+            rows = 5
+        s.flush()
+        dev.y += dev.end(rows)
+
+    knobs = [k for k in motion["knobs"] if k["id"] in used]
+    if knobs:
+        # The user's own knobs, on one card: each is a dial from 0 to 100 %, as a signal from 0 to 1.
+        spec_knob = spec["knobs"]
+        mod = {"id": spec_knob["id"], "label": spec_knob["label"] + "s",
+               "params": [dict(spec_knob["param"], id=k["id"], label=k["name"]) for k in knobs]}
+        dev.header("knobs")
+        d = dev.dials(mod, motion["knobValues"], math_rows=1)
+        for i, k in enumerate(knobs):
+            s.place(k["id"] + "_unit", "* 0.01", XC + i * DX, dev.ctl(0))
+            s.place(k["id"] + "_sig", "sig~ %s" % fnum(motion["knobValues"][k["id"]] / 100.0), XC + i * DX, dev.sig(0))
+            s.wire(d[k["id"]] + ".outs[0]", k["id"] + "_unit.ins[0]")
+            s.wire(k["id"] + "_unit.outs[0]", k["id"] + "_sig.ins[0]")
+            dev.sources[k["id"]] = k["id"] + "_sig.outs[0]"
+        s.flush()
+        dev.y += dev.end(1)
 
 
 # Each module takes the device, the incoming signal per channel, its options and values,
@@ -844,6 +1051,7 @@ def m_synth(dev, inst):
     # Notes in, one voice each.
     dev.header("voices")
     dev.math_rows = 0
+    dev.mod_rows = 0
     s.place("note_in", "notein", X["L"], dev.sig(0))
     s.place("note_poly", "poly %d 1" % voices, X["L"], dev.sig(1))
     s.place("note_pack", "pack 0 0 0", X["L"], dev.sig(2))
@@ -957,9 +1165,13 @@ def script(settings):
     dev.park_y += 30
 
     # where the sound comes from: the track (an effect) or the synth's voices (an instrument)
+    routes, used = motion_plan(st)
     if instrument:
         for line in brand:
             s.emit(line)
+        if used:
+            m_motion(dev, st, used, None)
+            dev.routes = routes
         sig = m_synth(dev, st["instrument"])
     else:
         dev.header("input")
@@ -967,7 +1179,11 @@ def script(settings):
         for line in brand:
             s.emit(line)
         sig = {"L": "plug_in.outs[0]", "R": "plug_in.outs[1]"}
+        s.flush()
         dev.y += 2 * ROW + GAP
+        if used:
+            m_motion(dev, st, used, sig)
+            dev.routes = routes
 
     for entry in active:
         mod = _module(entry["module"])

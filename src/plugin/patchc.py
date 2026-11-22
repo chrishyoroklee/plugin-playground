@@ -339,6 +339,64 @@ class Clip(Expr):
         self.expr = "mxrt::clip(%s, %s, %s)" % (self.input(0), lo, hi)
 
 
+class Abs(Expr):
+    prefix = "abs"
+
+    def setup(self):
+        self.expr = "std::fabs(%s)" % self.input(0)
+
+
+class Sig(Expr):
+    """sig~: a number as a signal. A number in the left inlet replaces it."""
+    prefix = "sig"
+
+    def setup(self):
+        self.expr = self.operand(0, "v", self.box.num(0, 0))
+
+
+class Snapshot(Signal):
+    """
+    snapshot~ N: every N milliseconds, the signal's value as a number down a control cord.
+
+    It is the one way from the signal side of a patch back to the control side, and what
+    lets a signal move a dial's value. In the compiled effect it is a countdown in the
+    sample loop: when it reaches zero, the statements a number leaving this box would run
+    (`fired`, which the compiler fills in by following the cords) run with this sample.
+    """
+    prefix = "snapshot"
+    outlets = 0   # nothing leaves it as a signal
+
+    def __init__(self, box):
+        super().__init__(box)
+        self.fired = []
+        self.sample = "s_%s" % box.ident
+        self.count = self.member + "count"
+        self.period = self.member + "period"
+
+    def setup(self):
+        ms = self.box.num(0, 0)
+        if not ms > 0:
+            raise CompileError("%s needs its interval as an argument: patchc models the one that reports by itself" % self.box)
+        self.members.append("double %s = 1.0;  // %s" % (self.period, self.box.text))
+        self.members.append("double %s = 0.0;  // %s" % (self.count, self.box.text))
+        # the interval in whole samples, at least one
+        self.prepare.append("%s = std::max(1.0, std::floor(%s * sr_ / 1000.0));" % (self.period, lit(ms)))
+        self.prepare.append("%s = 0.0;" % self.count)
+        self.reset.append("%s = 0.0;" % self.count)
+
+    def inner(self):
+        """What runs when the countdown reaches zero."""
+        return ["const double %s = %s;" % (self.sample, self.input(0))] + self.fired
+
+    def tick(self):
+        return (["if (%s <= 0.0) {" % self.count, "    %s = %s;" % (self.count, self.period)]
+                + ["    " + line for line in self.inner()]
+                + ["}", "%s -= 1.0;" % self.count])
+
+    def out(self, outlet):
+        raise CompileError("%s: what leaves a snapshot~ is a number, not a signal" % self.box)
+
+
 class Tanh(Expr):
     prefix = "tanh"
 
@@ -608,6 +666,9 @@ SIGNAL = {
     "*~": Times,
     "+~": Plus,
     "clip~": Clip,
+    "abs~": Abs,
+    "sig~": Sig,
+    "snapshot~": Snapshot,
     "tanh~": Tanh,
     "pong~": Pong,
     "overdrive~": Overdrive,
@@ -703,6 +764,10 @@ class Compiler:
         self.updates = [self.walk([(p.box, 0, Num("v")),
                                    (p.box, 1, Num("mxrt::valueToPosition(kParams[%d], v)" % p.index))])
                         for p in self.params]
+        # what a number leaving each snapshot~ does, for the countdown in the sample loop to run
+        for node in self.signals.values():
+            if isinstance(node, Snapshot):
+                node.fired = self.walk([(node.box, 0, Num(node.sample))])
         # unpack sends its right outlet first, so a voice hears the velocity, then the pitch
         self.voice_code = [self.walk([(box, 1, self.unpacked(box, 1, "velocity")),
                                       (box, 0, self.unpacked(box, 0, "pitch"))]) if box else []
@@ -817,6 +882,8 @@ class Compiler:
             node = self.signals.get(src.id)
             if node is None:
                 continue   # a control cord; walk() follows those from the dials
+            if isinstance(node, Snapshot):
+                continue   # what leaves a snapshot~ is a number; walk() follows it from there
             to = self.signals.get(dst.id)
             if to is None:
                 raise CompileError("a signal from %s goes into %s, which is not a signal object" % (src, dst))
@@ -1231,9 +1298,13 @@ def compile_patch(patch, name=None):
 # section parses a small part of C++: the part patchc itself writes.
 
 PROGRAM_FORMAT = 1
-# The oldest runtime that can run what this file writes. Raise it when an instruction,
-# a kernel or a function is added that an installed runtime would not know.
-PROGRAM_RUNTIME = 1
+# The newest runtime this file writes for. A device asks for the oldest runtime that can
+# run it, which is 1 unless it uses something a later one added (NEEDS, below), so a
+# device with none of that still loads in a runtime installed before it existed. When an
+# instruction, a kernel or a function is added: raise this, and list what was added.
+PROGRAM_RUNTIME = 2
+# Runtime 2: `every` (snapshot~), and the functions abs, max and floor.
+NEEDS = {"every": 2, "f abs": 2, "f max": 2, "f floor": 2}
 
 # Registers every program has, by number.
 FIXED_REGISTERS = ["sr_", "v", "pitch", "velocity", "in_l", "in_r", "out_l", "out_r"]
@@ -1270,7 +1341,8 @@ class Program:
 
     FUNCTIONS = {"mxrt::clip": "clip", "mxrt::pong": "pong", "mxrt::overdrive": "overdrive", "mxrt::scale": "scale",
                  "mxrt::toInt": "toInt", "mxrt::mtof": "mtof", "mxrt::dbtoa": "dbtoa", "std::pow": "pow",
-                 "std::tanh": "tanh", "std::sqrt": "sqrt", "std::sin": "sin", "std::cos": "cos"}
+                 "std::tanh": "tanh", "std::sqrt": "sqrt", "std::sin": "sin", "std::cos": "cos",
+                 "std::fabs": "abs", "std::max": "max", "std::floor": "floor"}
 
     def __init__(self, compiler):
         self.c = compiler
@@ -1475,13 +1547,27 @@ class Program:
         # After the dials have been applied: a ramp starts at its dial's value, not on the way to it.
         body += self.section("settle", ["%s.reset();" % n.member for n in nodes if isinstance(n, Line)])
         body += self.section("reset", [line for n in nodes for line in n.reset])
-        body += self.section("process", [line for n in nodes for line in n.tick()])
+        # The sample loop. A snapshot~ is one instruction there, `every`, which counts down
+        # and runs a section of its own (what leaves the box) when it gets to zero.
+        every = []
+        self.code = []
+        for n in nodes:
+            if isinstance(n, Snapshot):
+                self.code.append("every %d %d %d" % (len(every), self.register(n.count), self.register(n.period)))
+                every.append(n)
+            else:
+                for line in n.tick():
+                    self.statement(line)
+        body += ["@process"] + self.code
+        for index, n in enumerate(every):
+            body += self.section("every %d" % index, n.inner())
         for p, lines in zip(c.params, c.updates):
             body += self.section("update %d" % p.index, lines)
         for number, lines in enumerate(c.voice_code, start=1):
             body += self.section("voice %d" % number, lines)
 
-        out = ["ppdevice %d" % PROGRAM_FORMAT, "runtime %d" % PROGRAM_RUNTIME,
+        needs = max([1] + [NEEDS.get(" ".join(line.split()[:2 if line.startswith("f ") else 1]), 1) for line in body])
+        out = ["ppdevice %d" % PROGRAM_FORMAT, "runtime %d" % needs,
                "name %s" % _quote(name), "slug %s" % slug(name),
                "kind %s" % ("instrument" if c.instrument else "effect"),
                "tail %d" % (1 if any(n.stateful for n in nodes) else 0)]

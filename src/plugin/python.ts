@@ -7,7 +7,7 @@
 import fxgenSource from './fxgen.py?raw';
 import patchcSource from './patchc.py?raw';
 import schemaSource from './schema.json?raw';
-import type { Settings } from './model';
+import { normalize, toWire, type Settings } from './model';
 
 const PYODIDE_CDN = 'https://cdn.jsdelivr.net/pyodide/v314.0.3/full/';
 const WHEEL_PATH = 'py/maxpylang-0.1.1-py3-none-any.whl';
@@ -81,8 +81,11 @@ export class PyRuntime {
   /** Generate the device for `settings`. `wantAmxd` also returns the .amxd bytes. */
   async run(settings: Settings, wantAmxd = false): Promise<RunResult> {
     await this.ready;
-    const json = await this.send({ type: 'call', module: 'fxgen', fn: 'run_json', args: [JSON.stringify(settings), wantAmxd] });
-    return JSON.parse(json) as RunResult;
+    const json = await this.send({ type: 'call', module: 'fxgen', fn: 'run_json', args: [JSON.stringify(toWire(settings)), wantAmxd] });
+    const result = JSON.parse(json) as RunResult;
+    // Python's word on the settings is final, but it words motion its own way.
+    result.settings = normalize(result.settings);
+    return result;
   }
   /**
    * The device as a file for the runtime plugin (a .ppdevice): the same patch, compiled
@@ -90,7 +93,7 @@ export class PyRuntime {
    */
   async device(settings: Settings): Promise<string> {
     await this.ready;
-    return this.send({ type: 'call', module: 'patchc', fn: 'device_for', args: [JSON.stringify(settings)] });
+    return this.send({ type: 'call', module: 'patchc', fn: 'device_for', args: [JSON.stringify(toWire(settings))] });
   }
 }
 

@@ -996,6 +996,244 @@
   }
  },
  {
+  "id": "autowah",
+  "name": "Auto Wah",
+  "tag": "A filter that opens the harder you play",
+  "group": "Motion",
+  "sample": "guitar",
+  "settings": {
+   "name": "Auto Wah",
+   "accent": "#2e7d5b",
+   "chain": [
+    {
+     "module": "filter",
+     "on": true,
+     "options": {
+      "mode": "bandpass"
+     },
+     "values": {
+      "cutoff": 350,
+      "res": 62
+     }
+    }
+   ],
+   "output": {
+    "gain": 6
+   },
+   "motion": {
+    "follow": {
+     "values": {
+      "sens": 9
+     }
+    },
+    "routes": [
+     {
+      "source": "follow",
+      "target": "filter.cutoff",
+      "amount": 55
+     }
+    ]
+   }
+  }
+ },
+ {
+  "id": "wobble",
+  "name": "Wobble",
+  "tag": "An LFO sweeping a low-pass, with a knob for how far",
+  "group": "Motion",
+  "sample": "drums",
+  "settings": {
+   "name": "Wobble",
+   "accent": "#6a4bc4",
+   "chain": [
+    {
+     "module": "filter",
+     "on": true,
+     "options": {
+      "mode": "lowpass"
+     },
+     "values": {
+      "cutoff": 500,
+      "res": 45
+     }
+    },
+    {
+     "module": "drive",
+     "on": true,
+     "options": {
+      "character": "tube"
+     },
+     "values": {
+      "amount": 2.5,
+      "tone": 8000
+     }
+    }
+   ],
+   "output": {
+    "gain": 0
+   },
+   "motion": {
+    "lfo1": {
+     "options": {
+      "shape": "triangle"
+     },
+     "values": {
+      "rate": 3
+     }
+    },
+    "knobs": [
+     {
+      "id": "k1",
+      "name": "Open"
+     }
+    ],
+    "knobValues": {
+     "k1": 20
+    },
+    "routes": [
+     {
+      "source": "lfo1",
+      "target": "filter.cutoff",
+      "amount": 22
+     },
+     {
+      "source": "k1",
+      "target": "filter.cutoff",
+      "amount": 45
+     }
+    ]
+   }
+  }
+ },
+ {
+  "id": "tapedrift",
+  "name": "Tape Drift",
+  "tag": "Two slow LFOs nudging the delay and the tone",
+  "group": "Motion",
+  "sample": "piano",
+  "settings": {
+   "name": "Tape Drift",
+   "accent": "#b3541e",
+   "chain": [
+    {
+     "module": "drive",
+     "on": true,
+     "options": {
+      "character": "tube"
+     },
+     "values": {
+      "amount": 1.8,
+      "tone": 5200
+     }
+    },
+    {
+     "module": "delay",
+     "on": true,
+     "options": {
+      "style": "stereo"
+     },
+     "values": {
+      "time": 310,
+      "feedback": 38,
+      "mix": 30
+     }
+    }
+   ],
+   "output": {
+    "gain": 0
+   },
+   "motion": {
+    "lfo1": {
+     "options": {
+      "shape": "sine"
+     },
+     "values": {
+      "rate": 0.3
+     }
+    },
+    "lfo2": {
+     "options": {
+      "shape": "sine"
+     },
+     "values": {
+      "rate": 0.9
+     }
+    },
+    "routes": [
+     {
+      "source": "lfo1",
+      "target": "delay.time",
+      "amount": 3
+     },
+     {
+      "source": "lfo2",
+      "target": "drive.tone",
+      "amount": 12
+     }
+    ]
+   }
+  }
+ },
+ {
+  "id": "chop",
+  "name": "Chop",
+  "tag": "A square LFO switching the level, with a knob for the speed of the echo",
+  "group": "Motion",
+  "sample": "vocals",
+  "settings": {
+   "name": "Chop",
+   "accent": "#c2457f",
+   "chain": [
+    {
+     "module": "delay",
+     "on": true,
+     "options": {
+      "style": "pingpong"
+     },
+     "values": {
+      "time": 180,
+      "feedback": 30,
+      "mix": 22
+     }
+    }
+   ],
+   "output": {
+    "gain": -3
+   },
+   "motion": {
+    "lfo1": {
+     "options": {
+      "shape": "square"
+     },
+     "values": {
+      "rate": 5
+     }
+    },
+    "knobs": [
+     {
+      "id": "k1",
+      "name": "Space"
+     }
+    ],
+    "knobValues": {
+     "k1": 0
+    },
+    "routes": [
+     {
+      "source": "lfo1",
+      "target": "output.gain",
+      "amount": -28
+     },
+     {
+      "source": "k1",
+      "target": "delay.mix",
+      "amount": 60
+     }
+    ]
+   }
+  }
+ },
+ {
   "id": "init",
   "name": "Clean Slate",
   "tag": "Nothing switched on. Build your own from here.",

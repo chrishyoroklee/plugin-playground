@@ -198,3 +198,84 @@ def test_a_device_the_runtime_cannot_run_is_refused_with_a_reason(both, tmp_path
     done = subprocess.run([str(both["runtime"]), "--device", str(bad), "--params"], capture_output=True, text=True)
     assert done.returncode != 0
     assert says in done.stderr, done.stderr
+
+
+# ── motion: a dial moved by an LFO, by the input's volume, or by a knob ──────────
+#
+# The presets filed under Motion are among EVERYTHING above, so the runtime is already
+# held to the compiled plugin for them. These hold the motion itself to what it should do.
+
+def _rendered(both, settings, tag, **how):
+    made = plugin.generate(settings, both["work"] / tag)
+    out = both["work"] / (tag + ".wav")
+    plugin.render(plugin.build_renderer(made["dir"]), both["signal"], out, as_float=True, **how)
+    return _samples(out).reshape(-1, 2), made
+
+
+def _level(x, start, end, rate=44100):
+    import numpy as np
+    return float(np.sqrt((x[int(start * rate):int(end * rate)] ** 2).mean()))
+
+
+@needs_compiler
+def test_an_lfo_on_the_output_gain_makes_the_level_rise_and_fall_at_its_rate(both):
+    import numpy as np
+    plain, _ = _rendered(both, {"name": "Plain", "chain": []}, "motion-plain")
+    moved, _ = _rendered(both, {"name": "Tremble", "chain": [], "motion": {
+        "lfo1": {"options": {"shape": "sine"}, "values": {"rate": 4}},
+        "routes": [{"source": "lfo1", "target": "output.gain", "amount": 30}]}}, "motion-lfo")
+    # the level in 10 ms steps, relative to the same signal with nothing moving
+    step = 441
+    frames = min(len(plain), len(moved)) // step
+    ratio = []
+    for k in range(frames):
+        a, b = plain[k * step:(k + 1) * step, 0], moved[k * step:(k + 1) * step, 0]
+        if np.abs(a).max() > 0.05:
+            ratio.append((k, np.sqrt((b ** 2).mean()) / np.sqrt((a ** 2).mean())))
+    values = np.array([r for _, r in ratio])
+    # +-30 % of a 36 dB dial is +-10.8 dB: the level swings by about that either way
+    assert values.max() > 2.5 and values.min() < 0.4
+    # and it comes round four times a second: neighbouring 250 ms stretches look alike
+    by_step = dict(ratio)
+    pairs = [(by_step[k], by_step[k + 25]) for k in by_step if k + 25 in by_step]
+    assert len(pairs) > 20 and np.median([abs(np.log(a / b)) for a, b in pairs]) < 0.15
+
+
+@needs_compiler
+def test_a_knob_turns_the_dial_it_is_routed_to(both):
+    """A knob at 100 % with an amount of 50 moves a linear dial half its travel: the same as setting it there."""
+    import numpy as np
+    chain = [{"module": "delay", "on": True, "values": {"time": 200, "feedback": 30, "mix": 20}}]
+    knob = {"name": "Knobbed", "chain": chain, "motion": {
+        "knobs": [{"id": "k1", "name": "More"}], "knobValues": {"k1": 100},
+        "routes": [{"source": "k1", "target": "delay.mix", "amount": 50}]}}
+    by_knob, made = _rendered(both, knob, "motion-knob")
+    chain_set = [{"module": "delay", "on": True, "values": {"time": 200, "feedback": 30, "mix": 70}}]
+    by_hand, _ = _rendered(both, {"name": "Set", "chain": chain_set}, "motion-set")
+    # the knob's reading reaches the dial 5 ms in; after that the two are the same device
+    assert np.abs(by_knob[4410:] - by_hand[4410:]).max() < 1e-4
+    # and the knob at rest leaves the dial where it is
+    index = [l.split()[-1] for l in made["device"].read_text().splitlines() if l.startswith("param ")].index("More")
+    at_rest, _ = _rendered(both, knob, "motion-knob", values={index: 0})
+    resting, _ = _rendered(both, {"name": "Rest", "chain": chain}, "motion-rest")
+    assert np.abs(at_rest[4410:] - resting[4410:]).max() < 1e-4
+
+
+@needs_compiler
+def test_the_follower_opens_the_filter_when_the_input_is_loud(both):
+    import numpy as np
+    closed = {"name": "Closed", "chain": [{"module": "filter", "on": True, "options": {"mode": "lowpass"}, "values": {"cutoff": 150, "res": 0}}]}
+    follow = dict(closed, name="Follows", motion={"follow": {"values": {"sens": 20}},
+                                                    "routes": [{"source": "follow", "target": "filter.cutoff", "amount": 80}]})
+    shut, _ = _rendered(both, closed, "motion-closed")
+    opened, _ = _rendered(both, follow, "motion-follow")
+    # with the filter held at 150 Hz most of the signal is gone; following the volume lets it through
+    # (the test signal is mostly low notes, so even the shut filter passes a good deal of it)
+    assert _level(opened, 0, len(opened) / 44100) > 1.5 * _level(shut, 0, len(shut) / 44100)
+
+
+def test_a_device_with_motion_asks_for_the_runtime_that_has_it():
+    plain = _program("tube").splitlines()
+    moving = _program("autowah").splitlines()
+    assert "runtime 1" in plain and "runtime 2" in moving
+    assert sum(l.startswith("every ") for l in moving) == sum(l.startswith("@every ") for l in moving) == 1

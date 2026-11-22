@@ -91,7 +91,7 @@ def test_presets_are_filed_under_the_effect_they_are():
     sections = {}
     for p in PRESETS:
         sections.setdefault(p["group"], []).append(p)
-    assert list(sections) == ["Distortion", "Lo-Fi", "Filter", "Chorus", "Tremolo", "Delay", "Reverb", "Start"]
+    assert list(sections) == ["Distortion", "Lo-Fi", "Filter", "Chorus", "Tremolo", "Delay", "Reverb", "Motion", "Start"]
     by_label = {m["label"]: m["id"] for m in SCHEMA["modules"]}
     for name, presets in sections.items():
         if name == "Start":
@@ -317,3 +317,71 @@ def test_instrument_settings_are_bounded_like_any_other():
     assert st["instrument"]["osc"]["options"] == {"wave": "saw", "second": "unison", "voices": "6"}
     assert st["instrument"]["osc"]["values"]["detune"] == 50
     assert "instrument" not in fxgen.normalize({}) and "kind" not in fxgen.normalize({})
+
+
+# ── motion: what moves the dials ────────────────────────────────────────────────
+
+MOVING = {
+    "name": "Moving",
+    "chain": [{"module": "filter", "on": True}, {"module": "drive", "on": True}],
+    "motion": {
+        "lfo1": {"options": {"shape": "triangle"}, "values": {"rate": 2}},
+        "knobs": [{"id": "a", "name": "Wobble!"}, {"id": "b", "name": "wobble"}],
+        "knobValues": {"a": 30},
+        "routes": [
+            {"source": "lfo1", "target": "filter.cutoff", "amount": 30},
+            {"source": "a", "target": "filter.cutoff", "amount": 50},
+            {"source": "follow", "target": "drive.amount", "amount": 60},
+        ],
+    },
+}
+
+
+def test_a_device_with_no_motion_has_the_settings_it_always_had():
+    """Nothing about motion is written unless something is routed or a knob exists."""
+    assert "motion" not in fxgen.normalize({"chain": [{"module": "filter", "on": True}]})
+    assert "motion" not in fxgen.normalize({"motion": {"lfo1": {"values": {"rate": 9}}, "routes": []}})
+
+
+def test_motion_is_bounded_like_everything_else():
+    m = fxgen.normalize(dict(MOVING, motion=dict(MOVING["motion"], routes=MOVING["motion"]["routes"] + [
+        {"source": "lfo9", "target": "filter.cutoff", "amount": 10},     # no such source
+        {"source": "lfo1", "target": "filter.nothing", "amount": 10},    # no such dial
+        {"source": "lfo1", "target": "crush.bits", "amount": 10},        # a whole-number dial is not moved
+        {"source": "lfo1", "target": "filter.cutoff", "amount": 99},     # the same route twice
+        {"source": "lfo2", "target": "filter.res", "amount": 0},         # moves nothing
+        {"source": "lfo2", "target": "filter.res", "amount": 900},       # too far
+    ])))["motion"]
+    assert [(r["source"], r["target"], r["amount"]) for r in m["routes"]] == [
+        ("lfo1", "filter.cutoff", 30.0), ("k1", "filter.cutoff", 50.0), ("follow", "drive.amount", 60.0),
+        ("lfo2", "filter.res", 100.0)]
+    # knobs are renumbered, their names made safe and different, their values carried over
+    assert m["knobs"] == [{"id": "k1", "name": "Wobble"}, {"id": "k2", "name": "wobble 2"}]
+    assert m["knobValues"] == {"k1": 30.0, "k2": 0.0}
+    assert m["lfo1"]["options"]["shape"] == "triangle" and m["lfo2"]["values"]["rate"] == 6.0
+
+
+def test_an_instrument_has_no_input_to_follow():
+    st = fxgen.normalize({"kind": "instrument", "motion": {"routes": [
+        {"source": "follow", "target": "tone.cutoff", "amount": 40}, {"source": "lfo1", "target": "tone.cutoff", "amount": 40}]}})
+    assert [r["source"] for r in st["motion"]["routes"]] == ["lfo1"]
+
+
+def test_a_moved_dial_is_worked_out_under_the_dial_and_checks_clean():
+    result = fxgen.run(MOVING, want_amxd=False)
+    texts = [str(b["box"].get("text", "")) for b in result["json"]["patcher"]["boxes"]]
+    # one snapshot~ per moved dial; the LFO, the follower and the knob as signals
+    assert sum(t.startswith("snapshot~") for t in texts) == 2
+    assert any(t.startswith("tri~") for t in texts) and "abs~" in texts
+    cords = result["coverage"]["cords"]
+    assert cords["flagged"] == 0 and cords["not_checked"] == 0 and not result["warnings"]
+    # the dials: the two modules', the output's, and one each for the LFO, the follower and the knob in use
+    dials = [b["box"]["varname"] for b in result["json"]["patcher"]["boxes"] if b["box"].get("maxclass") == "live.dial"]
+    assert {"lfo_1_rate", "follow_sens", "knobs_wobble"} <= set(dials) and "knobs_wobble_2" not in dials
+
+
+def test_motion_aimed_at_a_module_that_is_off_builds_nothing():
+    st = dict(MOVING, motion={"routes": [{"source": "lfo1", "target": "reverb.mix", "amount": 50}]})
+    texts = [str(b["box"].get("text", "")) for b in fxgen.run(st, want_amxd=False)["json"]["patcher"]["boxes"]]
+    assert not any(t.startswith(("snapshot~", "cycle~", "sig~")) for t in texts)
+    assert fxgen.normalize(st)["motion"]["routes"], "the route is kept, for when the reverb is switched on"
