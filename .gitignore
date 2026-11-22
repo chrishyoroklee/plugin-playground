@@ -6,3 +6,7 @@ __pycache__
 scripts/maxcheck/out
 .DS_Store
 build
+
+# research written for planning, kept out of the repository
+reports/
+research_notes/
