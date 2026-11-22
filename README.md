@@ -2,10 +2,10 @@
 
 Make an audio plugin in the browser, hear it, and download it.
 
-- An **effect**: pick one of 31 presets or build your own chain from seven modules
+- An **effect**: pick one of 77 presets or build your own chain from seven modules
   (filter, distortion, crush, chorus, tremolo, delay, reverb), and hear it on a sound
   from the library or on your own audio.
-- An **instrument**: a polyphonic synth with 12 presets, played from an on-screen
+- An **instrument**: a polyphonic synth with 41 presets, played from an on-screen
   keyboard, your computer keyboard, a MIDI keyboard or a looping phrase.
 
 Either one downloads as a **Max for Live device** (`.amxd`) for Ableton Live, or as a
@@ -84,6 +84,16 @@ what it installs is one plugin, compiled once, that runs any device from a file
 setup `.exe` for Windows, a `.tar.gz` with an install script for Linux). The installers
 are not signed with a paid developer certificate yet, so macOS and Windows each ask to
 allow them once; the Download menu says how.
+
+## The presets
+
+Every preset is played and measured (`python scripts/presetcheck.py`, and
+`tests/test_presets.py` for what every machine can run): an effect on the sample the page
+plays it on, an instrument on a note, a chord and a run. Each has to sit at the common
+level, not clip, die away when the sound stops, do something, be in tune, and, if it has
+dials that turn by themselves, sound different from the same preset without them. Two
+that measure alike are listed for a person to listen to. It cannot say that a preset
+sounds good, only that it is not broken, silent, a copy, or twice as loud as the rest.
 
 ## How it works
 

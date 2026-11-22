@@ -192,16 +192,16 @@ no preset uses.
 - **The sound.** `scripts/maxcheck/native.py` renders the maxcheck signal through the
   compiled C++ for every test, next to the Max and browser renderings, and `compare.py`
   reads all three. Results are in [`scripts/maxcheck/README.md`](../scripts/maxcheck/README.md).
-- **The runtime.** `pytest tests/test_runtime.py` renders all 43 presets through their
+- **The runtime.** `pytest tests/test_runtime.py` renders every preset through its
   compiled C++ and through the runtime given their device file, once as they are and
   once with every dial moved, and requires the same samples to within rounding (1e-9;
   with clang they are identical, with gcc a reverb tail differed by 7e-15). A device
   file the runtime cannot run (a newer format, an unknown object, a cut-off file) has to
   be refused with the reason.
-- **Every preset.** `pytest tests/test_patchc.py` compiles all 31 presets and the 57
+- **Every preset.** `pytest tests/test_patchc.py` compiles every effect preset and the 57
   module tests, renders each and holds its level to the browser engine's rendering of
   the same patch (`tests/reference/browser.json`), with no browser or Max needed.
-- **Instruments.** The same file compiles all 12 instrument presets and plays each one
+- **Instruments.** The same file compiles every instrument preset and plays each one
   (`render --notes`): a note has to be in tune, the envelope has to follow its dials and
   the velocity, a mono instrument has to hand its voice to the newest key, and a key
   past the last free voice has to steal the oldest.
@@ -214,7 +214,7 @@ no preset uses.
   `.github/workflows/native.yml` does this on Linux, macOS and Windows.
 
 Where that stands (November 2026): CI builds the runtime on Linux, macOS and Windows,
-makes every preset from it with the helper (31 effects and 12 instruments) and each
+makes every preset from it with the helper (77 effects and 41 instruments) and each
 passes hostcheck. It runs the installer, opens three devices with what was installed
 (Ping-Pong, Tape Lo-Fi and the instrument Soft Pad) and puts them through
 clap-validator, pluginval at strictness 5 (VST3 everywhere, the Audio Unit on macOS) and

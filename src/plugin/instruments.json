@@ -187,6 +187,336 @@
   }
  },
  {
+  "id": "squarelead",
+  "name": "Square Lead",
+  "tag": "Two square waves, a little apart",
+  "group": "Leads",
+  "sample": null,
+  "settings": {
+   "kind": "instrument",
+   "name": "Square Lead",
+   "accent": "#1f8f86",
+   "instrument": {
+    "osc": {
+     "options": {
+      "wave": "square",
+      "second": "unison",
+      "voices": "4"
+     },
+     "values": {
+      "detune": 10,
+      "blend": 50
+     }
+    },
+    "tone": {
+     "options": {},
+     "values": {
+      "cutoff": 2800,
+      "res": 20,
+      "env": 30
+     }
+    },
+    "env": {
+     "options": {},
+     "values": {
+      "attack": 3,
+      "decay": 250,
+      "sustain": 75,
+      "release": 180
+     }
+    }
+   },
+   "chain": [
+    {
+     "module": "delay",
+     "on": true,
+     "options": {
+      "style": "stereo"
+     },
+     "values": {
+      "time": 320,
+      "feedback": 30,
+      "mix": 20
+     }
+    }
+   ],
+   "output": {
+    "gain": -5.0
+   }
+  }
+ },
+ {
+  "id": "octavelead",
+  "name": "Octave Lead",
+  "tag": "A saw with its octave on top, pushed through a tube",
+  "group": "Leads",
+  "sample": null,
+  "settings": {
+   "kind": "instrument",
+   "name": "Octave Lead",
+   "accent": "#c8553d",
+   "instrument": {
+    "osc": {
+     "options": {
+      "wave": "saw",
+      "second": "up",
+      "voices": "4"
+     },
+     "values": {
+      "detune": 4,
+      "blend": 50
+     }
+    },
+    "tone": {
+     "options": {},
+     "values": {
+      "cutoff": 4200,
+      "res": 35,
+      "env": 45
+     }
+    },
+    "env": {
+     "options": {},
+     "values": {
+      "attack": 2,
+      "decay": 300,
+      "sustain": 65,
+      "release": 220
+     }
+    }
+   },
+   "chain": [
+    {
+     "module": "drive",
+     "on": true,
+     "options": {
+      "character": "tube"
+     },
+     "values": {
+      "amount": 2.2,
+      "tone": 7000
+     }
+    },
+    {
+     "module": "delay",
+     "on": true,
+     "options": {
+      "style": "pingpong"
+     },
+     "values": {
+      "time": 360,
+      "feedback": 30,
+      "mix": 18
+     }
+    }
+   ],
+   "output": {
+    "gain": 0
+   }
+  }
+ },
+ {
+  "id": "softwhistle",
+  "name": "Soft Whistle",
+  "tag": "A single sine with a slow start and a touch of vibrato",
+  "group": "Leads",
+  "sample": null,
+  "settings": {
+   "kind": "instrument",
+   "name": "Soft Whistle",
+   "accent": "#7a5bd0",
+   "instrument": {
+    "osc": {
+     "options": {
+      "wave": "sine",
+      "second": "unison",
+      "voices": "1"
+     },
+     "values": {
+      "detune": 0,
+      "blend": 0
+     }
+    },
+    "tone": {
+     "options": {},
+     "values": {
+      "cutoff": 6000,
+      "res": 0,
+      "env": 0
+     }
+    },
+    "env": {
+     "options": {},
+     "values": {
+      "attack": 40,
+      "decay": 200,
+      "sustain": 90,
+      "release": 260
+     }
+    }
+   },
+   "chain": [
+    {
+     "module": "chorus",
+     "on": true,
+     "options": {
+      "voice": "chorus"
+     },
+     "values": {
+      "rate": 5,
+      "depth": 0.8,
+      "mix": 30
+     }
+    },
+    {
+     "module": "reverb",
+     "on": true,
+     "options": {},
+     "values": {
+      "size": 45,
+      "damp": 7000,
+      "mix": 24
+     }
+    }
+   ],
+   "output": {
+    "gain": -5.0
+   }
+  }
+ },
+ {
+  "id": "supersaw",
+  "name": "Super Saw",
+  "tag": "Eight voices of detuned saws: the big trance lead",
+  "group": "Leads",
+  "sample": null,
+  "settings": {
+   "kind": "instrument",
+   "name": "Super Saw",
+   "accent": "#c2457f",
+   "instrument": {
+    "osc": {
+     "options": {
+      "wave": "saw",
+      "second": "unison",
+      "voices": "8"
+     },
+     "values": {
+      "detune": 26,
+      "blend": 50
+     }
+    },
+    "tone": {
+     "options": {},
+     "values": {
+      "cutoff": 5200,
+      "res": 10,
+      "env": 25
+     }
+    },
+    "env": {
+     "options": {},
+     "values": {
+      "attack": 4,
+      "decay": 400,
+      "sustain": 70,
+      "release": 350
+     }
+    }
+   },
+   "chain": [
+    {
+     "module": "delay",
+     "on": true,
+     "options": {
+      "style": "stereo"
+     },
+     "values": {
+      "time": 375,
+      "feedback": 32,
+      "mix": 20
+     }
+    },
+    {
+     "module": "reverb",
+     "on": true,
+     "options": {},
+     "values": {
+      "size": 55,
+      "damp": 7000,
+      "mix": 22
+     }
+    }
+   ],
+   "output": {
+    "gain": 3.0
+   }
+  }
+ },
+ {
+  "id": "wobblelead",
+  "name": "Wobble Lead",
+  "tag": "A resonant saw whose filter wobbles six times a second",
+  "group": "Leads",
+  "sample": null,
+  "settings": {
+   "kind": "instrument",
+   "name": "Wobble Lead",
+   "accent": "#3f78bd",
+   "instrument": {
+    "osc": {
+     "options": {
+      "wave": "saw",
+      "second": "unison",
+      "voices": "6"
+     },
+     "values": {
+      "detune": 16,
+      "blend": 50
+     }
+    },
+    "tone": {
+     "options": {},
+     "values": {
+      "cutoff": 1200,
+      "res": 55,
+      "env": 20
+     }
+    },
+    "env": {
+     "options": {},
+     "values": {
+      "attack": 4,
+      "decay": 300,
+      "sustain": 70,
+      "release": 200
+     }
+    }
+   },
+   "chain": [],
+   "output": {
+    "gain": 0
+   },
+   "motion": {
+    "routes": [
+     {
+      "source": "lfo2",
+      "target": "tone.cutoff",
+      "amount": 18
+     }
+    ],
+    "lfo2": {
+     "options": {
+      "shape": "sine"
+     },
+     "values": {
+      "rate": 6
+     }
+    }
+   }
+  }
+ },
+ {
   "id": "soft-pad",
   "name": "Soft Pad",
   "tag": "Slow to arrive, slow to leave, wide",
@@ -251,7 +581,7 @@
     }
    ],
    "output": {
-    "gain": 0
+    "gain": 5.0
    }
   }
  },
@@ -320,7 +650,7 @@
     }
    ],
    "output": {
-    "gain": 0
+    "gain": 6.0
    }
   }
  },
@@ -382,6 +712,368 @@
   }
  },
  {
+  "id": "warmanalog",
+  "name": "Warm Analog",
+  "tag": "Dark, slow and wide, with a sub octave underneath",
+  "group": "Pads",
+  "sample": null,
+  "settings": {
+   "kind": "instrument",
+   "name": "Warm Analog",
+   "accent": "#c98a12",
+   "instrument": {
+    "osc": {
+     "options": {
+      "wave": "saw",
+      "second": "down",
+      "voices": "6"
+     },
+     "values": {
+      "detune": 10,
+      "blend": 35
+     }
+    },
+    "tone": {
+     "options": {},
+     "values": {
+      "cutoff": 900,
+      "res": 10,
+      "env": 20
+     }
+    },
+    "env": {
+     "options": {},
+     "values": {
+      "attack": 900,
+      "decay": 1200,
+      "sustain": 80,
+      "release": 2200
+     }
+    }
+   },
+   "chain": [
+    {
+     "module": "chorus",
+     "on": true,
+     "options": {
+      "voice": "chorus"
+     },
+     "values": {
+      "rate": 0.25,
+      "depth": 5,
+      "mix": 50
+     }
+    },
+    {
+     "module": "reverb",
+     "on": true,
+     "options": {},
+     "values": {
+      "size": 70,
+      "damp": 3800,
+      "mix": 35
+     }
+    }
+   ],
+   "output": {
+    "gain": 5.0
+   }
+  }
+ },
+ {
+  "id": "choir",
+  "name": "Choir",
+  "tag": "Triangles with a vowel-like peak, in a big room",
+  "group": "Pads",
+  "sample": null,
+  "settings": {
+   "kind": "instrument",
+   "name": "Choir",
+   "accent": "#1f8f86",
+   "instrument": {
+    "osc": {
+     "options": {
+      "wave": "triangle",
+      "second": "up",
+      "voices": "8"
+     },
+     "values": {
+      "detune": 20,
+      "blend": 40
+     }
+    },
+    "tone": {
+     "options": {},
+     "values": {
+      "cutoff": 1700,
+      "res": 45,
+      "env": 10
+     }
+    },
+    "env": {
+     "options": {},
+     "values": {
+      "attack": 500,
+      "decay": 800,
+      "sustain": 85,
+      "release": 1400
+     }
+    }
+   },
+   "chain": [
+    {
+     "module": "chorus",
+     "on": true,
+     "options": {
+      "voice": "chorus"
+     },
+     "values": {
+      "rate": 0.5,
+      "depth": 4,
+      "mix": 50
+     }
+    },
+    {
+     "module": "reverb",
+     "on": true,
+     "options": {},
+     "values": {
+      "size": 80,
+      "damp": 5000,
+      "mix": 40
+     }
+    }
+   ],
+   "output": {
+    "gain": 6.0
+   }
+  }
+ },
+ {
+  "id": "sweeppad",
+  "name": "Sweep Pad",
+  "tag": "A filter that opens and closes by itself, very slowly",
+  "group": "Pads",
+  "sample": null,
+  "settings": {
+   "kind": "instrument",
+   "name": "Sweep Pad",
+   "accent": "#c8553d",
+   "instrument": {
+    "osc": {
+     "options": {
+      "wave": "saw",
+      "second": "unison",
+      "voices": "8"
+     },
+     "values": {
+      "detune": 22,
+      "blend": 50
+     }
+    },
+    "tone": {
+     "options": {},
+     "values": {
+      "cutoff": 700,
+      "res": 40,
+      "env": 10
+     }
+    },
+    "env": {
+     "options": {},
+     "values": {
+      "attack": 700,
+      "decay": 1000,
+      "sustain": 85,
+      "release": 1800
+     }
+    }
+   },
+   "chain": [
+    {
+     "module": "reverb",
+     "on": true,
+     "options": {},
+     "values": {
+      "size": 75,
+      "damp": 5000,
+      "mix": 35
+     }
+    }
+   ],
+   "output": {
+    "gain": 3.5
+   },
+   "motion": {
+    "routes": [
+     {
+      "source": "lfo1",
+      "target": "tone.cutoff",
+      "amount": 30
+     }
+    ],
+    "lfo1": {
+     "options": {
+      "shape": "sine"
+     },
+     "values": {
+      "rate": 0.12
+     }
+    }
+   }
+  }
+ },
+ {
+  "id": "hollowpad",
+  "name": "Hollow Pad",
+  "tag": "Square waves: woody and open",
+  "group": "Pads",
+  "sample": null,
+  "settings": {
+   "kind": "instrument",
+   "name": "Hollow Pad",
+   "accent": "#7a5bd0",
+   "instrument": {
+    "osc": {
+     "options": {
+      "wave": "square",
+      "second": "unison",
+      "voices": "6"
+     },
+     "values": {
+      "detune": 12,
+      "blend": 50
+     }
+    },
+    "tone": {
+     "options": {},
+     "values": {
+      "cutoff": 1500,
+      "res": 15,
+      "env": 15
+     }
+    },
+    "env": {
+     "options": {},
+     "values": {
+      "attack": 600,
+      "decay": 900,
+      "sustain": 80,
+      "release": 1500
+     }
+    }
+   },
+   "chain": [
+    {
+     "module": "chorus",
+     "on": true,
+     "options": {
+      "voice": "chorus"
+     },
+     "values": {
+      "rate": 0.3,
+      "depth": 4,
+      "mix": 45
+     }
+    },
+    {
+     "module": "reverb",
+     "on": true,
+     "options": {},
+     "values": {
+      "size": 65,
+      "damp": 4500,
+      "mix": 30
+     }
+    }
+   ],
+   "output": {
+    "gain": 0
+   }
+  }
+ },
+ {
+  "id": "shimmerair",
+  "name": "Shimmer Air",
+  "tag": "Sines an octave apart dissolving into echoes and a bright hall",
+  "group": "Pads",
+  "sample": null,
+  "settings": {
+   "kind": "instrument",
+   "name": "Shimmer Air",
+   "accent": "#c2457f",
+   "instrument": {
+    "osc": {
+     "options": {
+      "wave": "sine",
+      "second": "up",
+      "voices": "8"
+     },
+     "values": {
+      "detune": 22,
+      "blend": 50
+     }
+    },
+    "tone": {
+     "options": {},
+     "values": {
+      "cutoff": 8000,
+      "res": 0,
+      "env": 0
+     }
+    },
+    "env": {
+     "options": {},
+     "values": {
+      "attack": 800,
+      "decay": 1500,
+      "sustain": 70,
+      "release": 2500
+     }
+    }
+   },
+   "chain": [
+    {
+     "module": "chorus",
+     "on": true,
+     "options": {
+      "voice": "chorus"
+     },
+     "values": {
+      "rate": 0.6,
+      "depth": 5,
+      "mix": 60
+     }
+    },
+    {
+     "module": "delay",
+     "on": true,
+     "options": {
+      "style": "pingpong"
+     },
+     "values": {
+      "time": 480,
+      "feedback": 45,
+      "mix": 30
+     }
+    },
+    {
+     "module": "reverb",
+     "on": true,
+     "options": {},
+     "values": {
+      "size": 90,
+      "damp": 9000,
+      "mix": 50
+     }
+    }
+   ],
+   "output": {
+    "gain": 5.5
+   }
+  }
+ },
+ {
   "id": "sub-bass",
   "name": "Sub Bass",
   "tag": "One voice, round and low",
@@ -423,7 +1115,7 @@
    },
    "chain": [],
    "output": {
-    "gain": 3
+    "gain": -2.0
    }
   }
  },
@@ -481,7 +1173,314 @@
     }
    ],
    "output": {
+    "gain": -5.5
+   }
+  }
+ },
+ {
+  "id": "reese",
+  "name": "Reese",
+  "tag": "Two saws beating against each other",
+  "group": "Bass",
+  "sample": null,
+  "settings": {
+   "kind": "instrument",
+   "name": "Reese",
+   "accent": "#3f78bd",
+   "instrument": {
+    "osc": {
+     "options": {
+      "wave": "saw",
+      "second": "unison",
+      "voices": "1"
+     },
+     "values": {
+      "detune": 22,
+      "blend": 50
+     }
+    },
+    "tone": {
+     "options": {},
+     "values": {
+      "cutoff": 600,
+      "res": 15,
+      "env": 15
+     }
+    },
+    "env": {
+     "options": {},
+     "values": {
+      "attack": 4,
+      "decay": 300,
+      "sustain": 90,
+      "release": 160
+     }
+    }
+   },
+   "chain": [
+    {
+     "module": "chorus",
+     "on": true,
+     "options": {
+      "voice": "chorus"
+     },
+     "values": {
+      "rate": 0.2,
+      "depth": 2,
+      "mix": 30
+     }
+    }
+   ],
+   "output": {
     "gain": 0
+   }
+  }
+ },
+ {
+  "id": "wobblebass",
+  "name": "Wobble Bass",
+  "tag": "The filter swings three times a second",
+  "group": "Bass",
+  "sample": null,
+  "settings": {
+   "kind": "instrument",
+   "name": "Wobble Bass",
+   "accent": "#c98a12",
+   "instrument": {
+    "osc": {
+     "options": {
+      "wave": "saw",
+      "second": "unison",
+      "voices": "1"
+     },
+     "values": {
+      "detune": 12,
+      "blend": 50
+     }
+    },
+    "tone": {
+     "options": {},
+     "values": {
+      "cutoff": 300,
+      "res": 65,
+      "env": 10
+     }
+    },
+    "env": {
+     "options": {},
+     "values": {
+      "attack": 3,
+      "decay": 200,
+      "sustain": 95,
+      "release": 140
+     }
+    }
+   },
+   "chain": [
+    {
+     "module": "drive",
+     "on": true,
+     "options": {
+      "character": "tube"
+     },
+     "values": {
+      "amount": 2.5,
+      "tone": 5000
+     }
+    }
+   ],
+   "output": {
+    "gain": -5.5
+   },
+   "motion": {
+    "routes": [
+     {
+      "source": "lfo1",
+      "target": "tone.cutoff",
+      "amount": 32
+     }
+    ],
+    "lfo1": {
+     "options": {
+      "shape": "triangle"
+     },
+     "values": {
+      "rate": 3
+     }
+    }
+   }
+  }
+ },
+ {
+  "id": "pluckbass",
+  "name": "Pluck Bass",
+  "tag": "A short, hollow thump with a sub octave",
+  "group": "Bass",
+  "sample": null,
+  "settings": {
+   "kind": "instrument",
+   "name": "Pluck Bass",
+   "accent": "#1f8f86",
+   "instrument": {
+    "osc": {
+     "options": {
+      "wave": "square",
+      "second": "down",
+      "voices": "1"
+     },
+     "values": {
+      "detune": 0,
+      "blend": 35
+     }
+    },
+    "tone": {
+     "options": {},
+     "values": {
+      "cutoff": 350,
+      "res": 30,
+      "env": 75
+     }
+    },
+    "env": {
+     "options": {},
+     "values": {
+      "attack": 1,
+      "decay": 180,
+      "sustain": 0,
+      "release": 120
+     }
+    }
+   },
+   "chain": [],
+   "output": {
+    "gain": -5.5
+   }
+  }
+ },
+ {
+  "id": "rubberbass",
+  "name": "Rubber Bass",
+  "tag": "Round and bouncy, with a filter that snaps shut",
+  "group": "Bass",
+  "sample": null,
+  "settings": {
+   "kind": "instrument",
+   "name": "Rubber Bass",
+   "accent": "#c8553d",
+   "instrument": {
+    "osc": {
+     "options": {
+      "wave": "triangle",
+      "second": "unison",
+      "voices": "1"
+     },
+     "values": {
+      "detune": 5,
+      "blend": 50
+     }
+    },
+    "tone": {
+     "options": {},
+     "values": {
+      "cutoff": 700,
+      "res": 50,
+      "env": 55
+     }
+    },
+    "env": {
+     "options": {},
+     "values": {
+      "attack": 2,
+      "decay": 260,
+      "sustain": 40,
+      "release": 160
+     }
+    }
+   },
+   "chain": [
+    {
+     "module": "drive",
+     "on": true,
+     "options": {
+      "character": "soft"
+     },
+     "values": {
+      "amount": 2.5,
+      "tone": 4000
+     }
+    }
+   ],
+   "output": {
+    "gain": -5.0
+   }
+  }
+ },
+ {
+  "id": "octavegrowl",
+  "name": "Octave Growl",
+  "tag": "A saw and its sub octave, driven hard",
+  "group": "Bass",
+  "sample": null,
+  "settings": {
+   "kind": "instrument",
+   "name": "Octave Growl",
+   "accent": "#7a5bd0",
+   "instrument": {
+    "osc": {
+     "options": {
+      "wave": "saw",
+      "second": "down",
+      "voices": "1"
+     },
+     "values": {
+      "detune": 8,
+      "blend": 55
+     }
+    },
+    "tone": {
+     "options": {},
+     "values": {
+      "cutoff": 450,
+      "res": 45,
+      "env": 50
+     }
+    },
+    "env": {
+     "options": {},
+     "values": {
+      "attack": 2,
+      "decay": 400,
+      "sustain": 70,
+      "release": 180
+     }
+    }
+   },
+   "chain": [
+    {
+     "module": "drive",
+     "on": true,
+     "options": {
+      "character": "tube"
+     },
+     "values": {
+      "amount": 4.5,
+      "tone": 2600
+     }
+    },
+    {
+     "module": "filter",
+     "on": true,
+     "options": {
+      "mode": "lowpass"
+     },
+     "values": {
+      "cutoff": 3000,
+      "res": 10
+     }
+    }
+   ],
+   "output": {
+    "gain": -4.5
    }
   }
  },
@@ -549,7 +1548,7 @@
     }
    ],
    "output": {
-    "gain": 0
+    "gain": 3.5
    }
   }
  },
@@ -608,7 +1607,7 @@
     }
    ],
    "output": {
-    "gain": 0
+    "gain": 4.5
    }
   }
  },
@@ -686,6 +1685,990 @@
    ],
    "output": {
     "gain": 0
+   }
+  }
+ },
+ {
+  "id": "clav",
+  "name": "Clav",
+  "tag": "Thin, quick and funky",
+  "group": "Keys",
+  "sample": null,
+  "settings": {
+   "kind": "instrument",
+   "name": "Clav",
+   "accent": "#c2457f",
+   "instrument": {
+    "osc": {
+     "options": {
+      "wave": "square",
+      "second": "unison",
+      "voices": "6"
+     },
+     "values": {
+      "detune": 2,
+      "blend": 20
+     }
+    },
+    "tone": {
+     "options": {},
+     "values": {
+      "cutoff": 1500,
+      "res": 40,
+      "env": 70
+     }
+    },
+    "env": {
+     "options": {},
+     "values": {
+      "attack": 1,
+      "decay": 260,
+      "sustain": 10,
+      "release": 140
+     }
+    }
+   },
+   "chain": [
+    {
+     "module": "drive",
+     "on": true,
+     "options": {
+      "character": "soft"
+     },
+     "values": {
+      "amount": 2,
+      "tone": 6000
+     }
+    }
+   ],
+   "output": {
+    "gain": -5.0
+   }
+  }
+ },
+ {
+  "id": "toypiano",
+  "name": "Toy Piano",
+  "tag": "Bright little hammers",
+  "group": "Keys",
+  "sample": null,
+  "settings": {
+   "kind": "instrument",
+   "name": "Toy Piano",
+   "accent": "#3f78bd",
+   "instrument": {
+    "osc": {
+     "options": {
+      "wave": "triangle",
+      "second": "up",
+      "voices": "8"
+     },
+     "values": {
+      "detune": 8,
+      "blend": 40
+     }
+    },
+    "tone": {
+     "options": {},
+     "values": {
+      "cutoff": 5000,
+      "res": 5,
+      "env": 20
+     }
+    },
+    "env": {
+     "options": {},
+     "values": {
+      "attack": 1,
+      "decay": 380,
+      "sustain": 0,
+      "release": 420
+     }
+    }
+   },
+   "chain": [
+    {
+     "module": "reverb",
+     "on": true,
+     "options": {},
+     "values": {
+      "size": 30,
+      "damp": 8000,
+      "mix": 18
+     }
+    }
+   ],
+   "output": {
+    "gain": 4.0
+   }
+  }
+ },
+ {
+  "id": "reedpiano",
+  "name": "Reed Piano",
+  "tag": "An electric piano with bark and a tremolo",
+  "group": "Keys",
+  "sample": null,
+  "settings": {
+   "kind": "instrument",
+   "name": "Reed Piano",
+   "accent": "#c98a12",
+   "instrument": {
+    "osc": {
+     "options": {
+      "wave": "triangle",
+      "second": "unison",
+      "voices": "6"
+     },
+     "values": {
+      "detune": 6,
+      "blend": 35
+     }
+    },
+    "tone": {
+     "options": {},
+     "values": {
+      "cutoff": 2200,
+      "res": 20,
+      "env": 45
+     }
+    },
+    "env": {
+     "options": {},
+     "values": {
+      "attack": 2,
+      "decay": 900,
+      "sustain": 25,
+      "release": 300
+     }
+    }
+   },
+   "chain": [
+    {
+     "module": "tremolo",
+     "on": true,
+     "options": {
+      "mode": "tremolo"
+     },
+     "values": {
+      "rate": 5.5,
+      "depth": 35
+     }
+    },
+    {
+     "module": "drive",
+     "on": true,
+     "options": {
+      "character": "tube"
+     },
+     "values": {
+      "amount": 2,
+      "tone": 5000
+     }
+    },
+    {
+     "module": "reverb",
+     "on": true,
+     "options": {},
+     "values": {
+      "size": 25,
+      "damp": 5000,
+      "mix": 12
+     }
+    }
+   ],
+   "output": {
+    "gain": 0
+   }
+  }
+ },
+ {
+  "id": "musicbox",
+  "name": "Music Box",
+  "tag": "Tiny bells with a long ring",
+  "group": "Keys",
+  "sample": null,
+  "settings": {
+   "kind": "instrument",
+   "name": "Music Box",
+   "accent": "#1f8f86",
+   "instrument": {
+    "osc": {
+     "options": {
+      "wave": "sine",
+      "second": "up",
+      "voices": "8"
+     },
+     "values": {
+      "detune": 12,
+      "blend": 55
+     }
+    },
+    "tone": {
+     "options": {},
+     "values": {
+      "cutoff": 7000,
+      "res": 0,
+      "env": 0
+     }
+    },
+    "env": {
+     "options": {},
+     "values": {
+      "attack": 1,
+      "decay": 900,
+      "sustain": 0,
+      "release": 1400
+     }
+    }
+   },
+   "chain": [
+    {
+     "module": "delay",
+     "on": true,
+     "options": {
+      "style": "stereo"
+     },
+     "values": {
+      "time": 260,
+      "feedback": 25,
+      "mix": 18
+     }
+    },
+    {
+     "module": "reverb",
+     "on": true,
+     "options": {},
+     "values": {
+      "size": 60,
+      "damp": 9000,
+      "mix": 30
+     }
+    }
+   ],
+   "output": {
+    "gain": 3.0
+   }
+  }
+ },
+ {
+  "id": "dirtyorgan",
+  "name": "Dirty Organ",
+  "tag": "Drawbars with the sub octave, overdriven, through a spinning speaker",
+  "group": "Keys",
+  "sample": null,
+  "settings": {
+   "kind": "instrument",
+   "name": "Dirty Organ",
+   "accent": "#c8553d",
+   "instrument": {
+    "osc": {
+     "options": {
+      "wave": "sine",
+      "second": "down",
+      "voices": "8"
+     },
+     "values": {
+      "detune": 4,
+      "blend": 60
+     }
+    },
+    "tone": {
+     "options": {},
+     "values": {
+      "cutoff": 6000,
+      "res": 0,
+      "env": 0
+     }
+    },
+    "env": {
+     "options": {},
+     "values": {
+      "attack": 5,
+      "decay": 60,
+      "sustain": 100,
+      "release": 80
+     }
+    }
+   },
+   "chain": [
+    {
+     "module": "drive",
+     "on": true,
+     "options": {
+      "character": "tube"
+     },
+     "values": {
+      "amount": 3,
+      "tone": 6000
+     }
+    },
+    {
+     "module": "tremolo",
+     "on": true,
+     "options": {
+      "mode": "autopan"
+     },
+     "values": {
+      "rate": 6,
+      "depth": 40
+     }
+    },
+    {
+     "module": "reverb",
+     "on": true,
+     "options": {},
+     "values": {
+      "size": 30,
+      "damp": 5000,
+      "mix": 15
+     }
+    }
+   ],
+   "output": {
+    "gain": 0
+   }
+  }
+ },
+ {
+  "id": "harp",
+  "name": "Harp",
+  "tag": "Soft plucked triangles in a hall",
+  "group": "Plucks",
+  "sample": null,
+  "settings": {
+   "kind": "instrument",
+   "name": "Harp",
+   "accent": "#7a5bd0",
+   "instrument": {
+    "osc": {
+     "options": {
+      "wave": "triangle",
+      "second": "up",
+      "voices": "8"
+     },
+     "values": {
+      "detune": 6,
+      "blend": 25
+     }
+    },
+    "tone": {
+     "options": {},
+     "values": {
+      "cutoff": 900,
+      "res": 10,
+      "env": 70
+     }
+    },
+    "env": {
+     "options": {},
+     "values": {
+      "attack": 1,
+      "decay": 700,
+      "sustain": 0,
+      "release": 900
+     }
+    }
+   },
+   "chain": [
+    {
+     "module": "reverb",
+     "on": true,
+     "options": {},
+     "values": {
+      "size": 60,
+      "damp": 7000,
+      "mix": 28
+     }
+    }
+   ],
+   "output": {
+    "gain": 3.5
+   }
+  }
+ },
+ {
+  "id": "brightpluck",
+  "name": "Bright Pluck",
+  "tag": "A resonant snap, like a plucked string",
+  "group": "Plucks",
+  "sample": null,
+  "settings": {
+   "kind": "instrument",
+   "name": "Bright Pluck",
+   "accent": "#c2457f",
+   "instrument": {
+    "osc": {
+     "options": {
+      "wave": "saw",
+      "second": "unison",
+      "voices": "6"
+     },
+     "values": {
+      "detune": 3,
+      "blend": 30
+     }
+    },
+    "tone": {
+     "options": {},
+     "values": {
+      "cutoff": 600,
+      "res": 55,
+      "env": 90
+     }
+    },
+    "env": {
+     "options": {},
+     "values": {
+      "attack": 1,
+      "decay": 320,
+      "sustain": 0,
+      "release": 300
+     }
+    }
+   },
+   "chain": [
+    {
+     "module": "delay",
+     "on": true,
+     "options": {
+      "style": "stereo"
+     },
+     "values": {
+      "time": 180,
+      "feedback": 20,
+      "mix": 15
+     }
+    },
+    {
+     "module": "reverb",
+     "on": true,
+     "options": {},
+     "values": {
+      "size": 35,
+      "damp": 7000,
+      "mix": 15
+     }
+    }
+   ],
+   "output": {
+    "gain": 0
+   }
+  }
+ },
+ {
+  "id": "marimba",
+  "name": "Marimba",
+  "tag": "A round, woody knock",
+  "group": "Plucks",
+  "sample": null,
+  "settings": {
+   "kind": "instrument",
+   "name": "Marimba",
+   "accent": "#3f78bd",
+   "instrument": {
+    "osc": {
+     "options": {
+      "wave": "sine",
+      "second": "up",
+      "voices": "6"
+     },
+     "values": {
+      "detune": 0,
+      "blend": 20
+     }
+    },
+    "tone": {
+     "options": {},
+     "values": {
+      "cutoff": 3000,
+      "res": 0,
+      "env": 20
+     }
+    },
+    "env": {
+     "options": {},
+     "values": {
+      "attack": 1,
+      "decay": 260,
+      "sustain": 0,
+      "release": 200
+     }
+    }
+   },
+   "chain": [
+    {
+     "module": "reverb",
+     "on": true,
+     "options": {},
+     "values": {
+      "size": 25,
+      "damp": 6000,
+      "mix": 14
+     }
+    }
+   ],
+   "output": {
+    "gain": 0
+   }
+  }
+ },
+ {
+  "id": "stab",
+  "name": "Stab",
+  "tag": "A short chord hit, wide and bright",
+  "group": "Plucks",
+  "sample": null,
+  "settings": {
+   "kind": "instrument",
+   "name": "Stab",
+   "accent": "#c98a12",
+   "instrument": {
+    "osc": {
+     "options": {
+      "wave": "saw",
+      "second": "unison",
+      "voices": "8"
+     },
+     "values": {
+      "detune": 20,
+      "blend": 50
+     }
+    },
+    "tone": {
+     "options": {},
+     "values": {
+      "cutoff": 1800,
+      "res": 25,
+      "env": 60
+     }
+    },
+    "env": {
+     "options": {},
+     "values": {
+      "attack": 1,
+      "decay": 160,
+      "sustain": 0,
+      "release": 140
+     }
+    }
+   },
+   "chain": [
+    {
+     "module": "delay",
+     "on": true,
+     "options": {
+      "style": "pingpong"
+     },
+     "values": {
+      "time": 250,
+      "feedback": 35,
+      "mix": 22
+     }
+    },
+    {
+     "module": "reverb",
+     "on": true,
+     "options": {},
+     "values": {
+      "size": 45,
+      "damp": 6000,
+      "mix": 25
+     }
+    }
+   ],
+   "output": {
+    "gain": 4.5
+   }
+  }
+ },
+ {
+  "id": "echopluck",
+  "name": "Echo Pluck",
+  "tag": "A hollow pluck that bounces from side to side",
+  "group": "Plucks",
+  "sample": null,
+  "settings": {
+   "kind": "instrument",
+   "name": "Echo Pluck",
+   "accent": "#1f8f86",
+   "instrument": {
+    "osc": {
+     "options": {
+      "wave": "square",
+      "second": "up",
+      "voices": "6"
+     },
+     "values": {
+      "detune": 7,
+      "blend": 35
+     }
+    },
+    "tone": {
+     "options": {},
+     "values": {
+      "cutoff": 500,
+      "res": 40,
+      "env": 80
+     }
+    },
+    "env": {
+     "options": {},
+     "values": {
+      "attack": 1,
+      "decay": 200,
+      "sustain": 0,
+      "release": 220
+     }
+    }
+   },
+   "chain": [
+    {
+     "module": "delay",
+     "on": true,
+     "options": {
+      "style": "pingpong"
+     },
+     "values": {
+      "time": 375,
+      "feedback": 55,
+      "mix": 38
+     }
+    }
+   ],
+   "output": {
+    "gain": 0
+   }
+  }
+ },
+ {
+  "id": "drone",
+  "name": "Drone",
+  "tag": "Hold one note: it drifts and breathes by itself",
+  "group": "Textures",
+  "sample": null,
+  "settings": {
+   "kind": "instrument",
+   "name": "Drone",
+   "accent": "#c8553d",
+   "instrument": {
+    "osc": {
+     "options": {
+      "wave": "saw",
+      "second": "down",
+      "voices": "4"
+     },
+     "values": {
+      "detune": 30,
+      "blend": 50
+     }
+    },
+    "tone": {
+     "options": {},
+     "values": {
+      "cutoff": 500,
+      "res": 50,
+      "env": 5
+     }
+    },
+    "env": {
+     "options": {},
+     "values": {
+      "attack": 1500,
+      "decay": 2000,
+      "sustain": 100,
+      "release": 4000
+     }
+    }
+   },
+   "chain": [
+    {
+     "module": "chorus",
+     "on": true,
+     "options": {
+      "voice": "chorus"
+     },
+     "values": {
+      "rate": 0.15,
+      "depth": 7,
+      "mix": 60
+     }
+    },
+    {
+     "module": "reverb",
+     "on": true,
+     "options": {},
+     "values": {
+      "size": 92,
+      "damp": 3000,
+      "mix": 55
+     }
+    }
+   ],
+   "output": {
+    "gain": 6.0
+   },
+   "motion": {
+    "routes": [
+     {
+      "source": "lfo1",
+      "target": "tone.cutoff",
+      "amount": 25
+     },
+     {
+      "source": "lfo2",
+      "target": "osc.detune",
+      "amount": 40
+     }
+    ],
+    "lfo1": {
+     "options": {
+      "shape": "sine"
+     },
+     "values": {
+      "rate": 0.07
+     }
+    },
+    "lfo2": {
+     "options": {
+      "shape": "sine"
+     },
+     "values": {
+      "rate": 0.31
+     }
+    }
+   }
+  }
+ },
+ {
+  "id": "brokenradio",
+  "name": "Broken Radio",
+  "tag": "Crushed, fluttering keys with a short echo",
+  "group": "Textures",
+  "sample": null,
+  "settings": {
+   "kind": "instrument",
+   "name": "Broken Radio",
+   "accent": "#7a5bd0",
+   "instrument": {
+    "osc": {
+     "options": {
+      "wave": "triangle",
+      "second": "unison",
+      "voices": "6"
+     },
+     "values": {
+      "detune": 14,
+      "blend": 50
+     }
+    },
+    "tone": {
+     "options": {},
+     "values": {
+      "cutoff": 2000,
+      "res": 20,
+      "env": 30
+     }
+    },
+    "env": {
+     "options": {},
+     "values": {
+      "attack": 3,
+      "decay": 600,
+      "sustain": 40,
+      "release": 400
+     }
+    }
+   },
+   "chain": [
+    {
+     "module": "crush",
+     "on": true,
+     "options": {},
+     "values": {
+      "rate": 35,
+      "bits": 8
+     }
+    },
+    {
+     "module": "tremolo",
+     "on": true,
+     "options": {
+      "mode": "tremolo"
+     },
+     "values": {
+      "rate": 9,
+      "depth": 40
+     }
+    },
+    {
+     "module": "delay",
+     "on": true,
+     "options": {
+      "style": "stereo"
+     },
+     "values": {
+      "time": 210,
+      "feedback": 30,
+      "mix": 20
+     }
+    }
+   ],
+   "output": {
+    "gain": 3.5
+   }
+  }
+ },
+ {
+  "id": "pulsingpad",
+  "name": "Pulsing Pad",
+  "tag": "A pad chopped into a rhythm, in a big room",
+  "group": "Textures",
+  "sample": null,
+  "settings": {
+   "kind": "instrument",
+   "name": "Pulsing Pad",
+   "accent": "#c2457f",
+   "instrument": {
+    "osc": {
+     "options": {
+      "wave": "saw",
+      "second": "unison",
+      "voices": "8"
+     },
+     "values": {
+      "detune": 16,
+      "blend": 50
+     }
+    },
+    "tone": {
+     "options": {},
+     "values": {
+      "cutoff": 1400,
+      "res": 20,
+      "env": 10
+     }
+    },
+    "env": {
+     "options": {},
+     "values": {
+      "attack": 300,
+      "decay": 600,
+      "sustain": 90,
+      "release": 1200
+     }
+    }
+   },
+   "chain": [
+    {
+     "module": "tremolo",
+     "on": true,
+     "options": {
+      "mode": "tremolo"
+     },
+     "values": {
+      "rate": 6,
+      "depth": 85
+     }
+    },
+    {
+     "module": "reverb",
+     "on": true,
+     "options": {},
+     "values": {
+      "size": 70,
+      "damp": 5000,
+      "mix": 35
+     }
+    }
+   ],
+   "output": {
+    "gain": 3.5
+   }
+  }
+ },
+ {
+  "id": "brightknob",
+  "name": "Bright Knob",
+  "tag": "One knob called Bright: opens the filter, adds bite, dries it up",
+  "group": "Textures",
+  "sample": null,
+  "settings": {
+   "kind": "instrument",
+   "name": "Bright Knob",
+   "accent": "#3f78bd",
+   "instrument": {
+    "osc": {
+     "options": {
+      "wave": "saw",
+      "second": "unison",
+      "voices": "6"
+     },
+     "values": {
+      "detune": 10,
+      "blend": 50
+     }
+    },
+    "tone": {
+     "options": {},
+     "values": {
+      "cutoff": 500,
+      "res": 15,
+      "env": 20
+     }
+    },
+    "env": {
+     "options": {},
+     "values": {
+      "attack": 5,
+      "decay": 400,
+      "sustain": 70,
+      "release": 400
+     }
+    }
+   },
+   "chain": [
+    {
+     "module": "reverb",
+     "on": true,
+     "options": {},
+     "values": {
+      "size": 55,
+      "damp": 5000,
+      "mix": 35
+     }
+    }
+   ],
+   "output": {
+    "gain": 0
+   },
+   "motion": {
+    "routes": [
+     {
+      "source": "k1",
+      "target": "tone.cutoff",
+      "amount": 60
+     },
+     {
+      "source": "k1",
+      "target": "tone.res",
+      "amount": 25
+     },
+     {
+      "source": "k1",
+      "target": "reverb.mix",
+      "amount": -20
+     }
+    ],
+    "knobs": [
+     {
+      "id": "k1",
+      "name": "Bright"
+     }
+    ],
+    "knobValues": {
+     "k1": 25
+    }
    }
   }
  },
