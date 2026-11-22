@@ -22,6 +22,7 @@
 //   k NUMBER TYPE                     a kernel: OnePole, Svf, Comb ...
 //   @prepare, @settle, @reset, @process, @update I, @voice N    then that section's code
 //   @end
+//   face ...                          what the plugin's window draws: JSON in base64
 //   settings ...                      for the page; not read here
 //
 // Instructions, with registers as numbers:
@@ -100,6 +101,7 @@ struct Device {
     int kernels[kKernelTypes] = {};      // how many of each type
     Code prepare, settle, reset, process;
     std::vector<Code> update, voice;
+    std::string face;                    // what the window draws: JSON in base64, or empty
 
     // Read a device file's text. On failure `error` says why, in words for a person.
     bool parse(const std::string& text, std::string* error);
@@ -217,7 +219,11 @@ inline bool Device::parse(const std::string& text, std::string* error) {
         std::istringstream in(line);
         std::vector<std::string> w;
         for (std::string word; in >> word;) w.push_back(word);
-        if (w.empty() || ended) continue;
+        if (w.empty()) continue;
+        if (ended) {
+            if (w[0] == "face" && w.size() == 2) face = w[1];
+            continue;
+        }
         const auto bad = [&]() { return fail("line " + std::to_string(number) + " of the device cannot be read: " + line); };
         const auto num = [&](size_t i) { return i < w.size() ? std::strtod(w[i].c_str(), nullptr) : 0.0; };
         const auto whole = [&](size_t i) { return i < w.size() ? static_cast<int>(std::strtol(w[i].c_str(), nullptr, 10)) : 0; };

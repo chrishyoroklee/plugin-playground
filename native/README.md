@@ -134,11 +134,36 @@ changes, saved state, and a tail so hosts keep running delays and reverbs. An in
 gets a note input in place of the audio input, takes the host's notes or raw MIDI on the
 sample they arrive, and is declared a music device to Audio Unit hosts.
 [clap-wrapper](https://github.com/free-audio/clap-wrapper) builds the VST3 and the Audio
-Unit from the same code. There is no custom window; the host shows its own controls.
+Unit from the same code. On macOS the plugin has a window of its own (below); on Windows
+and Linux there is none yet, and the host shows its own controls.
 
 A dial with a curve (every frequency and time) is given to the host as the knob's
 position, 0 to 1, so the host's slider feels like the dial in Live. The text beside it
 is still in Hz or ms, and saved state holds real values.
+
+## The plugin's window
+
+A device looks in a DAW as it does on the page and in Live. patchc writes down the
+device's **face** next to its program: every box the patch puts in presentation view
+(the cards, the labels, each dial with its range and unit), where the patch puts it. A
+device file carries it on a `face` line and a generated Effect.h as `kFace`.
+
+`ui/face.html` draws a face. It is one page with no dependencies, built into the plugin
+as bytes with its two font files (DM Mono, OFL), and its dial is the page's own
+(`src/objects/ui/live-dial.ts`): the same geometry, the same drag, wheel and
+double-click. `shell/gui_mac.mm` shows it in a WKWebView and passes four kinds of message
+between the page and the plugin. A dial turned in the window reaches the host as one
+gesture (grabbed, moved, let go), which is what a host records as automation, and a dial
+the host moves is redrawn in the window.
+
+Every device's plugin is a copy of one binary, so nothing in the window code may be a
+named Objective-C class: a host that loaded two devices would keep one copy of the class
+for both. The one object it needs gets a class made at load time.
+
+`test/guicheck.mm` opens the window as a host does, saves a picture of it, has the host
+move a dial and requires the window to show it, then turns a dial in the window and
+requires the host to be told. Every `npm run plugin -- --runtime` device goes through it
+on macOS.
 
 ## Adding an object
 
@@ -203,7 +228,8 @@ not directly with Max recordings.
   smoothing beyond what the patch has (the delay time glides through its `line~`).
 - The runtime costs more than compiled code: about 1 to 2 % of one core for the heaviest
   presets, against about 1 % compiled. Its sound is the same, to within rounding.
-- No custom window, and no RNBO export.
+- The plugin's own window exists on macOS only. On Windows and Linux the host shows its
+  generic controls. No RNBO export.
 
 ## Licences
 

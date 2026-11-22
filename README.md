@@ -31,7 +31,9 @@ Try it at <https://chrishyoroklee.github.io/plugin-playground/>.
   Once, you install Plugin Playground for your system (macOS, Windows or Linux: you pick
   it and its version, and the page checks it). After that every device, a preset or a
   chain of your own, is one small file: open it and it is a plugin in every DAW on the
-  machine, under the name you gave it, with every dial where it stood.
+  machine, under the name you gave it, with every dial where it stood. On macOS the plugin
+  opens with the same face it has on the page; on Windows and Linux the DAW shows its
+  own sliders for now.
 - **Settings** (the gear) has dark mode, a link that reopens this exact device, and the
   Python that built it.
 

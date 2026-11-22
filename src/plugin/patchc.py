@@ -674,6 +674,7 @@ class Compiler:
         if not isinstance(patcher, dict):
             raise CompileError("not a Max patch: there is no \"patcher\" at the top")
         self.name = name
+        self.device_width = patcher.get("devicewidth") or 0
         self.boxes = {}
         for order, entry in enumerate(patcher.get("boxes", [])):
             box = Box(entry["box"], order)
@@ -946,7 +947,63 @@ class Compiler:
             follow(box, outlet, value, frozenset())
         return lines
 
-    # 5. the C++ -----------------------------------------------------------------
+    # 5. what it looks like ------------------------------------------------------
+
+    def face(self):
+        """
+        The device as the page draws it: every box the patch puts in presentation view,
+        where the patch puts it, with each dial tied to its parameter. The plugin's window
+        (native/ui/face.html) is drawn from this, so a device looks the same in a DAW as
+        it does in the browser and in Live. The page's own drawing of the same boxes is
+        renderDevice() in device-view.ts.
+        """
+        def colour(value, fallback):
+            if not isinstance(value, list) or len(value) < 3:
+                return fallback
+            try:
+                r, g, b = (int(round(min(1.0, max(0.0, float(c))) * 255)) for c in value[:3])
+                a = float(value[3]) if len(value) > 3 else 1.0
+            except (TypeError, ValueError):
+                return fallback
+            return "rgba(%d, %d, %d, %s)" % (r, g, b, ("%g" % a))
+
+        by_box = {p.box.id: p for p in self.params}
+        shown = [b for b in self.boxes.values()
+                 if b.raw.get("presentation") == 1 and isinstance(b.raw.get("presentation_rect"), list)]
+        # Max paints `background` boxes under everything else.
+        shown.sort(key=lambda b: -int(b.raw.get("background") or 0))
+        items = []
+        try:
+            width = float(self.device_width)   # the width fxgen set, which has the last card's margin in it
+        except (TypeError, ValueError):
+            width = 0.0
+        for box in shown:
+            rect = [float(v) for v in box.raw["presentation_rect"][:4]]
+            width = max(width, rect[0] + rect[2])
+            raw = box.raw
+            if box.cls == "panel":
+                items.append({"type": "panel", "rect": rect, "color": colour(raw.get("bgcolor"), "#fdf2eb"),
+                              "radius": float(raw.get("rounded") or 0)})
+            elif box.cls in ("live.comment", "comment"):
+                items.append({"type": "label", "rect": rect, "text": str(raw.get("text") or ""),
+                              "size": float(raw.get("fontsize") or 10), "color": colour(raw.get("textcolor"), "#2f1007"),
+                              "center": int(raw.get("textjustification") or 0) == 1})
+            elif box.id in by_box:
+                p = by_box[box.id]
+                items.append({"type": "dial", "rect": rect, "index": p.index, "accent": colour(raw.get("activedialcolor"), "#3f78bd"),
+                              "param": {"name": p.name, "short": p.short, "min": p.min, "max": p.max, "initial": p.initial,
+                                        "exponent": p.exponent, "unit": p.unit, "integer": p.integer}})
+        return {"width": width, "height": 169.0, "background": "#feddd4", "items": items}
+
+    def face_packed(self):
+        """face(), as one word: JSON in base64. "" for a device with nothing to show."""
+        import base64
+        face = self.face()
+        if not face["items"]:
+            return ""
+        return base64.b64encode(json.dumps(face, separators=(",", ":"), ensure_ascii=True).encode("ascii")).decode("ascii")
+
+    # 6. the C++ -----------------------------------------------------------------
 
     def emit(self):
         name = self.name or "Effect"
@@ -976,6 +1033,12 @@ class Compiler:
         w("    static constexpr bool kHasTail = %s;" % ("true" if tail else "false"))
         w("    // An instrument is played with noteOn() and noteOff(); an effect is given audio.")
         w("    static constexpr bool kIsInstrument = %s;" % ("true" if self.instrument else "false"))
+        # What the plugin's window draws (face()), in pieces short enough for any compiler.
+        packed = self.face_packed()
+        w("    // The device's face: where each card, label and dial goes, as JSON in base64.")
+        w("    static constexpr const char* kFace =")
+        for at in range(0, max(1, len(packed)), 1000):
+            w("        \"%s\"%s" % (packed[at:at + 1000], ";" if at + 1000 >= len(packed) else ""))
         w("")
         w("    // id, name, short name, min, max, initial, exponent, unit, integer")
         w("    static constexpr mxrt::ParamInfo kParams[%d] = {" % max(1, len(params)))
@@ -1435,6 +1498,11 @@ class Program:
             out.append("k %d %s" % (number, ctype))
         out += body
         out.append("@end")
+        # What the plugin's window draws. After the program, where a runtime from before
+        # there was a window stops reading.
+        packed = c.face_packed()
+        if packed:
+            out.append("face %s" % packed)
         if settings is not None:
             # What the page needs to open this device again. The runtime does not read it.
             import base64

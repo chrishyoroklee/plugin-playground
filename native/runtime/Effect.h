@@ -21,6 +21,7 @@ public:
     static inline bool kHasTail = false;
     static inline bool kIsInstrument = false;
     static inline const mxrt::ParamInfo* kParams = nullptr;
+    static inline const char* kFace = "";
 
     // Read a device file's text and become that device. False, with a reason, if it
     // cannot be run; the process then has no device.
@@ -35,6 +36,7 @@ public:
         kHasTail = d.tail;
         kIsInstrument = d.instrument;
         kParams = d.params.data();
+        kFace = d.face.c_str();
         return true;
     }
 

@@ -343,6 +343,8 @@ def build_runtime(out, log=print):
                 shutil.copy2(_find(build, APP_NAME + ".exe"), home / (APP_NAME + ".exe"))
             check = "hostcheck" + (".exe" if os.name == "nt" else "")
             shutil.copy2(_find(build, check), home / check)
+            if mac:
+                shutil.copy2(_find(build, "guicheck"), home / "guicheck")
         if mac:
             _copy(_find(products, RUNTIME_NAME + ".component"), home / "Runtime" / kind / (RUNTIME_NAME + ".component"))
             if kind == "effect":
@@ -426,7 +428,7 @@ def install_device(home, device, to=None):
     return [Path(line.strip()) for line in done.stdout.splitlines()[1:] if line.strip()]
 
 
-def check_runtime(home, made, work, log=print):
+def check_runtime(home, made, work, log=print, window=True):
     """
     The plugin the helper makes for a device, loaded as a host would and held to the
     runtime's own Effect given the same device: hostcheck, as for a compiled plugin.
@@ -439,6 +441,15 @@ def check_runtime(home, made, work, log=print):
     if done.returncode != 0:
         raise BuildError("the runtime plugin for %s failed its check:\n%s\n%s" % (made["name"], done.stdout[-3000:], done.stderr[-3000:]))
     log("  %s" % done.stdout.strip())
+    if window and platform.system() == "Darwin":
+        # The same plugin's window, opened as a host opens it: it has to draw the device,
+        # follow the host, and tell the host when a dial is turned in it.
+        done = subprocess.run([str(home / "guicheck"), str(binary), str(work / "windows" / made["slug"])],
+                              capture_output=True, text=True)
+        if done.returncode != 0:
+            raise BuildError("the window of the runtime plugin for %s failed its check:\n%s\n%s"
+                             % (made["name"], done.stdout[-3000:], done.stderr[-3000:]))
+        log("  %s" % done.stdout.strip())
     return plugins
 
 
@@ -1074,7 +1085,9 @@ def main(argv=None):
             for settings in chosen:
                 made = generate(settings, out / patchc.slug(fxgen.normalize(settings)["name"]))
                 print(made["name"])
-                check_runtime(home, made, out / "_runtime_check")
+                # A window takes five seconds to open and look at. Every preset's sound is
+                # checked; with --all, the windows are left to the presets asked for by name.
+                check_runtime(home, made, out / "_runtime_check", window=not args.all)
                 if args.check_installer:
                     check_runtime_installer(home, made, Path(args.check_installer))
                 if args.install or args.validate:

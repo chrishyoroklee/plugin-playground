@@ -138,6 +138,35 @@ def test_a_device_file_carries_its_name_its_dials_and_its_settings():
     assert lines.index("@end") < len(lines) - 1
 
 
+def test_a_device_file_says_what_the_device_looks_like():
+    """The plugin's window is drawn from this: every dial, where the patch put it."""
+    import base64
+    import json
+    lines = _program("shoegaze").splitlines()
+    face = json.loads(base64.b64decode(next(l for l in lines if l.startswith("face ")).split()[1]))
+    dials = [i for i in face["items"] if i["type"] == "dial"]
+    params = [l.split() for l in lines if l.startswith("param ")]
+    assert sorted(d["index"] for d in dials) == list(range(len(params)))
+    for d in dials:
+        row = params[d["index"]]
+        assert (d["param"]["min"], d["param"]["max"], d["param"]["initial"]) == tuple(float(v) for v in row[2:5])
+        assert d["rect"][2:] == [44.0, 48.0]
+    labels = [i["text"] for i in face["items"] if i["type"] == "label"]
+    assert "Shoegaze Wall" in labels and "REVERB" in labels
+    assert face["height"] == 169.0 and face["width"] >= max(i["rect"][0] + i["rect"][2] for i in face["items"])
+    # after the program, where a runtime from before there was a window has stopped reading
+    assert lines.index("@end") < next(i for i, l in enumerate(lines) if l.startswith("face "))
+
+
+@needs_compiler
+def test_the_compiled_plugin_carries_the_same_face(both):
+    made = both["made"]["shoegaze"]
+    in_file = next(l for l in made["device"].read_text().splitlines() if l.startswith("face ")).split()[1]
+    source = made["effect"].read_text()
+    pieces = source[source.index("kFace ="):source.index("// id, name, short name")]
+    assert "".join(part for part in pieces.split('"')[1::2]) == in_file
+
+
 def test_an_instrument_says_how_many_voices_it_has():
     lines = _program(INSTRUMENTS[0]["id"]).splitlines()
     assert "kind instrument" in lines

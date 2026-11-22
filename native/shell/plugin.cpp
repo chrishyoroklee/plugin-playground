@@ -6,8 +6,8 @@
 //
 // Hand-written and the same for every effect. The Effect.h it includes is whichever one
 // patchc generated for this build; clap-wrapper turns the result into VST3 and Audio
-// Unit as well. There is no custom window: the host shows its own controls for the
-// parameters.
+// Unit as well. On macOS the plugin has a window of its own (gui.h), which draws the
+// device as the page does; elsewhere the host shows its own controls for the parameters.
 //
 // Parameters. A linear dial is given to the host in its own units (0 to 100 %, -24 to
 // +12 dB). A dial with a curve (parameter_exponent other than 1, as on every frequency
@@ -18,7 +18,10 @@
 // Threads. The host may change parameters from the audio thread (events in process) or
 // from the main thread (loading state, or flushing while the plugin is not running).
 // `values` is the truth both can touch; the Effect itself is only touched from the audio
-// thread, or from the main thread while the plugin is inactive.
+// thread, or from the main thread while the plugin is inactive. A dial dragged in the
+// plugin's window is a third way in: it sets `values` like the others, and is queued so
+// that the next process() or flush() can tell the host, which is how the move gets
+// recorded as automation.
 
 #include <atomic>
 #include <cstdint>
@@ -32,6 +35,7 @@
 
 #include "Effect.h"
 #include "entry.h"
+#include "gui.h"
 #ifdef FX_RUNTIME
 #include "locate.h"
 #endif
@@ -55,10 +59,23 @@ int indexOf(clap_id id) {
     return -1;
 }
 
-struct Plugin {
+// Something done to a dial in the plugin's window, waiting to be told to the host.
+struct UiMove {
+    enum Kind { kGrab, kSet, kRelease } kind;
+    int index;
+    double value;
+};
+
+struct Plugin : fxgui::Model {
     clap_plugin_t plugin;
     const clap_host_t* host = nullptr;
     const clap_host_params_t* hostParams = nullptr;
+    fxgui::Window* window = nullptr;
+    // Written by the window on the main thread, read by whichever thread next talks to
+    // the host. One writer, one reader, no lock: a slot is filled before `written` moves.
+    static constexpr uint32_t kMoves = 512;
+    UiMove moves[kMoves];
+    std::atomic<uint32_t> written{0}, told{0};
     Effect effect;
     std::unique_ptr<std::atomic<double>[]> values;  // in the dial's units
     std::unique_ptr<std::atomic<bool>[]> dirty;     // changed off the audio thread; process() applies it
@@ -71,6 +88,60 @@ struct Plugin {
             values[i].store(Effect::kParams[i].initial);
             dirty[i].store(false);
         }
+    }
+
+    // ── the window's side (fxgui::Model), on the main thread ──
+
+    int count() override { return N(); }
+    double value(int index) override { return index >= 0 && index < N() ? values[index].load() : 0.0; }
+    const char* face() override { return Effect::kFace; }
+    void grab(int index) override { queue({UiMove::kGrab, index, 0.0}); }
+    void release(int index) override { queue({UiMove::kRelease, index, 0.0}); }
+    void set(int index, double v) override {
+        if (index < 0 || index >= N()) return;
+        const double clamped = mxrt::clampValue(Effect::kParams[index], v);
+        values[index].store(clamped);
+        dirty[index].store(true);
+        queue({UiMove::kSet, index, clamped});
+    }
+
+    void queue(const UiMove& move) {
+        if (move.index < 0 || move.index >= N()) return;
+        const uint32_t at = written.load(std::memory_order_relaxed);
+        if (at - told.load(std::memory_order_acquire) >= kMoves) return;  // the host is not listening; the value is set all the same
+        moves[at % kMoves] = move;
+        written.store(at + 1, std::memory_order_release);
+        // Ask to be called, so the move reaches the host even while no audio is running.
+        if (hostParams && hostParams->request_flush) hostParams->request_flush(host);
+    }
+
+    // Tell the host what was done in the window since it was last told.
+    void tell(const clap_output_events_t* out) {
+        uint32_t at = told.load(std::memory_order_relaxed);
+        const uint32_t end = written.load(std::memory_order_acquire);
+        for (; at != end; at++) {
+            if (!out) continue;
+            const UiMove& move = moves[at % kMoves];
+            const clap_id id = Effect::kParams[move.index].id;
+            if (move.kind == UiMove::kSet) {
+                clap_event_param_value_t ev = {};
+                ev.header = {sizeof ev, 0, CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_PARAM_VALUE, 0};
+                ev.param_id = id;
+                ev.note_id = -1;
+                ev.port_index = -1;
+                ev.channel = -1;
+                ev.key = -1;
+                ev.value = toHost(move.index, move.value);
+                out->try_push(out, &ev.header);
+            } else {
+                clap_event_param_gesture_t ev = {};
+                const uint16_t type = move.kind == UiMove::kGrab ? CLAP_EVENT_PARAM_GESTURE_BEGIN : CLAP_EVENT_PARAM_GESTURE_END;
+                ev.header = {sizeof ev, 0, CLAP_CORE_EVENT_SPACE_ID, type, 0};
+                ev.param_id = id;
+                out->try_push(out, &ev.header);
+            }
+        }
+        told.store(at, std::memory_order_release);
     }
 
     // A key going down or coming up. Only while audio is running: a note has no meaning
@@ -139,7 +210,11 @@ bool pluginInit(const clap_plugin_t* plugin) {
     return true;
 }
 
-void pluginDestroy(const clap_plugin_t* plugin) { delete self(plugin); }
+void pluginDestroy(const clap_plugin_t* plugin) {
+    Plugin* p = self(plugin);
+    fxgui::destroy(p->window);
+    delete p;
+}
 
 bool pluginActivate(const clap_plugin_t* plugin, double sampleRate, uint32_t, uint32_t maxFrames) {
     Plugin* p = self(plugin);
@@ -163,6 +238,7 @@ clap_process_status pluginProcess(const clap_plugin_t* plugin, const clap_proces
     Plugin* p = self(plugin);
     mxrt::ScopedNoDenormals quiet;
     p->applyDirty();
+    p->tell(process->out_events);
 
     const uint32_t frames = process->frames_count;
     const clap_input_events_t* events = process->in_events;
@@ -278,10 +354,11 @@ bool paramsFromText(const clap_plugin_t*, clap_id id, const char* text, double* 
 
 // Called instead of process() when there is no audio running; the next process() or
 // activate() hands the values to the Effect.
-void paramsFlush(const clap_plugin_t* plugin, const clap_input_events_t* in, const clap_output_events_t*) {
+void paramsFlush(const clap_plugin_t* plugin, const clap_input_events_t* in, const clap_output_events_t* out) {
     Plugin* p = self(plugin);
     const uint32_t count = in ? in->size(in) : 0;
     for (uint32_t k = 0; k < count; k++) p->event(in->get(in, k), false);
+    p->tell(out);
 }
 
 const clap_plugin_params_t kParams = {paramsCount, paramsInfo, paramsValue, paramsToText, paramsFromText, paramsFlush};
@@ -358,7 +435,78 @@ uint32_t tailGet(const clap_plugin_t*) { return Effect::kHasTail ? UINT32_MAX : 
 
 const clap_plugin_tail_t kTail = {tailGet};
 
+// ── the window ──────────────────────────────────────────────────────────────────
+
+// A window only where one is written (gui.h) and only for a device that says what it
+// looks like. Otherwise the host shows its own controls.
+bool hasWindow() { return fxgui::supported() && Effect::kFace && Effect::kFace[0] != 0; }
+
+bool guiIsApiSupported(const clap_plugin_t*, const char* api, bool floating) {
+    return hasWindow() && !floating && std::strcmp(api, CLAP_WINDOW_API_COCOA) == 0;
+}
+
+bool guiGetPreferredApi(const clap_plugin_t*, const char** api, bool* floating) {
+    *api = CLAP_WINDOW_API_COCOA;
+    *floating = false;
+    return hasWindow();
+}
+
+bool guiCreate(const clap_plugin_t* plugin, const char* api, bool floating) {
+    Plugin* p = self(plugin);
+    if (!guiIsApiSupported(plugin, api, floating)) return false;
+    if (!p->window) p->window = fxgui::create(p);
+    return p->window != nullptr;
+}
+
+void guiDestroy(const clap_plugin_t* plugin) {
+    Plugin* p = self(plugin);
+    fxgui::destroy(p->window);
+    p->window = nullptr;
+}
+
+bool guiSetScale(const clap_plugin_t*, double) { return false; }  // macOS scales windows itself
+
+bool guiGetSize(const clap_plugin_t* plugin, uint32_t* width, uint32_t* height) {
+    Plugin* p = self(plugin);
+    if (!p->window) return false;
+    fxgui::size(p->window, width, height);
+    return true;
+}
+
+// One size: the device's, as its face lays it out.
+bool guiCanResize(const clap_plugin_t*) { return false; }
+bool guiGetResizeHints(const clap_plugin_t*, clap_gui_resize_hints_t*) { return false; }
+bool guiAdjustSize(const clap_plugin_t* plugin, uint32_t* width, uint32_t* height) {
+    return guiGetSize(plugin, width, height);
+}
+bool guiSetSize(const clap_plugin_t* plugin, uint32_t width, uint32_t height) {
+    uint32_t w = 0, h = 0;
+    return guiGetSize(plugin, &w, &h) && w == width && h == height;
+}
+
+bool guiSetParent(const clap_plugin_t* plugin, const clap_window_t* window) {
+    return fxgui::attach(self(plugin)->window, window ? window->cocoa : nullptr);
+}
+
+bool guiSetTransient(const clap_plugin_t*, const clap_window_t*) { return false; }
+void guiSuggestTitle(const clap_plugin_t*, const char*) {}
+
+bool guiShow(const clap_plugin_t* plugin) {
+    fxgui::show(self(plugin)->window, true);
+    return self(plugin)->window != nullptr;
+}
+
+bool guiHide(const clap_plugin_t* plugin) {
+    fxgui::show(self(plugin)->window, false);
+    return self(plugin)->window != nullptr;
+}
+
+const clap_plugin_gui_t kGui = {guiIsApiSupported, guiGetPreferredApi, guiCreate, guiDestroy, guiSetScale,
+                                guiGetSize, guiCanResize, guiGetResizeHints, guiAdjustSize, guiSetSize,
+                                guiSetParent, guiSetTransient, guiSuggestTitle, guiShow, guiHide};
+
 const void* pluginExtension(const clap_plugin_t*, const char* id) {
+    if (std::strcmp(id, CLAP_EXT_GUI) == 0 && hasWindow()) return &kGui;
     if (std::strcmp(id, CLAP_EXT_AUDIO_PORTS) == 0) return &kAudioPorts;
     if (std::strcmp(id, CLAP_EXT_NOTE_PORTS) == 0 && Effect::kIsInstrument) return &kNotePorts;
     if (std::strcmp(id, CLAP_EXT_PARAMS) == 0) return &kParams;

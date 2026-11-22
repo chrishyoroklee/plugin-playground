@@ -1,0 +1,229 @@
+<!doctype html>
+<!--
+  The plugin's window: the device as the page shows it, drawn from the face a device
+  file carries (patchc.py, face()). The plugin loads this page in a web view and the two
+  talk in four messages:
+
+    page -> plugin   {type: "ready"}                       ask for the face and the values
+                     {type: "begin" | "end", index}        a dial was grabbed, or let go
+                     {type: "set", index, value}           a dial moved; value in its own units
+    plugin -> page   ppFace(face)                          once
+                     ppValues([v0, v1, ...])               whenever the host moved something
+
+  The dial is the page's own (src/objects/ui/live-dial.ts), geometry and gestures both,
+  so a device looks and handles the same in the browser and in a DAW. Keep them in step.
+  __FONTS__ is replaced with the two DM Mono files when the plugin is built.
+-->
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+__FONTS__
+html, body { margin: 0; height: 100%; overflow: hidden; background: #feddd4; }
+body { font-family: 'DM Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; -webkit-user-select: none; user-select: none; cursor: default; }
+#device { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+.panel { position: absolute; box-shadow: 0 0 0 1px rgba(47, 16, 7, 0.07) inset; }
+.label { position: absolute; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: 0.08em; font-weight: 500; }
+.dial { position: absolute; cursor: ns-resize; outline: none; }
+.dial svg { display: block; overflow: visible; }
+.dial text { font-family: inherit; }
+.dial .name { font-size: 7.2px; fill: #2f1007; text-transform: uppercase; letter-spacing: 0.06em; }
+.dial .readout { font-size: 6.8px; fill: #8f6f65; font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<div id="device"></div>
+<script>
+(function () {
+  'use strict';
+  var SVG = 'http://www.w3.org/2000/svg';
+  // The knob's travel: 270 degrees, from 7:30 round to 4:30.
+  var A0 = 135, SWEEP = 270, CX = 22, CY = 25, R = 11.6;
+  var dials = [];   // by parameter index: {param, value, redraw}
+
+  function send(message) {
+    try {
+      if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.pp) window.webkit.messageHandlers.pp.postMessage(message);
+      else if (window.chrome && window.chrome.webview) window.chrome.webview.postMessage(message);
+      else if (window.ppHost) window.ppHost(message);
+    } catch (e) { /* no plugin behind the page: it is being looked at on its own */ }
+  }
+
+  function polar(deg, r) {
+    var a = deg * Math.PI / 180;
+    return [CX + (r || R) * Math.cos(a), CY + (r || R) * Math.sin(a)];
+  }
+  function arc(from, to) {
+    var p0 = polar(from), p1 = polar(to);
+    if (Math.abs(to - from) < 0.01) return 'M ' + p0[0] + ' ' + p0[1];
+    return 'M ' + p0[0] + ' ' + p0[1] + ' A ' + R + ' ' + R + ' 0 ' + (to - from > 180 ? 1 : 0) + ' 1 ' + p1[0] + ' ' + p1[1];
+  }
+  function clamp01(n) { return Math.min(1, Math.max(0, n)); }
+  function valueAt(p, position) {
+    var v = p.min + (p.max - p.min) * Math.pow(clamp01(position), p.exponent);
+    return p.integer ? Math.round(v) : v;
+  }
+  function positionOf(p, value) {
+    if (p.max === p.min) return 0;
+    return Math.pow(clamp01((value - p.min) / (p.max - p.min)), 1 / p.exponent);
+  }
+  function trim(n, digits) {
+    var s = n.toFixed(digits);
+    return s.indexOf('.') >= 0 ? s.replace(/\.?0+$/, '') : s;
+  }
+  // A value as Ableton prints it under the dial. Units: 0 int, 1 float, 2 ms, 3 Hz, 4 dB, 5 %.
+  function format(p, value) {
+    switch (p.unit) {
+      case 0: return String(Math.round(value));
+      case 2: return value >= 1000 ? trim(value / 1000, 2) + ' s' : trim(value, value < 10 ? 1 : 0) + ' ms';
+      case 3: return value >= 1000 ? trim(value / 1000, 2) + ' kHz' : trim(value, value < 10 ? 2 : 0) + ' Hz';
+      case 4: return (value > 0 ? '+' : '') + trim(value, 1) + ' dB';
+      case 5: return trim(value, 0) + ' %';
+      default: return trim(value, Math.abs(value) >= 100 ? 0 : 2);
+    }
+  }
+  function mk(parent, tag, attrs) {
+    var e = document.createElementNS(SVG, tag);
+    for (var k in attrs) e.setAttribute(k, attrs[k]);
+    parent.appendChild(e);
+    return e;
+  }
+
+  function dial(item) {
+    var p = item.param, index = item.index;
+    var lo = Math.min(p.min, p.max), hi = Math.max(p.min, p.max);
+    var bound = function (v) { var c = Math.min(hi, Math.max(lo, v)); return p.integer ? Math.round(c) : c; };
+    var state = { param: p, value: bound(p.initial), redraw: null, held: false };
+
+    var root = document.createElement('div');
+    root.className = 'dial';
+    root.tabIndex = 0;
+    root.setAttribute('role', 'slider');
+    root.setAttribute('aria-label', p.name);
+    var svg = document.createElementNS(SVG, 'svg');
+    svg.setAttribute('viewBox', '0 0 44 48');
+    svg.setAttribute('width', '100%');
+    svg.setAttribute('height', '100%');
+    root.appendChild(svg);
+
+    mk(svg, 'text', { x: 22, y: 8, 'text-anchor': 'middle', 'class': 'name' }).textContent = p.short;
+    mk(svg, 'path', { d: arc(A0, A0 + SWEEP), fill: 'none', stroke: '#e6bdb3', 'stroke-width': 1.2, 'stroke-linecap': 'round' });
+    var fill = mk(svg, 'path', { d: '', fill: 'none', stroke: item.accent || '#3f78bd', 'stroke-width': 1.7, 'stroke-linecap': 'round' });
+    mk(svg, 'circle', { cx: CX, cy: CY, r: 9.6, fill: '#fff9f5', stroke: '#e6bdb3', 'stroke-width': 0.5 });
+    var needle = mk(svg, 'line', { x1: CX, y1: CY, x2: CX, y2: CY, stroke: '#2f1007', 'stroke-width': 1.2, 'stroke-linecap': 'round' });
+    var readout = mk(svg, 'text', { x: 22, y: 46, 'text-anchor': 'middle', 'class': 'readout' });
+
+    state.redraw = function () {
+      var deg = A0 + SWEEP * positionOf(p, state.value);
+      fill.setAttribute('d', arc(A0, deg));
+      var a = polar(deg, 2.6), b = polar(deg, 8.6);
+      needle.setAttribute('x1', a[0]); needle.setAttribute('y1', a[1]);
+      needle.setAttribute('x2', b[0]); needle.setAttribute('y2', b[1]);
+      readout.textContent = format(p, state.value);
+    };
+    state.redraw();
+
+    var set = function (v) {
+      var next = bound(v);
+      if (next === state.value) return;
+      state.value = next;
+      state.redraw();
+      send({ type: 'set', index: index, value: next });
+    };
+    // One gesture for the host to record: grabbed, moved any number of times, let go.
+    var once = function (change) { send({ type: 'begin', index: index }); change(); send({ type: 'end', index: index }); };
+
+    // Drag up and down, the way every plugin knob works; Shift for fine control.
+    var dragging = false, dragY = 0, dragPos = 0;
+    root.addEventListener('pointerdown', function (e) {
+      if (e.button !== 0) return;
+      dragging = state.held = true; dragY = e.clientY; dragPos = positionOf(p, state.value);
+      root.setPointerCapture(e.pointerId);
+      send({ type: 'begin', index: index });
+      e.preventDefault();
+    });
+    root.addEventListener('pointermove', function (e) {
+      if (!dragging) return;
+      set(valueAt(p, dragPos + (dragY - e.clientY) / ((e.shiftKey ? 900 : 180) * zoom)));
+    });
+    var release = function (e) {
+      if (!dragging) return;
+      dragging = state.held = false;
+      if (root.hasPointerCapture(e.pointerId)) root.releasePointerCapture(e.pointerId);
+      send({ type: 'end', index: index });
+    };
+    root.addEventListener('pointerup', release);
+    root.addEventListener('pointercancel', release);
+    root.addEventListener('dblclick', function () { once(function () { set(p.initial); }); });
+    var wheelEnd = 0;
+    root.addEventListener('wheel', function (e) {
+      e.preventDefault();
+      if (!wheelEnd) send({ type: 'begin', index: index });
+      clearTimeout(wheelEnd);
+      wheelEnd = setTimeout(function () { wheelEnd = 0; send({ type: 'end', index: index }); }, 300);
+      set(valueAt(p, positionOf(p, state.value) - e.deltaY * (e.shiftKey ? 0.0002 : 0.001)));
+    }, { passive: false });
+
+    dials[index] = state;
+    return root;
+  }
+
+  var zoom = 1;
+  function fit(face) {
+    zoom = Math.min(window.innerWidth / face.width, window.innerHeight / face.height) || 1;
+    document.getElementById('device').style.transform = 'scale(' + zoom + ')';
+  }
+
+  // The face, from the plugin. Everything is placed where the patch put it.
+  window.ppFace = function (face) {
+    var host = document.getElementById('device');
+    host.replaceChildren();
+    dials = [];
+    document.body.style.background = face.background || '#feddd4';
+    host.style.width = face.width + 'px';
+    host.style.height = face.height + 'px';
+    face.items.forEach(function (item) {
+      var el;
+      if (item.type === 'panel') {
+        el = document.createElement('div');
+        el.className = 'panel';
+        el.style.background = item.color;
+        el.style.borderRadius = (item.radius || 0) + 'px';
+      } else if (item.type === 'label') {
+        el = document.createElement('div');
+        el.className = 'label';
+        el.textContent = item.text;
+        el.style.fontSize = item.size + 'px';
+        el.style.color = item.color;
+        el.style.textAlign = item.center ? 'center' : 'left';
+        el.style.lineHeight = item.rect[3] + 'px';
+      } else if (item.type === 'dial') {
+        el = dial(item);
+      } else {
+        return;
+      }
+      el.style.left = item.rect[0] + 'px';
+      el.style.top = item.rect[1] + 'px';
+      el.style.width = item.rect[2] + 'px';
+      el.style.height = item.rect[3] + 'px';
+      host.appendChild(el);
+    });
+    fit(face);
+    window.onresize = function () { fit(face); };
+  };
+
+  // Where the host has the dials now. A dial being dragged here is left alone.
+  window.ppValues = function (values) {
+    for (var i = 0; i < values.length; i++) {
+      var d = dials[i];
+      if (!d || d.held || d.value === values[i]) continue;
+      d.value = values[i];
+      d.redraw();
+    }
+  };
+
+  send({ type: 'ready' });
+})();
+</script>
+</body>
+</html>
