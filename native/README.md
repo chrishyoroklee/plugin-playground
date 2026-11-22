@@ -148,7 +148,8 @@ device's **face** next to its program: every box the patch puts in presentation 
 (the cards, the labels, each dial with its range and unit), where the patch puts it. A
 device file carries it on a `face` line and a generated Effect.h as `kFace`.
 
-`ui/face.html` draws a face. It is one page with no dependencies, built into the plugin
+The face includes the device's colours: its theme's backdrop and cards, and each dial's
+lettering and ring, which fxgen writes on the boxes. `ui/face.html` draws a face. It is one page with no dependencies, built into the plugin
 as bytes with its two font files (DM Mono, OFL), and its dial is the page's own
 (`src/objects/ui/live-dial.ts`): the same geometry, the same drag, wheel and
 double-click. `shell/gui_mac.mm` shows it in a WKWebView and passes four kinds of message

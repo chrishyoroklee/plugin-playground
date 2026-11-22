@@ -50,7 +50,18 @@ export interface MotionSpec {
   maxRoutes: number;
 }
 
+/** A set of colours for a device: its backdrop, its cards, its lettering and its dials' rings. */
+export interface Theme {
+  id: string;
+  label: string;
+  bg: string;
+  card: string;
+  ink: string;
+  track: string;
+}
+
 export interface Schema {
+  themes: Theme[];
   motion: MotionSpec;
   modules: ModuleSpec[];
   /** The sections of an instrument's synth: always there, in this order. */
@@ -98,6 +109,8 @@ export interface Motion {
 }
 
 export interface Settings {
+  /** A theme's id. Left out for the first theme, which is the one every device had before there were themes. */
+  theme?: string;
   motion?: Motion;
   /** Only written on an instrument, as fxgen.py does; an effect has neither field. */
   kind?: 'instrument';
@@ -123,6 +136,9 @@ export const INSTRUMENTS = instrumentsJson as unknown as Preset[];
 
 export const presetsOf = (kind: Kind): Preset[] => (kind === 'instrument' ? INSTRUMENTS : PRESETS);
 export const kindOf = (s: Pick<Settings, 'kind'>): Kind => (s.kind === 'instrument' ? 'instrument' : 'effect');
+
+/** The device's colours: its theme's, or the first theme's. */
+export const themeOf = (s: Pick<Settings, 'theme'>): Theme => SCHEMA.themes.find((t) => t.id === s.theme) ?? SCHEMA.themes[0];
 
 export const moduleSpec = (id: string): ModuleSpec | undefined => SCHEMA.modules.find((m) => m.id === id);
 
@@ -242,14 +258,15 @@ export function normalize(input: unknown): Settings {
   const output: Record<string, number> = {};
   for (const p of SCHEMA.output.params) output[p.id] = clampParam(p, s.output?.[p.id] ?? p.default);
   const motion = normalizeMotion(s.motion, kind);
-  if (kind === 'effect') return { name, accent, chain, output, ...(motion ? { motion } : {}) };
+  const themed = SCHEMA.themes.slice(1).some((t) => t.id === s.theme) ? { theme: s.theme } : {};
+  if (kind === 'effect') return { name, accent, chain, output, ...themed, ...(motion ? { motion } : {}) };
 
   const instrument: Record<string, Section> = {};
   for (const mod of SCHEMA.instrument.modules) {
     const { options, values } = normalizeEntry(mod, s.instrument?.[mod.id] ?? {});
     instrument[mod.id] = { options, values };
   }
-  return { kind, instrument, name, accent, chain, output, ...(motion ? { motion } : {}) };
+  return { kind, instrument, name, accent, chain, output, ...themed, ...(motion ? { motion } : {}) };
 }
 
 /** Where a module's dial values live in the settings: the synth, the chain or the output. */
@@ -289,6 +306,7 @@ export function encodeSettings(s: Settings): string {
     accent: s.accent,
     chain: s.chain.filter((e) => e.on).map((e) => ({ module: e.module, on: true, options: e.options, values: e.values })),
     output: s.output,
+    theme: s.theme,
     motion: s.motion,
   };
   const bytes = new TextEncoder().encode(JSON.stringify(slim));

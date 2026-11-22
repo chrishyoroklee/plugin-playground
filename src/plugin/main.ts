@@ -23,7 +23,7 @@ import { Track } from './audio';
 import { DEVICE_HEIGHT, highlightPython, renderDevice, renderPatch } from './device-view';
 import { Keyboard, PHRASES, Sequencer } from './keys';
 import {
-  SCHEMA, decodeSettings, dialIndex, encodeSettings, kindOf, moduleSpec, normalize, presetsOf, valuesOf,
+  SCHEMA, decodeSettings, dialIndex, encodeSettings, kindOf, moduleSpec, normalize, presetsOf, themeOf, valuesOf,
   type ChainEntry, type Kind, type ModuleSpec, type Preset, type Section, type Settings,
 } from './model';
 import { PyRuntime, base64ToBytes, type RunResult } from './python';
@@ -32,7 +32,9 @@ import {
   type Machine, type RuntimeFiles, type SystemId, type Verdict,
 } from './installers';
 import { AssistError, ask, chatPrompt, parseAnswer, saveKey, savedKey, toSettings } from './assist';
-import { markDevice, renderDialMenu, renderMotion, type MotionHost } from './motion-ui';
+import {
+  closeMenu, decorate, deviceClick, menuOpen, refreshMenu, renderMotion, stopLinking, watchMoved, type EditHost,
+} from './edit-ui';
 import { SOUNDS, findSound } from './sounds';
 import { getTheme, setTheme } from './theme';
 
@@ -164,8 +166,14 @@ async function apply(next: RunResult): Promise<void> {
   }
 
   deviceWidth = renderDevice($('device'), next.json, report.built as ReadonlyMap<string, MaxNode>);
-  markDevice($('device'), settings, kind(), dials);
-  if (dialMenu) renderDialMenu($('dial-pop'), dialMenu, motionHost);
+  // The page's own controls on the device (Edit) are drawn in the device's colours.
+  const theme = themeOf(settings);
+  $('device').style.setProperty('--dv-ink', theme.ink);
+  $('device').style.setProperty('--dv-card', theme.card);
+  decorate($('device'), editHost, dials);
+  stopWatching();
+  stopWatching = watchMoved(patch, report.built as ReadonlyMap<string, MaxNode>, $('device'), settings, dials);
+  refreshMenu(editHost);
   const hidden = renderPatch($('patch-wrap'), patch);
   $('patch-wrap').dataset.hidden = String(hidden);
   applyZoom();
@@ -753,53 +761,36 @@ function aiApply(): void {
   }
 }
 
-// ── motion ──────────────────────────────────────────────────────────────────────
+// ── edit: the device, unlocked ──────────────────────────────────────────────────
 
-/** The dial whose menu is open in Edit mode, as "module.dial". */
-let dialMenu: string | undefined;
+/** Stops the previous device's moved dials being followed, before the next is drawn. */
+let stopWatching: () => void = () => {};
 
-const motionHost: MotionHost = {
+const editHost: EditHost = {
   settings: () => settings,
   kind: () => kind(),
+  editing: () => document.body.classList.contains('is-editing'),
   changed: () => {
     markCustom();
-    renderMotion($('motion'), motionHost);
-    if (dialMenu) renderDialMenu($('dial-pop'), dialMenu, motionHost);
+    renderSide();
     scheduleBuild(120);
   },
+  get menu() { return $('dial-pop'); },
+  get hint() { return $('edit-hint'); },
 };
 
 function setEditing(on: boolean): void {
   document.body.classList.toggle('is-editing', on);
   $('btn-edit').setAttribute('aria-pressed', String(on));
+  $('btn-edit').lastChild!.textContent = on ? ' Done' : ' Edit';
   $('edit-hint').hidden = !on;
   if (on) setView('device');
-  else closeDialMenu();
-}
-
-function closeDialMenu(): void {
-  dialMenu = undefined;
-  $('dial-pop').hidden = true;
-}
-
-/** Open the menu for the dial `widget`, beside it, kept inside the window. */
-function openDialMenu(widget: HTMLElement): void {
-  const pop = $('dial-pop');
-  dialMenu = widget.dataset.target;
-  if (!dialMenu) return;
-  renderDialMenu(pop, dialMenu, motionHost);
-  pop.hidden = false;
-  const at = widget.getBoundingClientRect();
-  const width = pop.offsetWidth;
-  const left = Math.min(window.innerWidth - width - 12, Math.max(12, at.left + at.width / 2 - width / 2));
-  const below = at.bottom + 10;
-  const top = below + pop.offsetHeight > window.innerHeight - 12 ? Math.max(12, at.top - pop.offsetHeight - 10) : below;
-  pop.style.left = `${left}px`;
-  pop.style.top = `${top}px`;
+  else { stopLinking(); closeMenu(editHost); }
+  decorate($('device'), editHost, dialIndex(settings.motion));
 }
 
 function renderSide(): void {
-  renderMotion($('motion'), motionHost);
+  renderMotion($('motion'), editHost);
   renderSections();
   renderPresets();
   $<HTMLInputElement>('name').value = settings.name;
@@ -1317,21 +1308,18 @@ function init(): void {
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void aiMake();
   });
 
-  // Edit mode: the device is unlocked, and a click on a dial opens what moves it.
-  $('btn-edit').addEventListener('click', () => setEditing(!document.body.classList.contains('is-editing')));
-  $('device').addEventListener('click', (e) => {
-    if (!document.body.classList.contains('is-editing')) return;
-    const widget = (e.target as HTMLElement).closest<HTMLElement>('.dv-widget[data-target]');
-    if (widget) openDialMenu(widget);
-  });
+  // Edit: the device is unlocked. A click on a dial opens what turns it; the rest of
+  // the controls are laid over the device by edit-ui.ts.
+  $('btn-edit').addEventListener('click', () => setEditing(!editHost.editing()));
+  $('device').addEventListener('click', (e) => { deviceClick(e.target as HTMLElement, editHost); });
   document.addEventListener('pointerdown', (e) => {
     const t = e.target as HTMLElement;
-    if (dialMenu && !t.closest('#dial-pop') && !t.closest('.dv-widget[data-target]')) closeDialMenu();
+    if (menuOpen() && !t.closest('#dial-pop') && !t.closest('.dv-widget') && !t.closest('.edit-add')) closeMenu(editHost);
   });
   window.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
-    if (dialMenu) closeDialMenu();
-    else if (document.body.classList.contains('is-editing')) setEditing(false);
+    if (menuOpen()) closeMenu(editHost);
+    else if (editHost.editing()) setEditing(false);
   });
 
   $('dl-amxd').addEventListener('click', () => void download());

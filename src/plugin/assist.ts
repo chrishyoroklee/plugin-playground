@@ -111,6 +111,7 @@ export function toSettings(answer: unknown, kind: Kind, current: Settings): Sett
     ...(kind === 'instrument' ? { kind, instrument } : {}),
     name: typeof a.name === 'string' && a.name.trim() ? a.name : current.name,
     accent: current.accent,
+    theme: current.theme,
     chain,
     output: { gain: Number(a.output_gain ?? 0) },
     motion: {

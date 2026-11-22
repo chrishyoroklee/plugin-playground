@@ -171,7 +171,7 @@
             </section>
 
             <section class="group">
-              <h2>Motion <small>dials that move by themselves</small></h2>
+              <h2>Turning by itself <small>and your own knobs</small></h2>
               <div id="motion" class="motion"></div>
             </section>
           </div>
@@ -182,10 +182,9 @@
             <div>
               <h1 id="device-title">MaxPy FX</h1>
             </div>
-            <button id="btn-edit" class="btn toggle" type="button" aria-pressed="false" title="Unlock the device: click a dial to say what should move it">
+            <button id="btn-edit" class="btn toggle" type="button" aria-pressed="false" title="Unlock the device: add, remove and move effects, add your own knobs, make dials turn by themselves">
               <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M2.5 13.5l.6-3L10.6 3a1.4 1.4 0 012 0l.4.4a1.4 1.4 0 010 2L5.5 12.9z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
-              Edit
-            </button>
+<span> Edit</span></button>
             <div class="view-toggle" role="tablist" aria-label="Device view">
               <button id="view-device" type="button" role="tab" aria-selected="true" title="Presentation mode: the device as Ableton shows it">
                 <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1.5" fill="currentColor"/><path d="M5.2 7V5a2.8 2.8 0 015.6 0v2" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
@@ -204,7 +203,7 @@
             <div id="patch-wrap" class="patch-wrap" hidden></div>
             <!-- Shown while Python is writing the device again (body[data-state='building']). -->
             <div id="building" class="building" role="status" aria-live="polite"><i></i>Building</div>
-            <p id="edit-hint" class="edit-hint" hidden>Click a dial to choose what moves it.</p>
+            <p id="edit-hint" class="edit-hint" hidden></p>
             <!-- Zoom for whichever view is showing. The middle button puts it back. -->
             <div id="zoom" class="zoom" role="group" aria-label="Zoom">
               <button id="zoom-out" class="btn icon" type="button" title="Zoom out" aria-label="Zoom out">

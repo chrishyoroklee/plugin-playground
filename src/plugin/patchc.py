@@ -1058,9 +1058,12 @@ class Compiler:
             elif box.id in by_box:
                 p = by_box[box.id]
                 items.append({"type": "dial", "rect": rect, "index": p.index, "accent": colour(raw.get("activedialcolor"), "#3f78bd"),
+                              "ink": colour(raw.get("textcolor"), "#2f1007"), "track": colour(raw.get("dialcolor"), "#e6bdb3"),
                               "param": {"name": p.name, "short": p.short, "min": p.min, "max": p.max, "initial": p.initial,
                                         "exponent": p.exponent, "unit": p.unit, "integer": p.integer}})
-        return {"width": width, "height": 169.0, "background": "#feddd4", "items": items}
+        # The backdrop is the panel as wide as the device; the window round it takes its colour.
+        backdrop = next((i["color"] for i in items if i["type"] == "panel" and i["rect"][2] >= 0.9 * width and width > 0), "#feddd4")
+        return {"width": width, "height": 169.0, "background": backdrop, "items": items}
 
     def face_packed(self):
         """face(), as one word: JSON in base64. "" for a device with nothing to show."""

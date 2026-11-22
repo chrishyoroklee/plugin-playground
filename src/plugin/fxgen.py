@@ -126,6 +126,11 @@ def normalize(settings):
     output = {p["id"]: _clamp_param(p, out_values.get(p["id"], p["default"])) for p in sch["output"]["params"]}
 
     out = {"name": name, "accent": accent.lower(), "chain": chain, "output": output}
+    # The colours of the device. The first theme is the one every device had before there
+    # were themes, and is not written down, so those devices' settings are unchanged.
+    themes = [t["id"] for t in sch.get("themes", [])]
+    if settings.get("theme") in themes[1:]:
+        out["theme"] = settings["theme"]
     motion = _normalize_motion(settings.get("motion"), kind)
     if motion:
         out["motion"] = motion
@@ -288,6 +293,11 @@ def dial(longname, shortname, at, slot, lo, hi, init, unit, exponent=1.0):
     show(d, slot[0], slot[1], 44, 48)
     box(d)["varname"] = longname.lower().replace(" ", "_")
     box(d)["activedialcolor"] = ACCENT
+    # The rest of the dial in the device's colours: its ring, its pointer, its lettering.
+    box(d)["dialcolor"] = TRACK
+    box(d)["needlecolor"] = INK
+    box(d)["activeneedlecolor"] = INK
+    box(d)["textcolor"] = INK
     # The dial's range, unit and starting value. (gap M4L-01)
     box(d)["saved_attribute_attributes"] = {"valueof": {
         "parameter_longname": longname,
@@ -346,6 +356,18 @@ def fnum(v):
 
 def pynum(v):
     return repr(round(float(v), 4))
+
+
+def theme_of(settings):
+    """The device's colours: its theme's, or the first theme's."""
+    themes = schema().get("themes") or [{"id": "blush", "bg": "#feddd4", "card": "#fdf2eb", "ink": "#2f1007", "track": "#e6bdb3"}]
+    return next((t for t in themes if t["id"] == settings.get("theme")), themes[0])
+
+
+def _mix(a, b, t):
+    """Two hex colours, t of the way from a to b."""
+    ca, cb = (int(a.lstrip("#")[i:i + 2], 16) for i in (0, 2, 4)), (int(b.lstrip("#")[i:i + 2], 16) for i in (0, 2, 4))
+    return "#" + "".join("%02x" % round(x + (y - x) * t) for x, y in zip(ca, cb))
 
 
 def _rgba(hex_color, alpha=1.0):
@@ -1154,10 +1176,19 @@ def script(settings):
     s.emit(PREAMBLE)
     s.emit()
     s.emit("ACCENT = %r" % _rgba(st["accent"]))
-    # The device's colours: pale cards and warm black lettering. The accent is the dials' arc.
-    s.emit("CARD = [0.992, 0.949, 0.922, 1.0]")
-    s.emit("INK = [0.184, 0.063, 0.027, 1.0]")
-    s.emit("DIM = [0.561, 0.435, 0.396, 1.0]")
+    # The device's colours, from its theme: the backdrop, the cards on it, the lettering
+    # and the dials' rings. The accent is the part of a ring that is filled.
+    theme = theme_of(st)
+    s.emit("BG = %r" % _rgba(theme["bg"]))
+    s.emit("CARD = %r" % _rgba(theme["card"]))
+    s.emit("INK = %r" % _rgba(theme["ink"]))
+    s.emit("DIM = %r" % _rgba(_mix(theme["ink"], theme["track"], 0.5)))
+    s.emit("TRACK = %r" % _rgba(theme["track"]))
+    # The backdrop: one panel behind everything, made first so that it is at the back,
+    # and stretched to the device's width once that is known.
+    s.emit("backdrop = card((%d, %d), x=0, w=10, color=BG)" % (XP, dev.park_y))
+    s.emit('box(backdrop)["rounded"] = 0')
+    dev.park_y += 30
 
     # the name, in the device view
     brand = ['label(%s, (%d, %d), (8, %d, %d), size=12.0, bold=True, color=INK)'
@@ -1218,6 +1249,7 @@ def script(settings):
     s.emit('patcher = patch._patcher_dict["patcher"]')
     s.emit('patcher["openinpresentation"] = 1')
     s.emit('patcher["devicewidth"] = %s' % pynum(width))
+    s.emit('box(backdrop)["presentation_rect"] = [0.0, 0.0, %s, %s]' % (pynum(width), pynum(DEVICE_H)))
     s.emit()
     s.emit('patch.save(%s, device_type="%s", verbose=False)'
            % (json.dumps(filename(st)), "instrument" if instrument else "audio_effect"))

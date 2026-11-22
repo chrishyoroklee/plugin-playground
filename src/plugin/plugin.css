@@ -306,6 +306,7 @@ code { font-family: var(--mono); font-size: 0.92em; }
 .zoom .btn.icon { width: 26px; }
 #zoom-reset { min-width: 52px; padding: 0 6px; font-variant-numeric: tabular-nums; }
 .device-frame {
+  overflow: hidden;   /* the backdrop is a square panel; the frame gives it its corners */
   position: relative; flex: none; width: var(--dw, 600px); height: var(--dh, 169px);
   border-radius: 16px; background: #feddd4;
   box-shadow: 0 0 0 1px rgba(47, 16, 7, 0.16), 0 30px 60px -28px var(--device-shadow);
@@ -606,17 +607,66 @@ h1, .brand-name, .preset b, .sound b, .mod-name b, .octave-name, .field input, .
 .motion-source small { flex: none; color: var(--dim); font-size: 11px; }
 .motion-ask { font-size: 11.5px; color: var(--dim); margin-top: 2px; }
 
-/* Edit: the device unlocked. A dial that can be moved is outlined; one that is moved carries a dot either way. */
-.dv-widget { position: relative; }
-.dv-widget.is-moved::before { content: ''; position: absolute; right: 4px; top: 12px; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
-.is-editing .dv-widget[data-target]::after { content: ''; position: absolute; inset: -3px; border-radius: 9px; border: 1px dashed rgba(47, 16, 7, 0.35); cursor: pointer; transition: background 0.12s, border-color 0.12s; }
-.is-editing .dv-widget[data-target]:hover::after { background: rgba(47, 16, 7, 0.06); border-color: rgba(47, 16, 7, 0.7); }
-.is-editing .dv-widget.is-moved::after { border-style: solid; border-color: var(--accent); }
+/* A dial that is being turned: an arc outside its ring for how far, and a dot at where it is now. */
+.moved-ring { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.moved-range { fill: none; stroke: var(--ld-accent, var(--accent)); stroke-width: 1.5; stroke-linecap: round; opacity: 0.45; }
+.moved-dot { fill: var(--ld-accent, var(--accent)); transition: opacity 0.2s; }
+
+/* Edit: the device, unlocked. edit-ui.ts lays .edit-layer over the device as drawn. */
 #btn-edit { flex: none; margin-left: auto; height: 34px; gap: 6px; }
-.edit-hint { position: absolute; left: 50%; top: 14px; transform: translateX(-50%); z-index: 2; margin: 0; padding: 5px 12px; border-radius: 999px; background: var(--ink); color: var(--on-ink); font-size: 12px; white-space: nowrap; pointer-events: none; }
+.edit-layer { position: absolute; inset: 0; pointer-events: none; font-family: var(--sans); }
+.edit-layer > * { position: absolute; }
+.edit-layer button, .edit-layer select, .edit-grip { pointer-events: auto; }
+.edit-card { border-radius: 8px; box-shadow: 0 0 0 1px color-mix(in srgb, var(--dv-ink, #2f1007) 22%, transparent); transition: box-shadow 0.12s; }
+.edit-card.is-effect:hover { box-shadow: 0 0 0 1.5px var(--accent); }
+.edit-card.is-dragging { z-index: 3; opacity: 0.85; box-shadow: 0 0 0 1.5px var(--accent), 0 10px 24px -8px rgba(47, 16, 7, 0.5); background: rgba(255, 255, 255, 0.35); }
+/* the top of an effect's card is its handle */
+.edit-grip { position: absolute; left: 0; right: 22px; top: 0; height: 30px; cursor: grab; border-radius: 8px 0 0 0; touch-action: none; }
+.edit-grip:active { cursor: grabbing; }
+.edit-x { position: absolute; right: 4px; top: 4px; display: grid; place-items: center; width: 16px; height: 16px; padding: 0; border: 0; border-radius: 50%; background: color-mix(in srgb, var(--dv-ink, #2f1007) 12%, transparent); color: var(--dv-ink, #2f1007); cursor: pointer; }
+.edit-x:hover { background: var(--bad); color: #fff; }
+.edit-picks { position: absolute; left: 6px; right: 6px; top: 32px; display: grid; gap: 3px; justify-items: center; }
+.edit-pick { max-width: 100%; height: 18px; padding: 0 2px; border-radius: 5px; border: 1px solid color-mix(in srgb, var(--dv-ink, #2f1007) 25%, transparent); background: var(--dv-card, #fff9f5); color: var(--dv-ink, #2f1007); font: inherit; font-size: 9px; cursor: pointer; }
+.edit-insert { border-radius: 2px; background: var(--accent); z-index: 4; }
+.edit-adds { display: grid; gap: 4px; }
+.edit-add { height: 19px; padding: 0 8px; border-radius: 999px; border: 1px dashed color-mix(in srgb, var(--dv-ink, #2f1007) 45%, transparent); background: color-mix(in srgb, var(--dv-card, #fff9f5) 75%, transparent); color: var(--dv-ink, #2f1007); font: inherit; font-size: 10px; font-weight: 600; text-align: left; cursor: pointer; }
+.edit-add:hover { border-style: solid; border-color: var(--accent); background: var(--dv-card, #fff9f5); }
+/* a dial that can be clicked, and what a click on it will do */
+.is-editing .dv-widget[data-target], .is-editing .dv-widget[data-knob] { cursor: pointer; }
+.is-editing .dv-widget[data-target]::after, .is-editing .dv-widget[data-knob]::after { content: ''; position: absolute; inset: -2px; border-radius: 8px; transition: background 0.12s, box-shadow 0.12s; }
+.is-editing .dv-widget[data-target]:hover::after, .is-editing .dv-widget[data-knob]:hover::after { background: color-mix(in srgb, var(--dv-ink, #2f1007) 8%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--dv-ink, #2f1007) 40%, transparent); }
+.is-linking .dv-widget[data-target]::after { box-shadow: 0 0 0 1px color-mix(in srgb, var(--dv-ink, #2f1007) 30%, transparent); }
+.is-linking .dv-widget.is-linked::after { background: color-mix(in srgb, var(--accent) 18%, transparent); box-shadow: 0 0 0 1.5px var(--accent); }
+.is-linking .dv-widget:not([data-target])::after { content: none; }
+.edit-hint { position: absolute; left: 50%; top: 14px; transform: translateX(-50%); z-index: 2; display: flex; align-items: center; gap: 8px; margin: 0; padding: 5px 12px; border-radius: 999px; background: var(--ink); color: var(--on-ink); font-size: 12px; white-space: nowrap; pointer-events: none; }
+.edit-hint[hidden] { display: none; }
+.edit-hint.is-linking { pointer-events: auto; padding-right: 5px; background: var(--accent); color: var(--on-accent); }
+.edit-hint small { opacity: 0.8; }
+.edit-done { height: 22px; padding: 0 10px; border: 0; border-radius: 999px; background: var(--on-accent); color: var(--accent); font: inherit; font-size: 11.5px; font-weight: 650; cursor: pointer; }
+
+/* what is in the menus */
+.edit-ask { font-size: 11.5px; color: var(--dim); margin-top: 2px; }
+.edit-choice { border-radius: 10px; border: 1px solid var(--line); background: var(--panel-2); }
+.edit-choice.is-on { border-color: var(--accent); }
+.edit-choice .motion-amount { padding: 0 10px 9px; }
+.edit-option { display: grid; grid-template-columns: 18px 1fr; column-gap: 8px; align-items: center; width: 100%; padding: 8px 10px; border: 0; border-radius: 10px; background: transparent; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+.edit-option:hover { background: var(--raise); }
+.dial-pop > .edit-option { border: 1px solid var(--line); background: var(--panel-2); }
+.edit-option b { grid-column: 2; font-size: 12.5px; font-weight: 600; }
+.edit-option span { grid-column: 2; font-size: 11.5px; color: var(--dim); line-height: 1.35; }
+.edit-option b:first-child, .edit-option b:first-child + span { grid-column: 1 / -1; }
+.edit-tick, .edit-plus { grid-row: 1 / span 2; display: grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid var(--line-2); font-style: normal; font-size: 12px; line-height: 1; color: var(--dim); }
+.edit-choice.is-on .edit-tick { border-color: var(--accent); background: var(--accent); box-shadow: inset 0 0 0 3px var(--panel-2); }
+.edit-name { height: 30px; padding: 0 9px; border-radius: 8px; border: 1px solid var(--line-2); background: var(--raise); color: var(--ink); font: inherit; font-family: var(--label); font-size: 13px; }
+.edit-actions { display: flex; gap: 6px; margin-top: 2px; }
+.edit-actions .btn { height: 30px; }
+.edit-delete:hover { color: var(--bad); }
+.motion-how { flex: none; font-size: 11.5px; color: var(--dim); }
+.motion-what { flex: 1; min-width: 0; font-size: 12px; color: var(--ink-2); line-height: 1.35; }
+.motion-what b { color: var(--ink); font-weight: 600; }
 
 /* the menu for one dial */
-.dial-pop { position: fixed; z-index: 30; width: 264px; display: grid; gap: 8px; padding: 14px; border-radius: 14px; border: 1px solid var(--line-2); background: var(--panel); box-shadow: 0 24px 60px -16px var(--shadow); }
+.dial-pop { position: fixed; z-index: 30; width: 286px; max-height: calc(100vh - 24px); overflow-y: auto; display: grid; gap: 8px; padding: 14px; border-radius: 14px; border: 1px solid var(--line-2); background: var(--panel); box-shadow: 0 24px 60px -16px var(--shadow); }
 .dial-pop[hidden] { display: none; }
 .dial-pop h2 { font-family: var(--label); font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
 
@@ -641,3 +691,13 @@ body[data-state='building'] .building { display: flex; }
 .ai-more[open] { display: grid; gap: 6px; }
 .ai-more p { line-height: 1.45; }
 .ai-more .btn { height: 30px; justify-self: start; }
+
+/* the Colours menu */
+.edit-themes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.edit-theme { display: grid; gap: 4px; justify-items: center; padding: 8px 4px 6px; border-radius: 10px; border: 1.5px solid var(--line-2); cursor: pointer; font: inherit; }
+.edit-theme i { display: grid; place-items: center; width: 34px; height: 22px; border-radius: 5px; font-style: normal; font-family: var(--label); font-size: 10px; }
+.edit-theme span { font-size: 11px; font-weight: 600; }
+.edit-theme[aria-pressed='true'] { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent); }
+.edit-accents { display: flex; flex-wrap: wrap; gap: 7px; }
+.edit-accent { width: 24px; height: 24px; padding: 0; border-radius: 50%; border: 2px solid var(--panel); box-shadow: 0 0 0 1px var(--line-2); cursor: pointer; }
+.edit-accent[aria-pressed='true'] { box-shadow: 0 0 0 2px var(--ink); }

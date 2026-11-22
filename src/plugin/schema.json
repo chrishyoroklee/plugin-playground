@@ -515,9 +515,9 @@
     "sources": [
       {
         "id": "lfo1",
-        "label": "LFO 1",
+        "label": "Sweep",
         "kind": "lfo",
-        "blurb": "Sweeps up and down at a steady rate.",
+        "blurb": "Turns it slowly back and forth, by itself.",
         "options": [
           {
             "id": "shape",
@@ -546,7 +546,7 @@
         "params": [
           {
             "id": "rate",
-            "label": "Rate",
+            "label": "Speed",
             "min": 0.05,
             "max": 20,
             "default": 1,
@@ -557,9 +557,9 @@
       },
       {
         "id": "lfo2",
-        "label": "LFO 2",
+        "label": "Wobble",
         "kind": "lfo",
-        "blurb": "A second sweep, for a different speed.",
+        "blurb": "Turns it back and forth quickly, by itself.",
         "options": [
           {
             "id": "shape",
@@ -588,7 +588,7 @@
         "params": [
           {
             "id": "rate",
-            "label": "Rate",
+            "label": "Speed",
             "min": 0.05,
             "max": 20,
             "default": 6,
@@ -599,20 +599,21 @@
       },
       {
         "id": "follow",
-        "label": "Follow",
+        "label": "Loudness",
         "kind": "follower",
         "effectOnly": true,
-        "blurb": "Rises with the volume of what is coming in.",
+        "blurb": "Turns it further the louder the sound coming in.",
         "options": [],
         "params": [
           {
             "id": "sens",
-            "label": "Sens",
+            "label": "Sensitivity",
             "min": 1,
             "max": 30,
             "default": 6,
             "unit": "x",
-            "exponent": 2.0
+            "exponent": 2.0,
+            "short": "Sens"
           }
         ]
       }
@@ -630,5 +631,55 @@
       }
     },
     "maxRoutes": 16
-  }
+  },
+  "themes": [
+    {
+      "id": "blush",
+      "label": "Blush",
+      "bg": "#feddd4",
+      "card": "#fdf2eb",
+      "ink": "#2f1007",
+      "track": "#e6bdb3"
+    },
+    {
+      "id": "paper",
+      "label": "Paper",
+      "bg": "#e9e9e6",
+      "card": "#fafaf8",
+      "ink": "#171717",
+      "track": "#cfcfcb"
+    },
+    {
+      "id": "mint",
+      "label": "Mint",
+      "bg": "#d8efe4",
+      "card": "#f0faf5",
+      "ink": "#10302a",
+      "track": "#b5d9c9"
+    },
+    {
+      "id": "ocean",
+      "label": "Ocean",
+      "bg": "#d6e6f5",
+      "card": "#f1f7fc",
+      "ink": "#0e2740",
+      "track": "#b3cde6"
+    },
+    {
+      "id": "midnight",
+      "label": "Midnight",
+      "bg": "#17181c",
+      "card": "#23262d",
+      "ink": "#f2f4f7",
+      "track": "#3d424b"
+    },
+    {
+      "id": "plum",
+      "label": "Plum",
+      "bg": "#2a1533",
+      "card": "#3a2046",
+      "ink": "#ffe9d6",
+      "track": "#5d3a69"
+    }
+  ]
 }

@@ -377,7 +377,7 @@ def test_a_moved_dial_is_worked_out_under_the_dial_and_checks_clean():
     assert cords["flagged"] == 0 and cords["not_checked"] == 0 and not result["warnings"]
     # the dials: the two modules', the output's, and one each for the LFO, the follower and the knob in use
     dials = [b["box"]["varname"] for b in result["json"]["patcher"]["boxes"] if b["box"].get("maxclass") == "live.dial"]
-    assert {"lfo_1_rate", "follow_sens", "knobs_wobble"} <= set(dials) and "knobs_wobble_2" not in dials
+    assert {"sweep_speed", "loudness_sensitivity", "knobs_wobble"} <= set(dials) and "knobs_wobble_2" not in dials
 
 
 def test_motion_aimed_at_a_module_that_is_off_builds_nothing():
@@ -385,3 +385,29 @@ def test_motion_aimed_at_a_module_that_is_off_builds_nothing():
     texts = [str(b["box"].get("text", "")) for b in fxgen.run(st, want_amxd=False)["json"]["patcher"]["boxes"]]
     assert not any(t.startswith(("snapshot~", "cycle~", "sig~")) for t in texts)
     assert fxgen.normalize(st)["motion"]["routes"], "the route is kept, for when the reverb is switched on"
+
+
+# ── themes: the device's colours ────────────────────────────────────────────────
+
+def test_the_first_theme_is_the_one_devices_always_had_and_is_not_written_down():
+    assert "theme" not in fxgen.normalize({})
+    assert "theme" not in fxgen.normalize({"theme": SCHEMA["themes"][0]["id"]})
+    assert "theme" not in fxgen.normalize({"theme": "no such theme"})
+    assert fxgen.normalize({"theme": "midnight"})["theme"] == "midnight"
+
+
+@pytest.mark.parametrize("theme", [t["id"] for t in SCHEMA["themes"]])
+def test_a_theme_colours_the_backdrop_the_cards_the_lettering_and_the_dials(theme):
+    spec = next(t for t in SCHEMA["themes"] if t["id"] == theme)
+    result = fxgen.run({"theme": theme, "chain": [{"module": "filter", "on": True}]}, want_amxd=False)
+    boxes = [b["box"] for b in result["json"]["patcher"]["boxes"]]
+    rgb = lambda colour: [round(c * 255) for c in colour[:3]]
+    hexed = lambda text: [int(text[i:i + 2], 16) for i in (1, 3, 5)]
+    width = result["json"]["patcher"]["devicewidth"]
+    panels = [b for b in boxes if b.get("maxclass") == "panel"]
+    # the backdrop is the first panel, so it is at the back, and it is as wide as the device
+    assert panels[0]["presentation_rect"] == [0.0, 0.0, float(width), 169.0] and rgb(panels[0]["bgcolor"]) == hexed(spec["bg"])
+    assert all(rgb(p["bgcolor"]) == hexed(spec["card"]) for p in panels[1:])
+    for dial in (b for b in boxes if b.get("maxclass") == "live.dial"):
+        assert rgb(dial["textcolor"]) == hexed(spec["ink"]) and rgb(dial["dialcolor"]) == hexed(spec["track"])
+    assert result["coverage"]["cords"]["flagged"] == 0

@@ -34,10 +34,12 @@ Try it at <https://chrishyoroklee.github.io/plugin-playground/>.
   machine, under the name you gave it, with every dial where it stood. On macOS the plugin
   opens with the same face it has on the page; on Windows and Linux the DAW shows its
   own sliders for now.
-- **Motion** makes dials move by themselves. Press **Edit** above the device and click a
-  dial, or use the Motion section under Customize: point an LFO, the volume of what is
-  coming in, or a knob of your own at any dial, and say how far it should move it. A knob
-  you add is a dial on the device like any other, and one knob can move several dials.
+- **Edit**, above the device, unlocks it. Drag an effect's card to move it, press its x to
+  take it out, pick its type on the card, and add another with **+ Effect**. **+ Knob**
+  adds a knob of your own: click the dials it should turn, and one knob moves them all.
+  Click any dial to make it turn by itself: a slow sweep, a quick wobble, or further the
+  louder you play. A dial that is being turned shows an arc for how far, and a dot that
+  runs along it while sound plays. **Colours** changes the device's theme and its dials.
 - **Describe it** (under Customize) makes a device from a sentence. The site has no
   server and pays for nothing, so there are two ways: **Copy prompt** gives you a prompt
   for any chatbot, and you paste its reply back; or you put in your own Anthropic key,

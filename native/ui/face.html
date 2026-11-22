@@ -82,6 +82,21 @@ body { font-family: 'DM Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospa
       default: return trim(value, Math.abs(value) >= 100 ? 0 : 2);
     }
   }
+  // Colours arrive as "rgba(r, g, b, a)" or "#rrggbb".
+  function rgb(colour) {
+    var m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(colour);
+    if (m) return [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)];
+    m = /rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)/.exec(colour);
+    return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : [0, 0, 0];
+  }
+  function mix(a, b, t) {
+    var x = rgb(a), y = rgb(b);
+    return 'rgb(' + [0, 1, 2].map(function (i) { return Math.round(x[i] + (y[i] - x[i]) * t); }).join(', ') + ')';
+  }
+  function luminance(colour) {
+    var c = rgb(colour);
+    return (0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]) / 255;
+  }
   function mk(parent, tag, attrs) {
     var e = document.createElementNS(SVG, tag);
     for (var k in attrs) e.setAttribute(k, attrs[k]);
@@ -106,12 +121,20 @@ body { font-family: 'DM Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospa
     svg.setAttribute('height', '100%');
     root.appendChild(svg);
 
-    mk(svg, 'text', { x: 22, y: 8, 'text-anchor': 'middle', 'class': 'name' }).textContent = p.short;
-    mk(svg, 'path', { d: arc(A0, A0 + SWEEP), fill: 'none', stroke: '#e6bdb3', 'stroke-width': 1.2, 'stroke-linecap': 'round' });
+    // The dial in the device's colours. Its disc and its readout are worked out from the
+    // two the patch gives, the same way the page does (device-view.ts, dialColours).
+    var ink = item.ink || '#2f1007', track = item.track || '#e6bdb3';
+    var dark = luminance(ink) > 0.5;
+    var cap = dark ? mix(track, '#000000', 0.25) : mix(track, '#ffffff', 0.85);
+    var name = mk(svg, 'text', { x: 22, y: 8, 'text-anchor': 'middle', 'class': 'name' });
+    name.textContent = p.short;
+    name.style.fill = ink;
+    mk(svg, 'path', { d: arc(A0, A0 + SWEEP), fill: 'none', stroke: track, 'stroke-width': 1.2, 'stroke-linecap': 'round' });
     var fill = mk(svg, 'path', { d: '', fill: 'none', stroke: item.accent || '#3f78bd', 'stroke-width': 1.7, 'stroke-linecap': 'round' });
-    mk(svg, 'circle', { cx: CX, cy: CY, r: 9.6, fill: '#fff9f5', stroke: '#e6bdb3', 'stroke-width': 0.5 });
-    var needle = mk(svg, 'line', { x1: CX, y1: CY, x2: CX, y2: CY, stroke: '#2f1007', 'stroke-width': 1.2, 'stroke-linecap': 'round' });
+    mk(svg, 'circle', { cx: CX, cy: CY, r: 9.6, fill: cap, stroke: track, 'stroke-width': 0.5 });
+    var needle = mk(svg, 'line', { x1: CX, y1: CY, x2: CX, y2: CY, stroke: ink, 'stroke-width': 1.2, 'stroke-linecap': 'round' });
     var readout = mk(svg, 'text', { x: 22, y: 46, 'text-anchor': 'middle', 'class': 'readout' });
+    readout.style.fill = mix(ink, track, 0.5);
 
     state.redraw = function () {
       var deg = A0 + SWEEP * positionOf(p, state.value);
@@ -222,7 +245,14 @@ body { font-family: 'DM Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospa
     }
   };
 
-  send({ type: 'ready' });
+  // Ask for the face once both weights of the font are in, so that the names on the cards
+  // do not appear a moment after everything else. If that takes too long, go without.
+  var asked = false;
+  function ready() { if (!asked) { asked = true; send({ type: 'ready' }); } }
+  try {
+    Promise.all([document.fonts.load('500 10px "DM Mono"'), document.fonts.load('400 10px "DM Mono"')]).then(ready, ready);
+  } catch (e) { ready(); }
+  setTimeout(ready, 600);
 })();
 </script>
 </body>

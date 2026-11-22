@@ -29,6 +29,37 @@ function rgba(v: unknown, fallback: string): string {
   return `rgba(${c(r)}, ${c(g)}, ${c(b)}, ${a})`;
 }
 
+type RGB = [number, number, number];
+
+function rgbOf(v: unknown): RGB | undefined {
+  if (!Array.isArray(v) || v.length < 3) return undefined;
+  const c = v.slice(0, 3).map((n) => Math.round(Math.min(1, Math.max(0, Number(n))) * 255));
+  return c.every(Number.isFinite) ? (c as RGB) : undefined;
+}
+
+const mix = (a: RGB, b: RGB, t: number): string => `rgb(${a.map((x, i) => Math.round(x + (b[i] - x) * t)).join(', ')})`;
+
+/**
+ * A dial's colours, as the CSS variables the dial widget reads. The patch gives two: its
+ * lettering and its ring. The disc and the readout are worked out from those, the same
+ * way the plugin's window does (native/ui/face.html), so the two look alike.
+ */
+function dialColours(box: Box): Record<string, string> {
+  const ink = rgbOf(box.textcolor);
+  const track = rgbOf(box.dialcolor);
+  if (!ink || !track) return {};
+  const dark = (0.2126 * ink[0] + 0.7152 * ink[1] + 0.0722 * ink[2]) / 255 > 0.5;
+  const solid = (c: RGB): string => `rgb(${c.join(', ')})`;
+  return {
+    '--ld-ink': solid(ink),
+    '--ld-needle': solid(ink),
+    '--ld-track': solid(track),
+    '--ld-cap-edge': solid(track),
+    '--ld-cap': dark ? mix(track, [0, 0, 0], 0.25) : mix(track, [255, 255, 255], 0.85),
+    '--ld-dim': mix(ink, track, 0.5),
+  };
+}
+
 function boxesOf(json: unknown): Box[] {
   const boxes = (json as { patcher?: { boxes?: { box?: Box }[] } })?.patcher?.boxes ?? [];
   return boxes.map((b) => b.box).filter((b): b is Box => !!b);
@@ -71,6 +102,7 @@ export function renderDevice(host: HTMLElement, json: unknown, built: ReadonlyMa
         const widget = built.get(String(box.id))?.el;
         if (!widget) continue;
         el.className = 'dv-widget';
+        for (const [name, value] of Object.entries(dialColours(box))) el.style.setProperty(name, value);
         el.appendChild(widget);
       }
     }

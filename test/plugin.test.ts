@@ -205,7 +205,7 @@ describe('settings model', () => {
     // the modules' dials, the output's, and the ones motion's sources add (LFO 1 Rate ...)
     const count = [...SCHEMA.modules, ...SCHEMA.instrument.modules, ...SCHEMA.motion.sources].reduce((n, m) => n + m.params.length, SCHEMA.output.params.length);
     expect(index.size).toBe(count);
-    expect(index.get('lfo_1_rate')).toEqual({ module: 'lfo1', param: 'rate' });
+    expect(index.get('sweep_speed')).toEqual({ module: 'lfo1', param: 'rate' });
     expect(index.get('filter_cutoff')).toEqual({ module: 'filter', param: 'cutoff' });
     expect(index.get('delay_feedback')).toEqual({ module: 'delay', param: 'feedback' });
     expect(index.get('output_gain')).toEqual({ module: 'output', param: 'gain' });
@@ -405,7 +405,7 @@ describe('motion: what moves the dials', () => {
     expect(decodeSettings(encodeSettings(s))).toEqual(s);
     const index = dialIndex(s.motion);
     expect(index.get('knobs_wobble')).toEqual({ module: 'knobs', param: 'k1' });
-    expect(index.get('follow_sens')).toEqual({ module: 'follow', param: 'sens' });
+    expect(index.get('loudness_sensitivity')).toEqual({ module: 'follow', param: 'sens' });
     expect(valuesOf(s, 'knobs')).toBe(s.motion!.knobValues);
     expect(valuesOf(s, 'lfo1')).toBe(s.motion!.sources.lfo1.values);
   });
@@ -414,5 +414,20 @@ describe('motion: what moves the dials', () => {
     const presets = PRESETS.filter((p) => p.group === 'Motion');
     expect(presets.length).toBeGreaterThanOrEqual(4);
     for (const p of presets) expect(normalize(p.settings).motion!.routes.length).toBeGreaterThan(0);
+  });
+});
+
+describe('themes: the device\'s colours', () => {
+  it('the first theme is not written down, and an unknown one is dropped', () => {
+    expect(normalize({}).theme).toBeUndefined();
+    expect(normalize({ theme: SCHEMA.themes[0].id }).theme).toBeUndefined();
+    expect(normalize({ theme: 'no such theme' }).theme).toBeUndefined();
+    expect(normalize({ theme: 'midnight' }).theme).toBe('midnight');
+    expect(normalize({ kind: 'instrument', theme: 'plum' }).theme).toBe('plum');
+  });
+
+  it('a theme survives a shared link', () => {
+    const s = normalize({ theme: 'ocean', chain: [{ module: 'delay', on: true }] });
+    expect(decodeSettings(encodeSettings(s))).toEqual(s);
   });
 });
