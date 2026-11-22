@@ -129,6 +129,26 @@
 
           <div id="pane-build" role="tabpanel" aria-labelledby="tab-build" hidden>
             <section class="group">
+              <h2>Describe it <small>with AI</small></h2>
+              <textarea id="ai-request" class="ai-box" rows="2" maxlength="400" placeholder="A warm tape echo that wobbles when I play hard"></textarea>
+              <div class="ai-actions">
+                <button id="ai-make" class="btn primary" type="button">Make it</button>
+                <button id="ai-copy" class="btn" type="button" title="Copy a prompt to paste into any chatbot. Free, no key.">Copy prompt</button>
+              </div>
+              <p id="ai-note" class="muted small" role="status"></p>
+              <details id="ai-key-box" class="ai-more">
+                <summary>Your Anthropic key</summary>
+                <input id="ai-key" class="ai-box" type="password" autocomplete="off" spellcheck="false" placeholder="sk-ant-..." aria-label="Anthropic API key" />
+                <p class="muted small">Kept in this browser and sent only to Anthropic, straight from this page. A request to Claude Haiku costs about a tenth of a cent. <a href="https://platform.claude.com/settings/keys" target="_blank" rel="noopener">Get a key</a></p>
+              </details>
+              <details id="ai-paste-box" class="ai-more">
+                <summary>Paste a chatbot's answer</summary>
+                <textarea id="ai-answer" class="ai-box" rows="3" spellcheck="false" placeholder="Paste the whole reply here" aria-label="A chatbot's answer"></textarea>
+                <button id="ai-apply" class="btn" type="button">Use this answer</button>
+              </details>
+            </section>
+
+            <section class="group">
               <h2>Device</h2>
               <label class="field">
                 <span>Name</span>

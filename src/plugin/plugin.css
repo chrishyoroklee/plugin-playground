@@ -626,3 +626,18 @@ body[data-state='building'] .building { display: flex; }
 .building i { width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid currentColor; border-right-color: transparent; animation: building-spin 0.7s linear infinite; }
 @keyframes building-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .building i { animation: none; } }
+
+/* ── describe it ─────────────────────────────────────────────────────────────── */
+.ai-box { display: block; width: 100%; padding: 8px 10px; border-radius: 9px; border: 1px solid var(--line-2); background: var(--raise); color: var(--ink); font: inherit; font-size: 12.5px; line-height: 1.4; resize: vertical; }
+.ai-box:focus { outline: none; border-color: var(--accent); }
+.ai-actions { display: flex; gap: 6px; margin: 8px 0 6px; }
+.ai-actions .btn { height: 32px; }
+#ai-note:empty { display: none; }
+#ai-note { line-height: 1.45; margin-bottom: 4px; color: var(--ink-2); }
+#ai-note.bad { color: var(--bad); }
+.ai-more { margin-top: 6px; font-size: 12px; }
+.ai-more summary { cursor: pointer; color: var(--dim); padding: 2px 0; }
+.ai-more summary:hover { color: var(--ink); }
+.ai-more[open] { display: grid; gap: 6px; }
+.ai-more p { line-height: 1.45; }
+.ai-more .btn { height: 30px; justify-self: start; }

@@ -31,6 +31,7 @@ import {
   SYSTEMS, checkSystem, detectMachine, detectSystem, deviceFileName, systemInfo,
   type Machine, type RuntimeFiles, type SystemId, type Verdict,
 } from './installers';
+import { AssistError, ask, chatPrompt, parseAnswer, saveKey, savedKey, toSettings } from './assist';
 import { markDevice, renderDialMenu, renderMotion, type MotionHost } from './motion-ui';
 import { SOUNDS, findSound } from './sounds';
 import { getTheme, setTheme } from './theme';
@@ -675,6 +676,83 @@ function setTab(tab: 'presets' | 'build'): void {
   }
 }
 
+// ── describe it: a device from a sentence ───────────────────────────────────────
+
+function aiNote(text: string, bad = false): void {
+  $('ai-note').textContent = text;
+  $('ai-note').classList.toggle('bad', bad);
+}
+
+/** Make the device an answer describes the one on screen, and say what it is. */
+function adopt(answer: unknown): void {
+  const next = toSettings(answer, kind(), settings);
+  settings = next;
+  activePreset = undefined;
+  renderSide();
+  renderDownloads();
+  scheduleBuild();
+  const said = typeof (answer as { explanation?: unknown })?.explanation === 'string' ? (answer as { explanation: string }).explanation.trim() : '';
+  aiNote(said || `Made “${next.name}”.`);
+}
+
+function aiRequest(): string | undefined {
+  const text = $<HTMLTextAreaElement>('ai-request').value.trim();
+  if (!text) {
+    aiNote('Say what it should sound like first.', true);
+    $('ai-request').focus();
+    return undefined;
+  }
+  return text;
+}
+
+/** With a key: ask Claude from this page. Without one: say what the two ways are. */
+async function aiMake(): Promise<void> {
+  const request = aiRequest();
+  if (!request) return;
+  const key = $<HTMLInputElement>('ai-key').value.trim();
+  if (!key) {
+    $<HTMLDetailsElement>('ai-key-box').open = true;
+    aiNote('This needs your own Anthropic key, below. Or press Copy prompt, which is free and works with any chatbot.', true);
+    return;
+  }
+  saveKey(key);
+  const btn = $<HTMLButtonElement>('ai-make');
+  btn.disabled = true;
+  btn.classList.add('is-busy');
+  aiNote('Asking Claude');
+  try {
+    adopt(await ask(request, settings, kind(), key));
+  } catch (err) {
+    console.error(err);
+    aiNote(err instanceof AssistError ? err.message : 'Something went wrong. Try again.', true);
+  } finally {
+    btn.disabled = false;
+    btn.classList.remove('is-busy');
+  }
+}
+
+async function aiCopy(): Promise<void> {
+  const request = aiRequest();
+  if (!request) return;
+  try {
+    await navigator.clipboard.writeText(chatPrompt(request, settings, kind()));
+    $<HTMLDetailsElement>('ai-paste-box').open = true;
+    aiNote('Copied. Paste it into any chatbot, then paste its whole reply below.');
+  } catch {
+    aiNote('Copying was blocked by the browser.', true);
+  }
+}
+
+function aiApply(): void {
+  const box = $<HTMLTextAreaElement>('ai-answer');
+  try {
+    adopt(parseAnswer(box.value));
+    box.value = '';
+  } catch (err) {
+    aiNote((err as Error).message, true);
+  }
+}
+
 // ── motion ──────────────────────────────────────────────────────────────────────
 
 /** The dial whose menu is open in Edit mode, as "module.dial". */
@@ -1227,6 +1305,16 @@ function init(): void {
     if (!file) return;
     e.preventDefault();
     void useFile(file);
+  });
+
+  // Describe it.
+  $<HTMLInputElement>('ai-key').value = savedKey();
+  $('ai-key').addEventListener('change', () => saveKey($<HTMLInputElement>('ai-key').value));
+  $('ai-make').addEventListener('click', () => void aiMake());
+  $('ai-copy').addEventListener('click', () => void aiCopy());
+  $('ai-apply').addEventListener('click', aiApply);
+  $('ai-request').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void aiMake();
   });
 
   // Edit mode: the device is unlocked, and a click on a dial opens what moves it.

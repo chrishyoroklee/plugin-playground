@@ -38,6 +38,11 @@ Try it at <https://chrishyoroklee.github.io/plugin-playground/>.
   dial, or use the Motion section under Customize: point an LFO, the volume of what is
   coming in, or a knob of your own at any dial, and say how far it should move it. A knob
   you add is a dial on the device like any other, and one knob can move several dials.
+- **Describe it** (under Customize) makes a device from a sentence. The site has no
+  server and pays for nothing, so there are two ways: **Copy prompt** gives you a prompt
+  for any chatbot, and you paste its reply back; or you put in your own Anthropic key,
+  which stays in your browser, and the page asks Claude Haiku directly. Either way the
+  AI only fills in settings, which are bounded like any others.
 - **Settings** (the gear) has dark mode, a link that reopens this exact device, and the
   Python that built it.
 
