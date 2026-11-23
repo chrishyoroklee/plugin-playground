@@ -55,7 +55,8 @@ def bench(tmp_path_factory):
 
     def gains(tag, **values):
         """What the EQ does to each tone, in dB, with these dial values."""
-        settings = {"name": "EQ " + tag, "chain": [{"module": "eq", "on": True, "values": values}]}
+        module = values.pop("module", "eq")
+        settings = {"name": "EQ " + tag, "chain": [{"module": module, "on": True, "values": values}]}
         made = plugin.generate(settings, work / tag)
         out = work / (tag + ".wav")
         plugin.render(renderer, work / "tones.wav", out, as_float=True, device=made["device"])
@@ -123,3 +124,91 @@ def test_the_eq_is_a_module_like_the_others():
     dials = [b["box"]["varname"] for b in result["json"]["patcher"]["boxes"] if b["box"].get("maxclass") == "live.dial"]
     assert dials == ["eq_low", "eq_mid", "eq_mid_freq", "eq_high", "output_gain"]
     assert result["amxd"]
+
+
+# ── the other kinds: parametric, graphic, tilt ──────────────────────────────────
+#
+# Each is held to the same two promises as the three-band EQ (flat at 0 dB, and a dial's
+# dB is that band's dB), and to its picture: graphs.js draws these from the filters as they
+# run, so the model below is that drawing's arithmetic, and the render must agree with it.
+
+SR = float(RATE)
+
+
+def _zinv(f):
+    return complex(math.cos(2 * math.pi * f / SR), -math.sin(2 * math.pi * f / SR))
+
+
+def _pole(f, corner):
+    k = 1 - math.exp(-2 * math.pi * min(SR / 4, corner) / SR)
+    return k / (1 - (1 - k) * _zinv(f))
+
+
+def _bell(f, centre, q):
+    k, z = math.sin(2 * math.pi * min(SR / 4, centre) / SR), _zinv(f)
+    return k * (1 - z) / ((1 - z) ** 2 + k * k * z + k / q * z * (1 - z)) * z / q
+
+
+def _gain(db):
+    return 10 ** (db / 20.0)
+
+
+def _high(f, corner, g):
+    return (g - 1) * fxgen.EQ_HIGH_FIT * g ** fxgen.EQ_HIGH_BEND * (1 - _pole(f, corner * math.sqrt(g)))
+
+
+def _drawn(module, f, v):
+    """What graphs.js draws for these dial values at f, in dB."""
+    d = {p["id"]: v.get(p["id"], p["default"]) for p in fxgen._module(module)["params"]}
+    if module == "peq":
+        gl, gh = _gain(d["lg"]), _gain(d["hg"])
+        h = 1 + (gl - 1) * _pole(f, d["lf"] / math.sqrt(gl)) + _high(f, d["hf"], gh)
+        h += (_gain(d["g1"]) - 1) * _bell(f, d["f1"], d["q1"]) + (_gain(d["g2"]) - 1) * _bell(f, d["f2"], d["q2"])
+    elif module == "geq":
+        h = 1 + sum((_gain(d["b%d" % (i + 1)]) - 1) * _bell(f, hz, fxgen.GEQ_Q) for i, hz in enumerate(fxgen.GEQ_BANDS))
+        h += _high(f, fxgen.GEQ_SHELF_HZ, _gain(d["b6"]))
+    else:
+        up, down = _gain(d["tilt"]), _gain(-d["tilt"])
+        h = up + (down - up) * _pole(f, d["pivot"] * up)
+    return 20 * math.log10(abs(h))
+
+
+OTHER_KINDS = [
+    ("peq", {}),
+    ("peq", {"lg": 9}), ("peq", {"lg": -9}), ("peq", {"hg": 9}), ("peq", {"hg": -9, "hf": 5000}),
+    ("peq", {"g1": 9}), ("peq", {"g1": -9, "q1": 6}), ("peq", {"g2": 9, "q2": 4, "f2": 5000}),
+    ("peq", {"lf": 110, "lg": 3, "f1": 320, "g1": -4, "q1": 2, "f2": 3200, "g2": 3, "q2": 1.5, "hf": 4000, "hg": 4}),
+    ("geq", {}),
+    ("geq", {"b1": 9}), ("geq", {"b3": -9}), ("geq", {"b6": 9}), ("geq", {"b6": -9}),
+    ("geq", {"b1": 6, "b2": 3, "b3": -2, "b4": -4, "b5": 2, "b6": 6}),
+    ("tilt", {}),
+    ("tilt", {"tilt": 6}), ("tilt", {"tilt": -4, "pivot": 2000}),
+]
+
+
+@needs_compiler
+@pytest.mark.parametrize("case", range(len(OTHER_KINDS)))
+def test_the_other_kinds_sound_as_they_are_drawn(bench, case):
+    import numpy as np
+    module, values = OTHER_KINDS[case]
+    got, y, x = bench("kind%d" % case, module=module, **values)
+    if not values:
+        assert np.abs(y - x).max() < 1e-5   # every gain at 0 dB: untouched
+    for f in TONES:
+        assert got[f] == pytest.approx(_drawn(module, f, values), abs=0.15), (module, values, f)
+
+
+@needs_compiler
+@pytest.mark.parametrize("db", [9, -9])
+def test_a_parametric_bell_is_its_gain_at_its_frequency_and_narrower_with_q(bench, db):
+    wide, _, _ = bench("bellwide%d" % db, module="peq", g2=db, f2=1000, q2=1)
+    thin, _, _ = bench("bellthin%d" % db, module="peq", g2=db, f2=1000, q2=8)
+    assert wide[1000] == pytest.approx(db, abs=0.3) and thin[1000] == pytest.approx(db, abs=0.3)
+    assert abs(thin[250]) < abs(wide[250]) and abs(thin[2500]) < abs(wide[2500])
+
+
+@needs_compiler
+def test_tilt_turns_the_lows_one_way_and_the_highs_the_other(bench):
+    got, _, _ = bench("tiltup", module="tilt", tilt=6, pivot=1000)
+    assert got[60] == pytest.approx(-6, abs=0.4) and got[10000] == pytest.approx(6, abs=1.3)
+    assert abs(got[1000]) < 1.0   # the pivot is where next to nothing changes (0.7 dB at a full 6)

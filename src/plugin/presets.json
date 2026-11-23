@@ -1229,6 +1229,213 @@
   }
  },
  {
+  "id": "parametric",
+  "name": "Parametric Sculpt",
+  "tag": "Four bands you place yourself: weight, less mud, presence, air",
+  "group": "EQ",
+  "sample": "guitar",
+  "settings": {
+   "name": "Parametric Sculpt",
+   "accent": "#3f78bd",
+   "chain": [
+    {
+     "module": "peq",
+     "on": true,
+     "options": {},
+     "values": {
+      "lf": 110,
+      "lg": 3,
+      "f1": 320,
+      "g1": -4,
+      "q1": 2,
+      "f2": 3200,
+      "g2": 3,
+      "q2": 1.5,
+      "hf": 4000,
+      "hg": 4
+     }
+    }
+   ],
+   "output": {
+    "gain": -4.5
+   }
+  }
+ },
+ {
+  "id": "mudcut",
+  "name": "Mud Cut",
+  "tag": "One narrow cut where a mix gets boxy",
+  "group": "EQ",
+  "sample": "piano",
+  "settings": {
+   "name": "Mud Cut",
+   "accent": "#1f8f86",
+   "chain": [
+    {
+     "module": "peq",
+     "on": true,
+     "options": {},
+     "values": {
+      "lf": 120,
+      "lg": 0,
+      "f1": 300,
+      "g1": -8,
+      "q1": 3,
+      "f2": 2500,
+      "g2": 0,
+      "q2": 1.5,
+      "hf": 3000,
+      "hg": 0
+     }
+    }
+   ],
+   "output": {
+    "gain": 0
+   }
+  }
+ },
+ {
+  "id": "presence",
+  "name": "Vocal Presence",
+  "tag": "Rumble down, a bell at 3 kHz and a little air",
+  "group": "EQ",
+  "sample": "vocals",
+  "settings": {
+   "name": "Vocal Presence",
+   "accent": "#c2457f",
+   "chain": [
+    {
+     "module": "peq",
+     "on": true,
+     "options": {},
+     "values": {
+      "lf": 140,
+      "lg": -6,
+      "f1": 400,
+      "g1": -2,
+      "q1": 1.5,
+      "f2": 3000,
+      "g2": 5,
+      "q2": 2,
+      "hf": 4500,
+      "hg": 3
+     }
+    }
+   ],
+   "output": {
+    "gain": -4.0
+   }
+  }
+ },
+ {
+  "id": "graphic",
+  "name": "Graphic Curve",
+  "tag": "Six sliders in the classic rock shape",
+  "group": "EQ",
+  "sample": "drums",
+  "settings": {
+   "name": "Graphic Curve",
+   "accent": "#c98a12",
+   "chain": [
+    {
+     "module": "geq",
+     "on": true,
+     "options": {},
+     "values": {
+      "b1": 6,
+      "b2": 3,
+      "b3": -2,
+      "b4": -4,
+      "b5": 2,
+      "b6": 6
+     }
+    }
+   ],
+   "output": {
+    "gain": -7.0
+   }
+  }
+ },
+ {
+  "id": "midscoop",
+  "name": "Mid Scoop",
+  "tag": "The middle sliders pulled down: big and hollow",
+  "group": "EQ",
+  "sample": "guitar",
+  "settings": {
+   "name": "Mid Scoop",
+   "accent": "#7a5bd0",
+   "chain": [
+    {
+     "module": "geq",
+     "on": true,
+     "options": {},
+     "values": {
+      "b1": 2,
+      "b2": 0,
+      "b3": -6,
+      "b4": -7,
+      "b5": -1,
+      "b6": 3
+     }
+    }
+   ],
+   "output": {
+    "gain": -2.0
+   }
+  }
+ },
+ {
+  "id": "tiltbright",
+  "name": "Tilt Bright",
+  "tag": "One knob: the whole sound leans toward the top",
+  "group": "EQ",
+  "sample": "piano",
+  "settings": {
+   "name": "Tilt Bright",
+   "accent": "#1f8f86",
+   "chain": [
+    {
+     "module": "tilt",
+     "on": true,
+     "options": {},
+     "values": {
+      "tilt": 3.5,
+      "pivot": 900
+     }
+    }
+   ],
+   "output": {
+    "gain": -3.5
+   }
+  }
+ },
+ {
+  "id": "tiltdark",
+  "name": "Tilt Dark",
+  "tag": "One knob the other way: rounder and heavier",
+  "group": "EQ",
+  "sample": "drums",
+  "settings": {
+   "name": "Tilt Dark",
+   "accent": "#c8553d",
+   "chain": [
+    {
+     "module": "tilt",
+     "on": true,
+     "options": {},
+     "values": {
+      "tilt": -3.5,
+      "pivot": 700
+     }
+    }
+   ],
+   "output": {
+    "gain": -3.5
+   }
+  }
+ },
+ {
   "id": "wide",
   "name": "Wide Chorus",
   "tag": "Doubles the sound and spreads it out",
@@ -2129,9 +2336,11 @@
     {
      "module": "reverb",
      "on": true,
-     "options": {},
+     "options": {
+      "space": "room"
+     },
      "values": {
-      "size": 12,
+      "size": 35,
       "damp": 7000,
       "mix": 22
      }
@@ -2256,9 +2465,11 @@
     {
      "module": "reverb",
      "on": true,
-     "options": {},
+     "options": {
+      "space": "room"
+     },
      "values": {
-      "size": 22,
+      "size": 60,
       "damp": 9500,
       "mix": 34
      }
@@ -2293,9 +2504,11 @@
     {
      "module": "reverb",
      "on": true,
-     "options": {},
+     "options": {
+      "space": "plate"
+     },
      "values": {
-      "size": 48,
+      "size": 55,
       "damp": 8500,
       "mix": 30
      }
@@ -2345,9 +2558,11 @@
     {
      "module": "reverb",
      "on": true,
-     "options": {},
+     "options": {
+      "space": "room"
+     },
      "values": {
-      "size": 20,
+      "size": 55,
       "damp": 6000,
       "mix": 35
      }
@@ -2411,6 +2626,62 @@
       "size": 90,
       "damp": 5000,
       "mix": 55
+     }
+    }
+   ],
+   "output": {
+    "gain": 0
+   }
+  }
+ },
+ {
+  "id": "vocalplate",
+  "name": "Vocal Plate",
+  "tag": "The studio plate: dense and smooth, no echoes in it",
+  "group": "Reverb",
+  "sample": "vocals",
+  "settings": {
+   "name": "Vocal Plate",
+   "accent": "#c2457f",
+   "chain": [
+    {
+     "module": "reverb",
+     "on": true,
+     "options": {
+      "space": "plate"
+     },
+     "values": {
+      "size": 62,
+      "damp": 7000,
+      "mix": 28
+     }
+    }
+   ],
+   "output": {
+    "gain": 0
+   }
+  }
+ },
+ {
+  "id": "drumroom",
+  "name": "Drum Room",
+  "tag": "A live room around the kit, gone in half a second",
+  "group": "Reverb",
+  "sample": "drums",
+  "settings": {
+   "name": "Drum Room",
+   "accent": "#3f78bd",
+   "chain": [
+    {
+     "module": "reverb",
+     "on": true,
+     "options": {
+      "space": "room"
+     },
+     "values": {
+      "size": 45,
+      "damp": 8000,
+      "mix": 30
      }
     }
    ],

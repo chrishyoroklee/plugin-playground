@@ -2,8 +2,9 @@
 
 Make an audio plugin in the browser, hear it, and download it.
 
-- An **effect**: pick one of 82 presets or build your own chain from eight modules
-  (filter, EQ, distortion, crush, chorus, tremolo, delay, reverb), and hear it on a sound
+- An **effect**: pick one of 91 presets or build your own chain from eleven modules
+  (filter, four kinds of EQ: three-band, parametric, graphic and tilt, distortion, crush,
+  chorus, tremolo, delay, and a reverb that is a room, a hall or a plate), and hear it on a sound
   from the library or on your own audio.
 - An **instrument**: a polyphonic synth with 41 presets, played from an on-screen
   keyboard, your computer keyboard, a MIDI keyboard or a looping phrase.
@@ -167,6 +168,13 @@ saved for Live, and the plugin is that patch compiled.
   device, and nothing logs an error. It makes no sound: the browsers are muted and the
   page's output is turned to zero. It needs `npm run build` and `npx playwright install`,
   and is run by hand before a release, not by the workflows.
+- `node scripts/facecheck.mjs --python <one with maxpylang>` opens a few presets on the
+  page and in the plugin window's own page (`native/ui/face.html`) side by side and
+  measures them: the same cards, labels, dials and pictures in the same places, and
+  pictures that are the same drawing. The one thing the page has that the window does
+  not is the row of type buttons on a picture (a filter's four, a reverb's three): a
+  type is part of the device, chosen on the page before it is downloaded. It says
+  nothing about the Max for Live device, which Live draws with its own dials.
 - `.github/workflows/native.yml` runs the Python tests and builds every preset as a
   plugin on Linux, macOS and Windows. Each build loads its own plugin and compares it
   with the C++ it came from; three presets also go through clap-validator, pluginval and,
@@ -196,6 +204,11 @@ saved for Live, and the plugin is that patch compiled.
   run, and it is tested against a stand-in for Max's drawing calls
   (`test/graphs.test.ts`), which is not the same as Max drawing it. What an older Live
   makes of the object is not known either: "Dials only" leaves it out.
+- The parametric, graphic and tilt EQs are drawn from their filters as they run at
+  44.1 kHz, and the render agrees with the drawing to 0.15 dB (`tests/test_eq.py`). What
+  they are not: a bell's cut is narrower than the same boost, a bell near 5 kHz sits a
+  little under its dial (svf~'s tuning), and a high shelf stops about a dB short at the
+  very top. All of that is in the picture. None of the EQs was measured against Max.
 - The EQ was not measured against Max. Its dials are held to what they say
   (`tests/test_eq.py`: +12 dB on a band is +12 dB there, a cut mirrors a boost, 0 dB
   everywhere passes the sound untouched), and the browser and the C++ agree on it to

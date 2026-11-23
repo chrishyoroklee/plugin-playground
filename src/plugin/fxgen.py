@@ -283,7 +283,7 @@ TITLE_Y = 14
 NAME_Y = 75       # the device's name, alone at the left, level with the middle of the cards
 DIAL_Y = 72
 # A card with a picture: the picture under the title, the dials along the bottom.
-GRAPHS = ("filter", "eq", "drive", "crush", "chorus", "tremolo", "delay", "reverb", "osc", "tone", "env")
+GRAPHS = ("filter", "eq", "peq", "geq", "tilt", "drive", "crush", "chorus", "tremolo", "delay", "reverb", "osc", "tone", "env")
 GRAPH_Y, GRAPH_H = 34, 70
 GRAPH_MIN_W = 136
 GRAPH_DIAL_Y = 109
@@ -911,6 +911,251 @@ def m_eq(dev, src, opt, val):
     return out, 7
 
 
+# ── more kinds of EQ ────────────────────────────────────────────────────────────
+#
+# The same idea as the three-band EQ, with other shapes: every band is the sound through
+# a filter, added back by how far its gain is from 1, so 0 dB everywhere is the sound
+# untouched.
+#
+# A bell is svf~'s band-pass. Its width is svf~'s damping, which is 1 / Q, so the Q dial
+# is turned into svf~'s resonance (1 - Q ** -0.5 / 1.2, the inverse of what svf~ does with
+# it), and the band is scaled by 1 / Q because a narrower svf~ band-pass is also a louder
+# one. Q runs from 1, the widest svf~ goes, to 8. A cut made this way is narrower than the
+# same boost, as it is on a good many hardware EQs.
+#
+# A shelf is onepole~ for the lows, and the sound less onepole~ for the highs, with the
+# corner moved by the gain as the three-band EQ's are (corner = freq * gain ** -+0.5), so
+# a cut mirrors a boost. The corner is a dial times a number worked out from another dial,
+# and either can change. Max's `*` only answers its left inlet, so there are two of them,
+# each with one of the pair on the left: whichever dial moves, the one it is on the left
+# of sends the product.
+
+GEQ_BANDS = (100.0, 230.0, 520.0, 1200.0, 2700.0)   # the bells; the sixth band is a shelf
+GEQ_SHELF_HZ = 3500.0   # where the top band is half way up: it is level from about 6 kHz
+GEQ_Q = 1.6   # bands 1.2 octaves apart: wide enough to meet, narrow enough to be five
+PEQ_ROWS = 11
+
+
+def bell_resonance(q):
+    """svf~'s resonance for a band-pass of this Q."""
+    return 1.0 - float(q) ** -0.5 / 1.2
+
+
+def bell(dev, key, src, freq, res, amount, row, col=0):
+    """One bell on both channels: returns what to add to the sound, per channel."""
+    s = dev.s
+    out = {}
+    for ch in ("L", "R"):
+        x = X[ch] + col
+        band = s.place("%s_band%s" % (key, ch), "svf~ %s %s" % (fnum(freq[1]), fnum(res[1])), x, dev.sig(row))
+        late = s.place("%s_align%s" % (key, ch), EQ_ALIGN, x, dev.sig(row + 1))
+        level = s.place("%s_level%s" % (key, ch), "*~ %s" % fnum(amount[1]), x, dev.sig(row + 2))
+        s.wire(src[ch], band + ".ins[0]")
+        if freq[0]:
+            s.wire(freq[0], band + ".ins[1]")
+        if res[0]:
+            s.wire(res[0], band + ".ins[2]")
+        s.wire(band + ".outs[2]", late + ".ins[0]")   # svf~ outlets: lowpass, highpass, bandpass, notch
+        s.wire(late + ".outs[0]", level + ".ins[0]")
+        s.wire(amount[0], level + ".ins[1]")
+        out[ch] = level + ".outs[0]"
+    return out
+
+
+def m_peq(dev, src, opt, val):
+    s = dev.s
+    d = dev.dials(_module("peq"), val, math_rows=5)
+    col = {"lf": 0, "lg": 1, "f1": 2, "g1": 3, "q1": 4, "f2": 5, "g2": 6, "q2": 7, "hf": 8, "hg": 9}
+    at = lambda name: XC + col[name] * DX
+    parts = {"L": [src["L"]], "R": [src["R"]]}
+
+    # the two shelves
+    for band, freq, gain_id, power in (("low", "lf", "lg", -0.5), ("high", "hf", "hg", 0.5)):
+        key = "peq_" + band
+        g = 10 ** (val[gain_id] / 20.0)
+        s.place(key + "_amp", "dbtoa", at(gain_id), dev.ctl(0))
+        s.place(key + "_add", "+ -1.", at(gain_id), dev.ctl(1))
+        s.place(key + "_root", "pow %s" % fnum(power), at(gain_id) + 60, dev.ctl(1))
+        s.place(key + "_hz", "* %s" % fnum(g ** power), at(freq), dev.ctl(2))        # the freq dial moved
+        s.place(key + "_hz2", "* %s" % fnum(val[freq]), at(gain_id) + 60, dev.ctl(2))   # the gain dial moved
+        s.wire(d[gain_id] + ".outs[0]", key + "_amp.ins[0]")
+        s.wire(key + "_amp.outs[0]", key + "_add.ins[0]")
+        s.wire(key + "_amp.outs[0]", key + "_root.ins[0]")
+        s.wire(d[freq] + ".outs[0]", key + "_hz.ins[0]")
+        s.wire(key + "_root.outs[0]", key + "_hz.ins[1]")
+        s.wire(key + "_root.outs[0]", key + "_hz2.ins[0]")
+        s.wire(d[freq] + ".outs[0]", key + "_hz2.ins[1]")
+        for ch in ("L", "R"):
+            x = X[ch] + (0 if band == "low" else SUB)
+            lows = s.place("%s_pole%s" % (key, ch), "onepole~ %s" % fnum(val[freq] * g ** power), x, dev.sig(0))
+            s.wire(src[ch], lows + ".ins[0]")
+            s.wire(key + "_hz.outs[0]", lows + ".ins[1]")
+            s.wire(key + "_hz2.outs[0]", lows + ".ins[1]")
+            part = lows
+            if band == "high":
+                flip = s.place("%s_flip%s" % (key, ch), "*~ -1.", x, dev.sig(1))
+                rest = s.place("%s_rest%s" % (key, ch), "+~", x, dev.sig(2))
+                s.wire(lows + ".outs[0]", flip + ".ins[0]")
+                s.wire(src[ch], rest + ".ins[0]")
+                s.wire(flip + ".outs[0]", rest + ".ins[0]")
+                part = rest
+            level = s.place("%s_level%s" % (key, ch), "*~ %s" % fnum(g - 1.0), x, dev.sig(3))
+            s.wire(part + ".outs[0]", level + ".ins[0]")
+            s.wire(key + "_add.outs[0]", level + ".ins[1]")
+            if band == "high":
+                # made up for what onepole~ leaves at the top, as the three-band EQ's is
+                fit = s.place("%s_fit%s" % (key, ch), "*~ %s" % fnum(eq_high_fit(val[gain_id])), x, dev.sig(4))
+                s.wire(level + ".outs[0]", fit + ".ins[0]")
+                s.wire(key + "_fit.outs[0]", fit + ".ins[1]")
+                level = fit
+            parts[ch].append(level + ".outs[0]")
+        if band == "high":
+            s.place(key + "_bend", "pow %s" % fnum(EQ_HIGH_BEND), at(gain_id), dev.ctl(3))
+            s.place(key + "_fit", "* %s" % fnum(EQ_HIGH_FIT), at(gain_id), dev.ctl(4))
+            s.wire(key + "_amp.outs[0]", key + "_bend.ins[0]")
+            s.wire(key + "_bend.outs[0]", key + "_fit.ins[0]")
+
+    # the two bells
+    for n in ("1", "2"):
+        key = "peq_bell" + n
+        f, g, q = val["f" + n], 10 ** (val["g" + n] / 20.0), val["q" + n]
+        s.place(key + "_amp", "dbtoa", at("g" + n), dev.ctl(0))
+        s.place(key + "_add", "+ -1.", at("g" + n), dev.ctl(1))
+        s.place(key + "_thin", "pow -1.", at("q" + n), dev.ctl(0))                    # 1 / Q
+        s.place(key + "_amt", "* %s" % fnum(1.0 / q), at("g" + n), dev.ctl(2))        # the gain dial moved
+        s.place(key + "_amt2", "* %s" % fnum(g - 1.0), at("q" + n), dev.ctl(2))       # the Q dial moved
+        s.place(key + "_damp", "pow -0.5", at("q" + n) + 60, dev.ctl(0))
+        s.place(key + "_span", "* %s" % fnum(-1.0 / 1.2), at("q" + n) + 60, dev.ctl(1))
+        s.place(key + "_res", "+ 1.", at("q" + n) + 60, dev.ctl(3))
+        s.wire(d["g" + n] + ".outs[0]", key + "_amp.ins[0]")
+        s.wire(key + "_amp.outs[0]", key + "_add.ins[0]")
+        s.wire(d["q" + n] + ".outs[0]", key + "_thin.ins[0]")
+        s.wire(key + "_add.outs[0]", key + "_amt.ins[0]")
+        s.wire(key + "_thin.outs[0]", key + "_amt.ins[1]")
+        s.wire(key + "_thin.outs[0]", key + "_amt2.ins[0]")
+        s.wire(key + "_add.outs[0]", key + "_amt2.ins[1]")
+        s.wire(d["q" + n] + ".outs[0]", key + "_damp.ins[0]")
+        s.wire(key + "_damp.outs[0]", key + "_span.ins[0]")
+        s.wire(key + "_span.outs[0]", key + "_res.ins[0]")
+        out = bell(dev, key, src, (d["f" + n] + ".outs[0]", f), (key + "_res.outs[0]", bell_resonance(q)),
+                   (key + "_amt.outs[0]", (g - 1.0) / q), 5 if n == "1" else 8)
+        for ch in ("L", "R"):
+            s.wire(key + "_amt2.outs[0]", "%s_level%s.ins[1]" % (key, ch))
+            parts[ch].append(out[ch])
+
+    result = {}
+    for ch in ("L", "R"):
+        total = s.place("peq_" + ch, "+~", X[ch], dev.sig(PEQ_ROWS))
+        for part in parts[ch]:
+            s.wire(part, total + ".ins[0]")
+        result[ch] = total + ".outs[0]"
+    return result, PEQ_ROWS + 1
+
+
+def m_geq(dev, src, opt, val):
+    s = dev.s
+    mod = _module("geq")
+    d = dev.dials(mod, val, math_rows=3)
+    parts = {"L": [src["L"]], "R": [src["R"]]}
+    top = mod["params"][-1]["id"]
+    g = 10 ** (val[top] / 20.0)
+    s.place("geq_top_amp", "dbtoa", XC + 5 * DX, dev.ctl(0))
+    s.place("geq_top_add", "+ -1.", XC + 5 * DX, dev.ctl(1))
+    s.place("geq_top_root", "pow 0.5", XC + 5 * DX + 60, dev.ctl(1))
+    s.place("geq_top_hz", "* %s" % fnum(GEQ_SHELF_HZ), XC + 5 * DX + 60, dev.ctl(2))
+    s.place("geq_top_bend", "pow %s" % fnum(EQ_HIGH_BEND), XC + 6 * DX, dev.ctl(1))
+    s.place("geq_top_fit", "* %s" % fnum(EQ_HIGH_FIT), XC + 6 * DX, dev.ctl(2))
+    s.wire(d[top] + ".outs[0]", "geq_top_amp.ins[0]")
+    for a, b in (("amp", "add"), ("amp", "root"), ("root", "hz"), ("amp", "bend"), ("bend", "fit")):
+        s.wire("geq_top_%s.outs[0]" % a, "geq_top_%s.ins[0]" % b)
+    for ch in ("L", "R"):
+        x = X[ch] + SUB
+        lows = s.place("geq_top_pole" + ch, "onepole~ %s" % fnum(eq_corner(GEQ_SHELF_HZ, val[top], 0.5)), x, dev.sig(6))
+        flip = s.place("geq_top_flip" + ch, "*~ -1.", x, dev.sig(7))
+        rest = s.place("geq_top_rest" + ch, "+~", X[ch], dev.sig(7))
+        level = s.place("geq_top_level" + ch, "*~ %s" % fnum(g - 1.0), X[ch], dev.sig(8))
+        fit = s.place("geq_top_fit" + ch, "*~ %s" % fnum(eq_high_fit(val[top])), x, dev.sig(8))
+        s.wire(src[ch], lows + ".ins[0]")
+        s.wire("geq_top_hz.outs[0]", lows + ".ins[1]")
+        s.wire(lows + ".outs[0]", flip + ".ins[0]")
+        s.wire(src[ch], rest + ".ins[0]")
+        s.wire(flip + ".outs[0]", rest + ".ins[0]")
+        s.wire(rest + ".outs[0]", level + ".ins[0]")
+        s.wire("geq_top_add.outs[0]", level + ".ins[1]")
+        s.wire(level + ".outs[0]", fit + ".ins[0]")
+        s.wire("geq_top_fit.outs[0]", fit + ".ins[1]")
+        parts[ch].append(fit + ".outs[0]")
+    for i, (p, hz) in enumerate(zip(mod["params"], GEQ_BANDS)):
+        key = "geq_" + p["id"]
+        x = XC + i * DX
+        s.place(key + "_amp", "dbtoa", x, dev.ctl(0))
+        s.place(key + "_add", "+ -1.", x, dev.ctl(1))
+        s.place(key + "_amt", "* %s" % fnum(1.0 / GEQ_Q), x, dev.ctl(2))
+        s.wire(d[p["id"]] + ".outs[0]", key + "_amp.ins[0]")
+        s.wire(key + "_amp.outs[0]", key + "_add.ins[0]")
+        s.wire(key + "_add.outs[0]", key + "_amt.ins[0]")
+        amount = (10 ** (val[p["id"]] / 20.0) - 1.0) / GEQ_Q
+        out = bell(dev, key, src, (None, hz), (None, bell_resonance(GEQ_Q)), (key + "_amt.outs[0]", amount),
+                   3 * (i // 2), SUB * (i % 2))
+        for ch in ("L", "R"):
+            parts[ch].append(out[ch])
+    result = {}
+    for ch in ("L", "R"):
+        total = s.place("geq_" + ch, "+~", X[ch], dev.sig(9))
+        for part in parts[ch]:
+            s.wire(part, total + ".ins[0]")
+        result[ch] = total + ".outs[0]"
+    return result, 10
+
+
+def m_tilt(dev, src, opt, val):
+    """
+    Tilt: the lows by one gain and the highs by its opposite, split by one onepole~.
+    out = highs * in + (lows - highs) * onepole~(in), written as three multiplies so each
+    gain comes straight from the dial. A split at the Pivot dial itself would leave the
+    pivot louder or quieter than it went in, because the two halves meet a quarter turn
+    apart; with the corner at pivot * highs, the pivot is where the level is unchanged.
+    (That product is the two `*` again: see the parametric EQ's shelves.)
+    """
+    s = dev.s
+    d = dev.dials(_module("tilt"), val, math_rows=2)
+    up, down = 10 ** (val["tilt"] / 20.0), 10 ** (-val["tilt"] / 20.0)
+    s.place("tilt_highs", "dbtoa", XC, dev.ctl(0))
+    s.place("tilt_flip", "* -1.", XC + DX, dev.ctl(0))
+    s.place("tilt_lows", "dbtoa", XC + DX, dev.ctl(1))
+    s.place("tilt_less", "* -1.", XC, dev.ctl(1))
+    s.wire(d["tilt"] + ".outs[0]", "tilt_highs.ins[0]")
+    s.wire(d["tilt"] + ".outs[0]", "tilt_flip.ins[0]")
+    s.wire("tilt_flip.outs[0]", "tilt_lows.ins[0]")
+    s.wire("tilt_highs.outs[0]", "tilt_less.ins[0]")
+    s.place("tilt_hz", "* %s" % fnum(up), XC + 2 * DX, dev.ctl(0))              # the pivot dial moved
+    s.place("tilt_hz2", "* %s" % fnum(val["pivot"]), XC + 2 * DX, dev.ctl(1))   # the tilt dial moved
+    s.wire(d["pivot"] + ".outs[0]", "tilt_hz.ins[0]")
+    s.wire("tilt_highs.outs[0]", "tilt_hz.ins[1]")
+    s.wire("tilt_highs.outs[0]", "tilt_hz2.ins[0]")
+    s.wire(d["pivot"] + ".outs[0]", "tilt_hz2.ins[1]")
+    out = {}
+    for ch in ("L", "R"):
+        pole = s.place("tilt_pole" + ch, "onepole~ %s" % fnum(val["pivot"] * up), X[ch], dev.sig(0))
+        all_ = s.place("tilt_all" + ch, "*~ %s" % fnum(up), X[ch] + SUB, dev.sig(0))
+        lows = s.place("tilt_low" + ch, "*~ %s" % fnum(down), X[ch], dev.sig(1))
+        less = s.place("tilt_less" + ch, "*~ %s" % fnum(-up), X[ch] + SUB, dev.sig(1))
+        total = s.place("tilt_" + ch, "+~", X[ch], dev.sig(2))
+        s.wire(src[ch], pole + ".ins[0]")
+        s.wire("tilt_hz.outs[0]", pole + ".ins[1]")
+        s.wire("tilt_hz2.outs[0]", pole + ".ins[1]")
+        s.wire(src[ch], all_ + ".ins[0]")
+        s.wire("tilt_highs.outs[0]", all_ + ".ins[1]")
+        s.wire(pole + ".outs[0]", lows + ".ins[0]")
+        s.wire("tilt_lows.outs[0]", lows + ".ins[1]")
+        s.wire(pole + ".outs[0]", less + ".ins[0]")
+        s.wire("tilt_less.outs[0]", less + ".ins[1]")
+        for part in (all_, lows, less):
+            s.wire(part + ".outs[0]", total + ".ins[0]")
+        out[ch] = total + ".outs[0]"
+    return out, 3
+
+
 # Makeup gain per distortion type: scale * drive ** exponent. A clipper flattens the peaks
 # as the drive rises, so without this the Drive dial would mostly be a volume dial. The
 # numbers were set by rendering each type in Max at drive 1, 3 and 10 and matching the
@@ -1150,9 +1395,24 @@ ALLPASSES = (12.61, 10.0, 7.73, 5.1)
 SPREAD = {"L": 0.0, "R": 0.52}
 REVERB_FB = (0.7, 0.97)
 
+# Three spaces from the one layout, by how long the combs are and how hard they feed back.
+# A comb of d ms with feedback g rings for about 3 * d / -log10(g) ms, so:
+#   room   combs of 12 to 20 ms, feedback 0.6 to 0.9: a quarter of a second to a second,
+#          and close echoes, which is what makes a space sound small;
+#   hall   the one every device had before there was a choice: 0.6 to 7 seconds;
+#   plate  short combs that are close together and fed back hard, with shorter allpasses:
+#          dense from the first instant and smooth, with no echoes to hear, 0.5 to 4.5 s.
+SPACES = {
+    "room": {"combs": (12.07, 13.33, 14.59, 15.73, 16.87, 17.93, 19.01, 20.11),
+             "allpasses": (8.31, 6.13, 4.37, 2.89), "feedback": (0.6, 0.9)},
+    "hall": {"combs": COMBS, "allpasses": ALLPASSES, "feedback": REVERB_FB},
+    "plate": {"combs": (11.29, 12.71, 13.99, 15.13, 16.31, 17.57, 18.89, 20.23),
+              "allpasses": (6.07, 4.21, 2.93, 1.87), "feedback": (0.8, 0.975)},
+}
 
-def reverb_feedback(size):
-    lo, hi = REVERB_FB
+
+def reverb_feedback(size, space="hall"):
+    lo, hi = SPACES[space]["feedback"]
     return lo + (hi - lo) * float(size) / 100.0
 
 
@@ -1168,8 +1428,9 @@ def reverb_level(feedback):
 def m_reverb(dev, src, opt, val):
     s = dev.s
     d = dev.dials(_module("reverb"), val, math_rows=3)
-    fb = reverb_feedback(val["size"])
-    s.place("reverb_fb", "scale 0. 100. %s %s" % (fnum(REVERB_FB[0]), fnum(REVERB_FB[1])), XC, dev.ctl(0))
+    space = SPACES[opt["space"]]
+    fb = reverb_feedback(val["size"], opt["space"])
+    s.place("reverb_fb", "scale 0. 100. %s %s" % (fnum(space["feedback"][0]), fnum(space["feedback"][1])), XC, dev.ctl(0))
     # level = sqrt(1 - fb * fb) / sqrt(8), one object per step
     s.place("reverb_square", "pow 2.", XC, dev.ctl(1))
     s.place("reverb_rest", "!- 1.", XC, dev.ctl(2))
@@ -1185,7 +1446,7 @@ def m_reverb(dev, src, opt, val):
     for ch in ("L", "R"):
         total = s.place("reverb_sum" + ch, "*~ %s" % fnum(reverb_level(fb)), X[ch], dev.sig(half))
         s.wire("reverb_level.outs[0]", total + ".ins[1]")
-        for n, ms in enumerate(COMBS):
+        for n, ms in enumerate(space["combs"]):
             # two columns of four, so the section stays a readable height
             x, row = X[ch] + (SUB + 10 if n >= half else 0), n % half
             c = s.place("reverb_comb%s%d" % (ch, n + 1),
@@ -1194,7 +1455,7 @@ def m_reverb(dev, src, opt, val):
             s.wire("reverb_fb.outs[0]", c + ".ins[4]")
             s.wire(c + ".outs[0]", total + ".ins[0]")
         last = total + ".outs[0]"
-        for n, ms in enumerate(ALLPASSES):
+        for n, ms in enumerate(space["allpasses"]):
             ap = s.place("reverb_ap%s%d" % (ch, n + 1), "allpass~ 20 %s 0.5" % fnum(ms + SPREAD[ch]), X[ch], dev.sig(half + 1 + n))
             s.wire(last, ap + ".ins[0]")
             last = ap + ".outs[0]"
@@ -1346,6 +1607,9 @@ def m_synth(dev, inst):
 MODULES = {
     "filter": m_filter,
     "eq": m_eq,
+    "peq": m_peq,
+    "geq": m_geq,
+    "tilt": m_tilt,
     "drive": m_drive,
     "crush": m_crush,
     "chorus": m_chorus,

@@ -97,6 +97,206 @@
       ]
     },
     {
+      "id": "peq",
+      "label": "Parametric EQ",
+      "blurb": "Four bands you can put anywhere: a low shelf, two bells with a width of their own, and a high shelf.",
+      "options": [],
+      "params": [
+        {
+          "id": "lf",
+          "label": "Low Freq",
+          "short": "Lo Hz",
+          "min": 40,
+          "max": 600,
+          "default": 120,
+          "unit": "Hz",
+          "exponent": 3.0
+        },
+        {
+          "id": "lg",
+          "label": "Low",
+          "min": -15,
+          "max": 15,
+          "default": 0,
+          "unit": "dB",
+          "exponent": 1.0
+        },
+        {
+          "id": "f1",
+          "label": "Bell 1 Freq",
+          "short": "1 Hz",
+          "min": 80,
+          "max": 2000,
+          "default": 400,
+          "unit": "Hz",
+          "exponent": 3.0
+        },
+        {
+          "id": "g1",
+          "label": "Bell 1",
+          "short": "1",
+          "min": -15,
+          "max": 15,
+          "default": 0,
+          "unit": "dB",
+          "exponent": 1.0
+        },
+        {
+          "id": "q1",
+          "label": "Bell 1 Q",
+          "short": "1 Q",
+          "min": 1,
+          "max": 8,
+          "default": 1.5,
+          "unit": "",
+          "exponent": 2.0
+        },
+        {
+          "id": "f2",
+          "label": "Bell 2 Freq",
+          "short": "2 Hz",
+          "min": 500,
+          "max": 5000,
+          "default": 2500,
+          "unit": "Hz",
+          "exponent": 3.0
+        },
+        {
+          "id": "g2",
+          "label": "Bell 2",
+          "short": "2",
+          "min": -15,
+          "max": 15,
+          "default": 0,
+          "unit": "dB",
+          "exponent": 1.0
+        },
+        {
+          "id": "q2",
+          "label": "Bell 2 Q",
+          "short": "2 Q",
+          "min": 1,
+          "max": 8,
+          "default": 1.5,
+          "unit": "",
+          "exponent": 2.0
+        },
+        {
+          "id": "hf",
+          "label": "High Freq",
+          "short": "Hi Hz",
+          "min": 1500,
+          "max": 5000,
+          "default": 3000,
+          "unit": "Hz",
+          "exponent": 3.0
+        },
+        {
+          "id": "hg",
+          "label": "High",
+          "min": -15,
+          "max": 15,
+          "default": 0,
+          "unit": "dB",
+          "exponent": 1.0
+        }
+      ]
+    },
+    {
+      "id": "geq",
+      "label": "Graphic EQ",
+      "blurb": "Six fixed bands, a slider's worth each: draw the shape you want across them. The top one is a shelf.",
+      "options": [],
+      "params": [
+        {
+          "id": "b1",
+          "label": "100 Hz",
+          "short": "100",
+          "min": -12,
+          "max": 12,
+          "default": 0,
+          "unit": "dB",
+          "exponent": 1.0
+        },
+        {
+          "id": "b2",
+          "label": "230 Hz",
+          "short": "230",
+          "min": -12,
+          "max": 12,
+          "default": 0,
+          "unit": "dB",
+          "exponent": 1.0
+        },
+        {
+          "id": "b3",
+          "label": "520 Hz",
+          "short": "520",
+          "min": -12,
+          "max": 12,
+          "default": 0,
+          "unit": "dB",
+          "exponent": 1.0
+        },
+        {
+          "id": "b4",
+          "label": "1200 Hz",
+          "short": "1.2k",
+          "min": -12,
+          "max": 12,
+          "default": 0,
+          "unit": "dB",
+          "exponent": 1.0
+        },
+        {
+          "id": "b5",
+          "label": "2700 Hz",
+          "short": "2.7k",
+          "min": -12,
+          "max": 12,
+          "default": 0,
+          "unit": "dB",
+          "exponent": 1.0
+        },
+        {
+          "id": "b6",
+          "label": "6000 Hz",
+          "short": "6k",
+          "min": -12,
+          "max": 12,
+          "default": 0,
+          "unit": "dB",
+          "exponent": 1.0
+        }
+      ]
+    },
+    {
+      "id": "tilt",
+      "label": "Tilt EQ",
+      "blurb": "One move for the whole sound: darker one way, brighter the other, pivoting around a frequency.",
+      "options": [],
+      "params": [
+        {
+          "id": "tilt",
+          "label": "Tilt",
+          "min": -6,
+          "max": 6,
+          "default": 0,
+          "unit": "dB",
+          "exponent": 1.0
+        },
+        {
+          "id": "pivot",
+          "label": "Pivot",
+          "min": 200,
+          "max": 4000,
+          "default": 800,
+          "unit": "Hz",
+          "exponent": 3.0
+        }
+      ]
+    },
+    {
       "id": "drive",
       "label": "Distortion",
       "blurb": "Five kinds of clipping, a tone control after it, and automatic level matching so more drive means more dirt, not more volume.",
@@ -325,8 +525,28 @@
     {
       "id": "reverb",
       "label": "Reverb",
-      "blurb": "Freeverb's layout: eight comb~ filters into four allpass~ stages per channel, level-matched so a long tail is not a loud one.",
-      "options": [],
+      "blurb": "Eight comb~ filters into allpass~ stages per channel, tuned three ways: a room, a hall or a plate. Level-matched so a long tail is not a loud one.",
+      "options": [
+        {
+          "id": "space",
+          "label": "Space",
+          "default": "hall",
+          "choices": [
+            {
+              "id": "room",
+              "label": "Room"
+            },
+            {
+              "id": "hall",
+              "label": "Hall"
+            },
+            {
+              "id": "plate",
+              "label": "Plate"
+            }
+          ]
+        }
+      ],
       "params": [
         {
           "id": "size",

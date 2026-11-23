@@ -107,9 +107,16 @@ def test_presets_are_filed_under_the_effect_they_are():
         if name == "Start":
             continue
         assert len(presets) >= 4, name
-        if name in by_label:
+        if name in by_label and name != "EQ":   # EQ is a family: see below
             for p in presets:
                 assert by_label[name] in [e["module"] for e in p["settings"]["chain"]], p["id"]
+    # EQ is a family: the section holds every kind of it, and nothing that is not one.
+    kinds = {"eq", "peq", "geq", "tilt"}
+    used = [{e["module"] for e in p["settings"]["chain"]} for p in sections["EQ"]]
+    assert all(u & kinds for u in used) and set().union(*used) >= kinds
+    # and the reverbs are not all one space
+    spaces = {e["options"].get("space", "hall") for p in sections["Reverb"] for e in p["settings"]["chain"] if e["module"] == "reverb"}
+    assert spaces == {"room", "hall", "plate"}
 
 
 def test_presets_stay_inside_the_dials():
@@ -422,3 +429,20 @@ def test_a_theme_colours_the_backdrop_the_cards_the_lettering_and_the_dials(them
     for dial in (b for b in boxes if b.get("maxclass") == "live.dial"):
         assert rgb(dial["textcolor"]) == hexed(spec["ink"]) and rgb(dial["dialcolor"]) == hexed(spec["track"])
     assert result["coverage"]["cords"]["flagged"] == 0
+
+
+def test_the_reverb_is_three_spaces_and_the_hall_is_the_one_it_always_was():
+    """Room, hall and plate are the same layout with other comb and allpass times."""
+    def combs(space):
+        made = fxgen.run({"name": "Space", "chain": [{"module": "reverb", "on": True, "options": {"space": space}}]}, want_amxd=False)
+        texts = [b["box"].get("text", "") for b in made["json"]["patcher"]["boxes"]]
+        return sorted(float(t.split()[2]) for t in texts if t.startswith("comb~")), [t for t in texts if t.startswith("scale ")]
+    hall, hall_scale = combs("hall")
+    assert hall[:8:2] == pytest.approx(sorted(fxgen.COMBS)[:4]) and [float(x) for x in hall_scale[0].split()[1:]] == [0.0, 100.0, 0.7, 0.97]
+    room, plate = combs("room")[0], combs("plate")[0]
+    assert len(room) == len(hall) == len(plate) == 16
+    assert max(room) < min(hall) and max(plate) < min(hall) and room != plate
+    # an unknown space is the hall, as an unknown anything is its default
+    assert fxgen.normalize({"chain": [{"module": "reverb", "options": {"space": "cave"}}]})["chain"][0]["options"]["space"] == "hall"
+    # every space stops short of ringing for ever
+    assert all(fxgen.reverb_feedback(100, s) < 1.0 for s in fxgen.SPACES)

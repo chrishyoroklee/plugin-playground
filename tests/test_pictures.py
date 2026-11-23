@@ -56,7 +56,8 @@ def test_each_module_has_a_picture_in_its_card_above_its_dials(effect):
         module = name[:-len("_graph")]
         x, y, w, h = picture["presentation_rect"]
         assert picture["presentation"] == 1 and w >= fxgen.GRAPH_MIN_W and y + h <= fxgen.GRAPH_DIAL_Y
-        mine = [d for d in dials if d["varname"].startswith(module + "_")]
+        label = next(m["label"] for m in fxgen.schema()["modules"] if m["id"] == module)
+        mine = [d for d in dials if d["varname"].startswith(label.lower().replace(" ", "_") + "_")]
         assert mine and all(d["presentation_rect"][1] == fxgen.GRAPH_DIAL_Y for d in mine)
         assert all(d["presentation_rect"][1] + d["presentation_rect"][3] <= fxgen.DEVICE_H - 6 for d in mine)
         # and it is inside its own card, which no other card overlaps

@@ -214,7 +214,7 @@ no preset uses.
   `.github/workflows/native.yml` does this on Linux, macOS and Windows.
 
 Where that stands (November 2026): CI builds the runtime on Linux, macOS and Windows,
-makes every preset from it with the helper (82 effects and 41 instruments) and each
+makes every preset from it with the helper (91 effects and 41 instruments) and each
 passes hostcheck. It runs the installer, opens three devices with what was installed
 (Ping-Pong, Tape Lo-Fi and the instrument Soft Pad) and puts them through
 clap-validator, pluginval at strictness 5 (VST3 everywhere, the Audio Unit on macOS) and

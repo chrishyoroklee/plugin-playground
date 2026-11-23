@@ -119,6 +119,89 @@ var PPGraphs = (function () {
     },
   };
 
+  // ── the other EQs: parametric, graphic, tilt ────────────────────────────────────
+  // These are drawn from the filters as they run, sample by sample, and not from the
+  // textbook curves, because near the top of the range the two part company: a onepole~
+  // shelf stops short and an svf~ bell sits a little under its dial. So the picture is
+  // what is heard. It is worked out for 44.1 kHz; at 48 the top octave differs by a hair.
+  var SR = 44100, QUARTER = SR / 4;
+  function cmul(p, q) { return [p[0] * q[0] - p[1] * q[1], p[0] * q[1] + p[1] * q[0]]; }
+  function zinv(f) { var t = 2 * PI * f / SR; return [Math.cos(t), -Math.sin(t)]; }
+  /** onepole~ with its corner at c, as it answers frequency f. */
+  function pole(f, c) {
+    var k = 1 - Math.exp(-2 * PI * clamp(c, 0, QUARTER) / SR), z = zinv(f);
+    return cdiv([k, 0], [1 - (1 - k) * z[0], -(1 - k) * z[1]]);
+  }
+  /** svf~'s band-pass at c with this Q, a sample late (fxgen's bell), scaled to peak at 1. */
+  function bellAt(f, c, q) {
+    var k = Math.sin(2 * PI * clamp(c, 0, QUARTER) / SR), d = Math.min(1, 1 / q), z = zinv(f);
+    var one = [1 - z[0], -z[1]];
+    var den = cmul(one, one), kd = cmul(z, one);
+    den = [den[0] + k * k * z[0] + k * d * kd[0], den[1] + k * k * z[1] + k * d * kd[1]];
+    var b = cmul(cdiv([k * one[0], k * one[1]], den), z);
+    return [b[0] / q, b[1] / q];
+  }
+  function add(sum, part, amount) { sum[0] += part[0] * amount; sum[1] += part[1] * amount; }
+  function highShelf(sum, f, c, g) {
+    var p = pole(f, c * Math.sqrt(g));
+    add(sum, [1 - p[0], -p[1]], EQ_FIT * Math.pow(g, EQ_BEND) * (g - 1));
+  }
+  function eqKind(level, span, dots, dragged) {
+    return {
+      draw: function (g, v, w, h, c, m, live) {
+        spectrum(g, w, h, c, live);
+        freqGrid(g, w, h, c);
+        var pts = curve(w, function (x) { return clamp(dy(level(xf(x, w), v), h, span), 1, h - 1); });
+        g.path(under(pts, w, h / 2), null, 0, a(c.accent, 0.2));
+        g.path(pts, c.accent, 1.6, null);
+      },
+      handles: function (v, w, h) {
+        var out = dots(v);
+        for (var i = 0; i < out.length; i++) out[i] = { id: out[i][0], x: fx(out[i][1], w), y: dy(out[i][2], h, span) };
+        return out;
+      },
+      drag: function (id, x, y, v, w, h) { return dragged(id, xf(x, w), yd(y, h, span)); },
+    };
+  }
+
+  function peqLevel(f, v) {
+    var sum = [1, 0], gl = gain(v.lg), gh = gain(v.hg);
+    add(sum, pole(f, v.lf / Math.sqrt(gl)), gl - 1);
+    highShelf(sum, f, v.hf, gh);
+    add(sum, bellAt(f, v.f1, v.q1), gain(v.g1) - 1);
+    add(sum, bellAt(f, v.f2, v.q2), gain(v.g2) - 1);
+    return db(mag(sum));
+  }
+  var PEQ_FREQ = { lg: 'lf', g1: 'f1', g2: 'f2', hg: 'hf' };
+  var peq = eqKind(peqLevel, EQ_SPAN,
+    function (v) { return [['lg', v.lf, v.lg], ['g1', v.f1, v.g1], ['g2', v.f2, v.g2], ['hg', v.hf, v.hg]]; },
+    function (id, freq, level) { var out = {}; out[id] = level; out[PEQ_FREQ[id]] = freq; return out; });
+
+  var GEQ_HZ = [100, 230, 520, 1200, 2700], GEQ_Q = 1.6, GEQ_SHELF = 3500, GEQ_TOP_X = 6000, GEQ_SPAN = 15;
+  function geqLevel(f, v) {
+    var sum = [1, 0];
+    for (var i = 0; i < GEQ_HZ.length; i++) add(sum, bellAt(f, GEQ_HZ[i], GEQ_Q), gain(v['b' + (i + 1)]) - 1);
+    highShelf(sum, f, GEQ_SHELF, gain(v.b6));
+    return db(mag(sum));
+  }
+  var geq = eqKind(geqLevel, GEQ_SPAN,
+    function (v) {
+      var out = [];
+      for (var i = 0; i < 6; i++) out.push(['b' + (i + 1), i < 5 ? GEQ_HZ[i] : GEQ_TOP_X, v['b' + (i + 1)]]);
+      return out;
+    },
+    function (id, freq, level) { var out = {}; out[id] = level; return out; });
+
+  var TILT_SPAN = 9;
+  function tiltLevel(f, v) {
+    var up = gain(v.tilt), down = gain(-v.tilt), p = pole(f, v.pivot * up);
+    return db(mag([up + (down - up) * p[0], (down - up) * p[1]]));
+  }
+  // The dot is on the pivot (where the level stays as it was), as high as the highs are raised.
+  var tilt = eqKind(tiltLevel, TILT_SPAN,
+    function (v) { return [['tilt', v.pivot, v.tilt]]; },
+    function (id, freq, level) { return { tilt: level, pivot: freq }; });
+
   // ── filter: the slope, and one dot for cutoff and resonance ─────────────────────
   // svf~ as fxgen drives it: resonance 0.17 to 0.75, and the trim that keeps a loud
   // resonance from clipping.
@@ -274,7 +357,8 @@ var PPGraphs = (function () {
   var reverb = {
     draw: function (g, v, w, h, c, m) {
       var size = pos(m.size, v.size), bright = pos(m.damp, v.damp), tall = (h - 8) * (0.45 + 0.55 * v.mix / 100);
-      var tau = w * (0.05 + 0.45 * size * size);
+      var reach = v.space === 'room' ? 0.4 : v.space === 'plate' ? 0.75 : 1;   // how long each space can ring
+      var tau = w * (0.05 + 0.45 * size * size) * reach;
       var tail = function (t) { return function (x) { return h - 3 - tall * Math.exp(-x / t); }; };
       g.line(0, h - 3, w, h - 3, a(c.ink, 0.12), 1);
       var whole = curve(w, tail(tau));
@@ -372,7 +456,7 @@ var PPGraphs = (function () {
   };
 
   var kinds = {
-    eq: eq, filter: filterKind(false), tone: filterKind(true), drive: drive, crush: crush,
+    eq: eq, peq: peq, geq: geq, tilt: tilt, filter: filterKind(false), tone: filterKind(true), drive: drive, crush: crush,
     chorus: waveKind(false), tremolo: waveKind(true), delay: delay, reverb: reverb, osc: osc, env: env,
   };
 
@@ -405,7 +489,7 @@ var PPGraphs = (function () {
   }
 
   // Which kinds have something to show while sound is running, and what they need for it.
-  var moving = { eq: 'spectrum', filter: 'spectrum', tone: 'spectrum', chorus: 'time', tremolo: 'time', env: 'note' };
+  var moving = { eq: 'spectrum', peq: 'spectrum', geq: 'spectrum', tilt: 'spectrum', filter: 'spectrum', tone: 'spectrum', chorus: 'time', tremolo: 'time', env: 'note' };
 
   return { kinds: kinds, render: render, pick: pick, drag: drag, has: function (kind) { return !!kinds[kind]; },
            moves: function (kind) { return moving[kind] || null; } };

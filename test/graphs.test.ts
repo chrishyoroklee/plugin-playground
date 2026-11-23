@@ -113,6 +113,48 @@ describe('the pictures', () => {
   });
 });
 
+describe('the other kinds of EQ', () => {
+  const dbAt = (kind: string, v: Record<string, number | string>, freq: number, span: number): number => {
+    let points: number[] = [];
+    graphs.kinds[kind].draw({ path(p: number[], stroke: unknown) { if (stroke) points = p; }, dot() {}, line() {} }, v, 800, 200, colours, {});
+    const x = 800 * Math.log(freq / 20) / Math.log(1000);
+    let best = 0;
+    for (let i = 0; i < points.length; i += 2) if (Math.abs(points[i] - x) < Math.abs(points[best] - x)) best = i;
+    return (100 - points[best + 1]) / 97 * span;
+  };
+  const at = (id: string, change: Record<string, number> = {}) => {
+    const s = setup(modules.find((x) => x.id === id)!, (p) => p.default);
+    Object.assign(s.v, change);
+    return s;
+  };
+
+  it('each is flat as it comes, and a band reads its dial where it points', () => {
+    for (const [kind, span] of [['peq', 18], ['geq', 15], ['tilt', 9]] as const) {
+      for (const f of [40, 300, 2000, 12000]) expect(Math.abs(dbAt(kind, at(kind).v, f, span))).toBeLessThan(0.05);
+    }
+    expect(dbAt('peq', at('peq', { g1: 9, f1: 500 }).v, 500, 18)).toBeGreaterThan(8.5);
+    expect(dbAt('peq', at('peq', { g1: 9, f1: 500, q1: 8 }).v, 250, 18)).toBeLessThan(dbAt('peq', at('peq', { g1: 9, f1: 500, q1: 1 }).v, 250, 18) - 1);
+    expect(dbAt('peq', at('peq', { lg: -9 }).v, 30, 18)).toBeLessThan(-8);
+    expect(dbAt('geq', at('geq', { b3: -9 }).v, 520, 15)).toBeLessThan(-8.5);
+    expect(dbAt('geq', at('geq', { b6: 9 }).v, 12000, 15)).toBeGreaterThan(7.5);
+    expect(dbAt('tilt', at('tilt', { tilt: 6 }).v, 40, 9)).toBeLessThan(-5.5);
+    expect(dbAt('tilt', at('tilt', { tilt: 6 }).v, 12000, 9)).toBeGreaterThan(5);
+  });
+
+  it('a parametric dot moves its band both ways, and a graphic one only up and down', () => {
+    const p = at('peq');
+    expect(graphs.kinds.peq.handles(p.v, 400, 100).map((d: { id: string }) => d.id)).toEqual(['lg', 'g1', 'g2', 'hg']);
+    const moved = graphs.drag('peq', 'g2', 300, 20, p.v, 400, 100, p.m);
+    expect(Object.keys(moved).sort()).toEqual(['f2', 'g2']);
+    expect(moved.g2).toBeGreaterThan(6);
+    const g = at('geq');
+    expect(graphs.kinds.geq.handles(g.v, 400, 100)).toHaveLength(6);
+    expect(Object.keys(graphs.drag('geq', 'b4', 10, 80, g.v, 400, 100, g.m))).toEqual(['b4']);
+    const t = at('tilt');
+    expect(Object.keys(graphs.drag('tilt', 'tilt', 200, 30, t.v, 400, 100, t.m)).sort()).toEqual(['pivot', 'tilt']);
+  });
+});
+
 describe('what is sounding, on the pictures', () => {
   const live = { spectrum: Array.from({ length: 48 }, (_, i) => (i % 7) / 7), time: 12.34, note: { on: 0.05, off: null } };
 

@@ -34,7 +34,7 @@ import {
 } from './installers';
 import { AssistError, ask, chatPrompt, parseAnswer, saveKey, savedKey, toSettings } from './assist';
 import {
-  closeMenu, decorate, deviceClick, menuOpen, refreshMenu, renderMotion, stopLinking, watchMoved, type EditHost,
+  closeMenu, decorate, deviceClick, refreshMenu, renderMotion, stopLinking, watchMoved, type EditHost,
 } from './edit-ui';
 import { SOUNDS, findSound } from './sounds';
 import { getTheme, setTheme } from './theme';
@@ -1410,11 +1410,12 @@ function init(): void {
   $('device').addEventListener('click', (e) => { deviceClick(e.target as HTMLElement, editHost); });
   document.addEventListener('pointerdown', (e) => {
     const t = e.target as HTMLElement;
-    if (menuOpen() && !t.closest('#dial-pop') && !t.closest('.dv-widget') && !t.closest('.edit-add')) closeMenu(editHost);
+    // Any menu (a dial's, + Effect, Look) closes on a click that is not in it or on what opens one.
+    if (!editHost.menu.hidden && !t.closest('#dial-pop') && !t.closest('.dv-widget') && !t.closest('.edit-add')) closeMenu(editHost);
   });
   window.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
-    if (menuOpen()) closeMenu(editHost);
+    if (!editHost.menu.hidden) closeMenu(editHost);
     else if (editHost.editing()) setEditing(false);
   });
 

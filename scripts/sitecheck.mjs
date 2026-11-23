@@ -234,8 +234,16 @@ async function check(name, url) {
     const cardsBefore = await onDevice();
     await page.locator('.edit-add', { hasText: 'Effect' }).click();
     const offered = await page.locator('#dial-pop .edit-option b').allTextContents();
-    note(offered.includes('EQ') && offered.includes('Reverb'), 'Edit: + Effect offers what is not on the device', offered.join(', '));
-    await page.locator('#dial-pop .edit-option', { hasText: 'EQ' }).click();
+    note(offered.includes('EQ') && offered.includes('Parametric EQ') && offered.includes('Reverb'), 'Edit: + Effect offers what is not on the device', offered.join(', '));
+    // a click anywhere else closes the menu, whichever one it is
+    await page.mouse.click(8, 8);
+    const shutEffect = await page.locator('#dial-pop').isHidden();
+    await page.locator('.edit-add', { hasText: 'Look' }).click();
+    const lookOpen = await page.locator('#dial-pop').isVisible();
+    await page.mouse.click(8, 8);
+    note(shutEffect && lookOpen && await page.locator('#dial-pop').isHidden(), 'Edit: a click away closes the + Effect and Look menus');
+    await page.locator('.edit-add', { hasText: 'Effect' }).click();
+    await page.locator('#dial-pop .edit-option').filter({ has: page.locator('b', { hasText: /^EQ$/ }) }).click();
     await settle();
     const eqDials = await page.locator('#device .dv-widget[data-module="eq"]').count();
     note((await onDevice()) === cardsBefore + 1 && eqDials === 4, 'Edit: the EQ goes on with its four dials', `${eqDials} dials`);
@@ -299,6 +307,29 @@ async function check(name, url) {
     note((await onDevice()) === cardsBefore, 'Edit: an effect\'s x takes it off');
     await stopEditing();
     await page.screenshot({ path: path.join(shots, 'edited.png') });
+
+    // 5a. the other kinds of EQ and of reverb: each is its own device with its own picture
+    for (const [preset, kind, dials] of [['Parametric Sculpt', 'peq', 10], ['Graphic Curve', 'geq', 6], ['Tilt Bright', 'tilt', 2]]) {
+      await page.locator('#presets .preset', { hasText: preset }).first().click();
+      await settle();
+      const canvas = page.locator(`#device .dv-graph[data-kind="${kind}"] canvas`);
+      const drawn = (await canvas.count()) === 1 && await canvas.evaluate((c) => {
+        const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+        let n = 0;
+        for (let i = 3; i < d.length; i += 4) if (d[i] > 0) n++;
+        return n;
+      });
+      const count = await page.locator(`#device .dv-widget[data-module="${kind}"]`).count();
+      note(drawn > 200 && count === dials, `${preset}: its own picture and ${dials} dials`, `${drawn} pixels, ${count} dials`);
+    }
+    await page.locator('#presets .preset', { hasText: 'Vocal Plate' }).first().click();
+    await settle();
+    const spaces = page.locator('#device .dv-types button');
+    const spaceNames = await spaces.allTextContents();
+    await spaces.filter({ hasText: 'Room' }).click();
+    await settle();
+    const nowRoom = await page.evaluate(() => JSON.parse(decodeURIComponent(escape(atob(location.hash.slice(3).replace(/-/g, '+').replace(/_/g, '/'))))).chain.find((e) => e.module === 'reverb').options.space);
+    note(spaceNames.join(',') === 'Room,Hall,Plate' && nowRoom === 'room', 'the reverb has three spaces, picked on its picture', `${spaceNames.join(', ')}; now ${nowRoom}`);
 
     // 5b. pictures: an EQ's curve is there, dragging it turns the dial, and Look can take them away
     await page.locator('#presets .preset', { hasText: 'Mid Push' }).first().click();

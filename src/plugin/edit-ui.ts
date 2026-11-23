@@ -482,8 +482,6 @@ export function closeMenu(host: EditHost): void {
   host.menu.hidden = true;
 }
 
-export const menuOpen = (): boolean => menuFor !== undefined;
-
 /** Draw the open menu again, from the settings as they are now. */
 export function refreshMenu(host: EditHost): void {
   if (!menuFor || host.menu.hidden) return;
