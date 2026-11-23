@@ -628,7 +628,9 @@ function arc(from: number, to: number): string {
  * the dial (fxgen.py, Device.moved), found by following the cords from the dial.
  * Returns what to call before the next device is drawn.
  */
-export function watchMoved(patch: IRPatch, built: ReadonlyMap<string, MaxNode>, device: HTMLElement, s: Settings, index: DialIndex): () => void {
+export function watchMoved(
+  patch: IRPatch, built: ReadonlyMap<string, MaxNode>, device: HTMLElement, s: Settings, index: DialIndex, changed: () => void = () => {},
+): () => void {
   const offs: (() => void)[] = [];
   const next = new Map<string, { to: string; outlet: number }[]>();
   for (const e of patch.edges) {
@@ -662,12 +664,24 @@ export function watchMoved(patch: IRPatch, built: ReadonlyMap<string, MaxNode>, 
     dot.setAttribute('class', 'moved-dot');
     dot.setAttribute('r', '1.9');
     dot.setAttribute('opacity', '0');
-    svg.append(range, dot);
+    const grip = document.createElementNS(SVG, 'circle');
+    grip.setAttribute('class', 'moved-grip');
+    grip.setAttribute('r', '2.6');
+    const tip = document.createElementNS(SVG, 'title');
+    tip.textContent = 'Drag round the dial: how far it is turned';
+    grip.append(tip);
+    svg.append(range, dot, grip);
     widget.append(svg);
 
     // How far the dial can be turned from where it stands: a sweep swings both ways, a
     // knob or the loudness pushes one way.
+    // The first thing turning it is the one the arc's handle sets. One that pushes one way
+    // (a knob, the loudness) has its handle at that end; a sweep's is at the far end.
+    const first = routes[0];
+    const oneWay = isKnob(first.source) || first.source === 'follow';
+    let standing = param.initial;
     const drawRange = (value: number): void => {
+      standing = value;
       const here = paramPosition(param, value);
       let lo = 0;
       let hi = 0;
@@ -676,8 +690,48 @@ export function watchMoved(patch: IRPatch, built: ReadonlyMap<string, MaxNode>, 
         if (isKnob(r.source) || r.source === 'follow') { if (a < 0) lo += a; else hi += a; } else { lo -= Math.abs(a); hi += Math.abs(a); }
       }
       range.setAttribute('d', arc(Math.max(0, here + lo), Math.min(1, here + hi)));
+      const end = oneWay && first.amount < 0 ? Math.max(0, here + lo) : Math.min(1, here + hi);
+      const [gx, gy] = polar(end);
+      grip.setAttribute('cx', String(gx));
+      grip.setAttribute('cy', String(gy));
     };
     drawRange(param.initial);
+
+    // Dragging the handle round the dial: where it is let go, less where the dial
+    // stands, is how far the dial is turned. It is drawn as it goes and built once.
+    const toPosition = (e: PointerEvent): number => {
+      const box = svg.getBoundingClientRect();
+      const x = ((e.clientX - box.left) / box.width) * 44 - CX;
+      const y = ((e.clientY - box.top) / box.height) * 48 - CY;
+      const round = ((Math.atan2(y, x) * 180) / Math.PI - A0 + 720) % 360;
+      // the gap at the bottom of the dial belongs to whichever end is nearer
+      return round <= SWEEP ? round / SWEEP : round - SWEEP < (360 - SWEEP) / 2 ? 1 : 0;
+    };
+    let gripping = false;
+    grip.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      gripping = true;
+      grip.setPointerCapture(e.pointerId);
+      e.preventDefault();
+      e.stopPropagation();
+    });
+    grip.addEventListener('pointermove', (e) => {
+      if (!gripping) return;
+      const far = Math.round((toPosition(e) - paramPosition(param, standing)) * 100);
+      const amount = oneWay ? far : Math.sign(first.amount || 1) * Math.abs(far);
+      first.amount = Math.max(-100, Math.min(100, amount)) || (first.amount < 0 ? -1 : 1);   // never nothing: that would drop it
+      drawRange(standing);
+    });
+    const letGo = (e: PointerEvent): void => {
+      if (!gripping) return;
+      gripping = false;
+      if (grip.hasPointerCapture(e.pointerId)) grip.releasePointerCapture(e.pointerId);
+      e.stopPropagation();
+      changed();
+    };
+    grip.addEventListener('pointerup', letGo);
+    grip.addEventListener('pointercancel', letGo);
+    grip.addEventListener('click', (e) => e.stopPropagation());   // not a click on the dial, which opens its menu
     const dial = built.get(node.id);
     const offDial = dial?.onControlOut?.(0, (m) => { const v = firstNum(m); if (v !== undefined) drawRange(v); });
     if (typeof offDial === 'function') offs.push(offDial);

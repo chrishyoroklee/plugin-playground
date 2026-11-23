@@ -20,9 +20,25 @@ interface Drawing {
 
 interface Core {
   has(kind: string): boolean;
-  render(kind: string, g: Drawing, v: Values, w: number, h: number, c: Record<string, Colour>, m: Ranges, hot: string | null): void;
+  render(kind: string, g: Drawing, v: Values, w: number, h: number, c: Record<string, Colour>, m: Ranges, hot: string | null, live?: Live | null): void;
+  /** What a kind shows while sound is running: 'spectrum', 'time', 'note', or nothing. */
+  moves(kind: string): 'spectrum' | 'time' | 'note' | null;
   pick(kind: string, x: number, y: number, v: Values, w: number, h: number, m: Ranges): string | null;
   drag(kind: string, id: string, x: number, y: number, v: Values, w: number, h: number, m: Ranges): Record<string, number>;
+}
+
+/** What is sounding now, for the pictures that show it (graphs.js, `live`). */
+export interface Live {
+  spectrum?: number[];
+  time?: number;
+  note?: { on: number; off: number | null } | null;
+}
+
+/** A picture on the page: how to redraw it with what is sounding, and how to take it down. */
+export interface Mounted {
+  /** Draw again with this. `null` is silence: the picture as it stands, with nothing moving on it. */
+  tick(live: Live | null): void;
+  stop(): void;
 }
 
 // graphs.js is plain script (Max's v8ui has no modules), so it is run, not imported.
@@ -50,13 +66,14 @@ function rgb(hex: string): Colour {
 const css = (c: Colour): string => `rgba(${Math.round(c[0] * 255)}, ${Math.round(c[1] * 255)}, ${Math.round(c[2] * 255)}, ${c.length > 3 ? c[3] : 1})`;
 
 /**
- * Draw `kind` into `host` and keep it in step with its dials. Returns how to take it down.
+ * Draw `kind` into `host` and keep it in step with its dials.
  * `locked` says when a drag should do nothing (while the device is being edited).
  */
 export function mountGraph(
   host: HTMLElement, kind: string, options: Record<string, string>, dials: GraphDial[], colours: GraphColours, locked: () => boolean,
-): () => void {
-  if (!graphs.has(kind)) return () => {};
+): Mounted {
+  const nothing: Mounted = { tick: () => {}, stop: () => {} };
+  if (!graphs.has(kind)) return nothing;
   const w = host.clientWidth || parseFloat(host.style.width) || 140;
   const h = host.clientHeight || parseFloat(host.style.height) || 70;
   const ratio = Math.min(3, window.devicePixelRatio || 1) * 2;   // the device view is often zoomed in
@@ -67,7 +84,7 @@ export function mountGraph(
   host.replaceChildren(canvas);
   host.style.background = colours.well;
   const ctx = canvas.getContext('2d');
-  if (!ctx) return () => {};
+  if (!ctx) return nothing;
 
   const values: Values = { ...options };
   const ranges: Ranges = {};
@@ -79,6 +96,7 @@ export function mountGraph(
   }
   const palette = { ink: rgb(colours.ink), track: rgb(colours.track), accent: rgb(colours.accent), card: rgb(colours.card) };
   let hot: string | null = null;
+  let live: Live | null = null;
 
   const g: Drawing = {
     path(points, stroke, width, fill) {
@@ -114,7 +132,7 @@ export function mountGraph(
     queued = 0;
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
     ctx.clearRect(0, 0, w, h);
-    graphs.render(kind, g, values, w, h, palette, ranges, hot);
+    graphs.render(kind, g, values, w, h, palette, ranges, hot, live);
   };
   const redraw = (): void => { if (!queued) queued = requestAnimationFrame(draw); };
   draw();
@@ -158,8 +176,49 @@ export function mountGraph(
   canvas.addEventListener('pointerup', release);
   canvas.addEventListener('pointercancel', release);
 
-  return () => {
-    for (const off of offs) off();
-    if (queued) cancelAnimationFrame(queued);
+  const moves = graphs.moves(kind);
+  return {
+    tick(next) {
+      if (!moves) return;
+      // Only what this picture shows, and only when that is there or has just gone.
+      const mine = next && next[moves] !== undefined && next[moves] !== null ? next : null;
+      if (!mine && !live) return;
+      live = mine;
+      draw();
+    },
+    stop() {
+      for (const off of offs) off();
+      if (queued) cancelAnimationFrame(queued);
+    },
   };
+}
+
+// The names on the buttons along the top of a picture, where the full one would not fit.
+const SHORT: Record<string, string> = {
+  lowpass: 'Low', highpass: 'High', bandpass: 'Band', soft: 'Soft', hard: 'Hard', triangle: 'Tri', pingpong: 'Ping', autopan: 'Pan',
+};
+
+/**
+ * The module's kinds along the top of its picture (a filter's four, a distortion's five):
+ * what the picture is a picture of, and a way to change it. Picking one calls `choose`.
+ */
+export function typeButtons(
+  label: string, choices: { id: string; label: string }[], current: string, choose: (id: string) => void,
+): HTMLElement {
+  const row = document.createElement('div');
+  row.className = 'dv-types';
+  row.setAttribute('role', 'radiogroup');
+  row.setAttribute('aria-label', label);
+  for (const c of choices) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = SHORT[c.id] ?? c.label;
+    b.title = c.label;
+    b.dataset.choice = c.id;
+    b.setAttribute('role', 'radio');
+    b.setAttribute('aria-checked', String(c.id === current));
+    b.addEventListener('click', () => { if (c.id !== current) choose(c.id); });
+    row.append(b);
+  }
+  return row;
 }

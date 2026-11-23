@@ -260,6 +260,23 @@ async function check(name, url) {
     note((await page.locator('#device .dv-widget.is-moved').count()) === 1 && (await page.locator('#device .moved-ring').count()) === 1,
       'Edit: a dial set to sweep is marked and shows how far');
     await page.keyboard.press('Escape');
+    // the end of that arc is a handle: taken round to the dial's far end, it sweeps further
+    const saved = () => page.evaluate(() => JSON.parse(decodeURIComponent(escape(atob(location.hash.slice(3).replace(/-/g, '+').replace(/_/g, '/'))))));
+    await page.waitForTimeout(500);
+    const farBefore = (await saved()).motion.routes[0].amount;
+    const ring = await page.locator('#device .dv-widget[data-target="delay.time"] .moved-ring').boundingBox();
+    const gripAt = await page.locator('#device .dv-widget[data-target="delay.time"] .moved-grip').boundingBox();
+    await page.mouse.move(gripAt.x + gripAt.width / 2, gripAt.y + gripAt.height / 2);
+    await page.mouse.down();
+    // the far end of a dial's travel is at half past four: 45 degrees below the horizontal, on the right
+    const unit = ring.width / 44;
+    await page.mouse.move(ring.x + (22 + 14.4 * Math.SQRT1_2) * unit, ring.y + (25 + 14.4 * Math.SQRT1_2) * unit, { steps: 8 });
+    await page.mouse.up();
+    await settle();
+    await page.waitForTimeout(500);
+    const farAfter = (await saved()).motion.routes[0].amount;
+    note(farAfter !== farBefore && farAfter > 30 && farAfter < 60 && (await page.locator('#dial-pop:not([hidden]) h2').count()) === 0,
+      'Edit: dragging the end of the arc sets how far the dial sweeps', `${farBefore} to ${farAfter}`);
 
     await page.locator('.edit-add', { hasText: 'Knob' }).click();
     await settle();
@@ -314,14 +331,45 @@ async function check(name, url) {
       note(midAfter < 0 && Math.abs(saved.mid - midAfter) < 0.01 && saved.freq < handle.freq, 'dragging the picture turns the dials, and is saved',
         `Mid ${midBefore} to ${midAfter.toFixed(1)} dB, Freq ${Math.round(handle.freq)} to ${Math.round(saved.freq)} Hz`);
     }
+    // while it plays, what is sounding is drawn behind the curve
+    if (pb) {
+      const filled = () => picture.evaluate((c) => {
+        const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+        let n = 0;
+        for (let i = 3; i < d.length; i += 4) if (d[i] > 0) n++;
+        return n;
+      });
+      const silent = await filled();
+      await page.locator('#btn-play').click();
+      let most = 0;
+      for (let i = 0; i < 12; i++) { await page.waitForTimeout(150); most = Math.max(most, await filled()); }
+      await page.locator('#btn-play').click();
+      await page.waitForTimeout(400);
+      note(most > silent * 1.15 && Math.abs((await filled()) - silent) < silent * 0.05, 'while it plays, the spectrum is drawn behind the EQ\'s curve, and goes when it stops',
+        `${silent} pixels silent, ${most} playing`);
+    }
+    // a module's kinds are along the top of its picture
+    await page.locator('#presets .preset', { hasText: 'Telephone' }).first().click();
+    await settle();
+    const types = page.locator('#device .dv-graph[data-kind="filter"] .dv-types button');
+    const was = await page.locator('#device .dv-graph[data-kind="filter"] .dv-types button[aria-checked="true"]').getAttribute('data-choice');
+    const other = was === 'highpass' ? 'lowpass' : 'highpass';
+    await page.locator(`#device .dv-graph[data-kind="filter"] .dv-types button[data-choice="${other}"]`).click();
+    await settle();
+    await page.waitForTimeout(500);
+    const mode = (await saved()).chain.find((e) => e.module === 'filter').options.mode;
+    note((await types.count()) === 4 && mode === other
+      && (await page.locator('#device .dv-graph[data-kind="filter"] .dv-types button[aria-checked="true"]').getAttribute('data-choice')) === other,
+      'a picture\'s type buttons change the module\'s kind', `${was} to ${mode}`);
+
     await page.locator('#btn-edit').click();
     await page.locator('.edit-add', { hasText: 'Look' }).click();
     await page.locator('.edit-look', { hasText: 'Dials only' }).click();
     await settle();
-    note((await page.locator('#device .dv-graph').count()) === 0 && (await page.locator('#device .live-dial').count()) === 5, 'Look: Dials only takes the pictures away');
+    note((await page.locator('#device .dv-graph').count()) === 0, 'Look: Dials only takes the pictures away');
     await page.locator('.edit-look', { hasText: 'A picture and dials' }).click();
     await settle();
-    note((await page.locator('#device .dv-graph').count()) === 1, 'Look: and puts them back');
+    note((await page.locator('#device .dv-graph').count()) > 0, 'Look: and puts them back');
     await stopEditing();
 
     // 6. a link reopens exactly this device

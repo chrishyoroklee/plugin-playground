@@ -113,6 +113,55 @@ describe('the pictures', () => {
   });
 });
 
+describe('what is sounding, on the pictures', () => {
+  const live = { spectrum: Array.from({ length: 48 }, (_, i) => (i % 7) / 7), time: 12.34, note: { on: 0.05, off: null } };
+
+  it('each kind says what it shows, and draws finitely with all of it, part of it, or none', () => {
+    expect(['eq', 'filter', 'tone'].map((k) => graphs.moves(k))).toEqual(['spectrum', 'spectrum', 'spectrum']);
+    expect(['chorus', 'tremolo'].map((k) => graphs.moves(k))).toEqual(['time', 'time']);
+    expect(graphs.moves('env')).toBe('note');
+    expect(['drive', 'crush', 'delay', 'reverb', 'osc'].map((k) => graphs.moves(k))).toEqual([null, null, null, null, null]);
+    for (const mod of modules) {
+      const { v, m } = setup(mod, (p) => p.default);
+      const quiet = recorder();
+      graphs.render(mod.id, quiet.g, v, W, H, colours, m, null);
+      for (const given of [live, {}, { spectrum: [] }, { note: null }, null, undefined]) {
+        const r = recorder();
+        graphs.render(mod.id, r.g, v, W, H, colours, m, null, given);
+        expect(r.numbers.every(Number.isFinite), mod.id).toBe(true);
+        // something more is drawn only by the kinds that show it, and only when it is there
+        expect(r.calls > quiet.calls, `${mod.id} with ${JSON.stringify(given)?.slice(0, 30)}`).toBe(given === live && graphs.moves(mod.id) !== null);
+      }
+    }
+  });
+
+  it('the envelope\'s dot goes up the attack, down the decay, waits, and comes down the release', () => {
+    const env = modules.find((x) => x.id === 'env')!;
+    const { v, m } = setup(env, (p) => p.default);
+    Object.assign(v, { attack: 100, decay: 200, sustain: 50, release: 400 });
+    const dotAt = (note: { on: number; off: number | null }): [number, number] | null => {
+      const dots: [number, number, number][] = [];
+      graphs.kinds.env.draw({ path() {}, line() {}, dot(x: number, y: number, r: number) { dots.push([x, y, r]); } }, v, W, H, colours, m, { note });
+      return dots.length ? [dots[0][0], dots[0][1]] : null;
+    };
+    const [a, d, s] = graphs.kinds.env.handles(v, W, H, m) as { x: number; y: number }[];
+    const floor = s.y;
+    const half = dotAt({ on: 0.05, off: null })!;      // halfway up the attack
+    expect(half[0]).toBeLessThan(a.x);
+    expect(half[1]).toBeCloseTo((floor + a.y) / 2, 1);
+    expect(dotAt({ on: 0.1, off: null })![1]).toBeCloseTo(a.y, 1);         // the top
+    const falling = dotAt({ on: 0.2, off: null })!;    // halfway down the decay
+    expect(falling[1]).toBeCloseTo((a.y + d.y) / 2, 1);
+    expect(dotAt({ on: 5, off: null })![1]).toBeCloseTo(d.y, 1);           // held: waiting at its level
+    const letGo = dotAt({ on: 5.2, off: 0.2 })!;       // let go 200 ms ago, of 400: halfway down
+    expect(letGo[1]).toBeCloseTo((d.y + floor) / 2, 1);
+    expect(letGo[0]).toBeGreaterThan(d.x);
+    expect(dotAt({ on: 6, off: 1 })).toBeNull();        // the release is over
+    // let go halfway up the attack: it comes down from there, not from the top
+    expect(dotAt({ on: 0.05, off: 0 })![1]).toBeCloseTo(half[1], 1);
+  });
+});
+
 describe('the Max for Live wrapper', () => {
   /** graph-max.js run against a stand-in for v8ui's globals. Returns what it sent out and whether it drew. */
   function inMax(mod: Module) {

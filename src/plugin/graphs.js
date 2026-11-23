@@ -14,9 +14,17 @@
 //   g.line(x0, y0, x1, y1, colour, width)
 //
 // A kind of picture is three functions:
-//   draw(g, v, w, h, c, m)     v: the dials' values and the module's options, by id
+//   draw(g, v, w, h, c, m, live)
+//                              v: the dials' values and the module's options, by id
 //                              c: the device's colours {ink, track, accent, card}
 //                              m: each dial's {min, max, exponent}
+//                              live: what is sounding now, where the host can tell, or
+//                              nothing. All of it is optional:
+//                                spectrum  levels 0 to 1, spread evenly across the
+//                                          picture's frequency axis (20 Hz to 20 kHz)
+//                                time      seconds the sound has been running
+//                                note      {on: seconds since the last note began,
+//                                           off: seconds since it was let go, or null}
 //   handles(v, w, h, m)        the dots that can be dragged: [{id, x, y}]
 //   drag(id, x, y, v, w, h, m) the new values for a dot dragged to x, y: {dial: value}
 
@@ -63,6 +71,17 @@ var PPGraphs = (function () {
   }
   function freqGrid(g, w, h, c) { grid(g, w, h, c, [fx(100, w), fx(1000, w), fx(10000, w)]); }
 
+  /** What is sounding, behind a frequency picture: the spectrum, filled up from the floor. */
+  function spectrum(g, w, h, c, live) {
+    var s = live && live.spectrum;
+    if (!s || s.length < 2) return;
+    var pts = [];
+    for (var i = 0; i < s.length; i++) pts.push(w * i / (s.length - 1), h - clamp(s[i], 0, 1) * (h - 4));
+    g.path(under(pts, w, h), null, 0, a(c.ink, 0.13));
+  }
+  /** A small solid dot: where the sound is on a picture, as against a ringed dot, which can be dragged. */
+  function now(g, x, y, c) { g.dot(x, y, 2.2, c.accent, c.accent); }
+
   // ── EQ: one curve, three dots ───────────────────────────────────────────────────
   // What fxgen.py's m_eq builds, as the level it gives each frequency: two shelves whose
   // corners move with their gain, and a band-pass around the Freq dial.
@@ -78,7 +97,8 @@ var PPGraphs = (function () {
     return db(mag([1 + (gl - 1) * lp[0] + (gm - 1) * bp[0] + kh * hp[0], (gl - 1) * lp[1] + (gm - 1) * bp[1] + kh * hp[1]]));
   }
   var eq = {
-    draw: function (g, v, w, h, c) {
+    draw: function (g, v, w, h, c, m, live) {
+      spectrum(g, w, h, c, live);
       freqGrid(g, w, h, c);
       var pts = curve(w, function (x) { return clamp(dy(eqLevel(xf(x, w), v), h, EQ_SPAN), 1, h - 1); });
       g.path(under(pts, w, h / 2), null, 0, a(c.accent, 0.2));
@@ -111,7 +131,8 @@ var PPGraphs = (function () {
   }
   function filterKind(extra) {
     return {
-      draw: function (g, v, w, h, c) {
+      draw: function (g, v, w, h, c, m, live) {
+        spectrum(g, w, h, c, live);
         freqGrid(g, w, h, c);
         var mode = v.mode || 'lowpass';
         if (extra && v.env > 0) {
@@ -181,9 +202,11 @@ var PPGraphs = (function () {
   function cycles(m, v) { return 1 + pos(m.rate, v.rate) * 7; }
   function waveKind(isTremolo) {
     return {
-      draw: function (g, v, w, h, c, m) {
+      draw: function (g, v, w, h, c, m, live) {
         grid(g, w, h, c, []);
         var n = cycles(m, v), depth = pos(m.depth, v.depth), mid = h / 2, reach = h / 2 - 5;
+        // Where the sweep is: a dot going along the wave at the wave's real speed.
+        var at = live && typeof live.time === 'number' ? ((live.time * v.rate) % n) / n * w : null;
         if (isTremolo) {
           // The loudness itself: full at the top, dipping by the depth. Auto-pan is the
           // same dip on each side in turn.
@@ -192,10 +215,12 @@ var PPGraphs = (function () {
           g.path(under(left, w, h), null, 0, a(c.accent, 0.2));
           g.path(left, c.accent, 1.6, null);
           if (v.mode === 'autopan') g.path(curve(w, level(PI)), a(c.ink, 0.55), 1.2, null);
+          if (at !== null) now(g, at, level(0)(at), c);
         } else {
           // Two voices a quarter turn apart, as the chorus's two sides are.
           g.path(curve(w, function (x) { return mid - Math.cos(x / w * n * 2 * PI) * reach * depth; }), a(c.ink, 0.35), 1.2, null);
           g.path(curve(w, function (x) { return mid - Math.sin(x / w * n * 2 * PI) * reach * depth; }), c.accent, 1.6, null);
+          if (at !== null) now(g, at, mid - Math.sin(at / w * n * 2 * PI) * reach * depth, c);
         }
       },
       handles: function (v, w, h, m) {
@@ -307,13 +332,32 @@ var PPGraphs = (function () {
     var xr = xs + pos(m.release, v.release) * stage;
     return { x0: 6, xa: xa, xd: xd, xs: xs, xr: xr, top: top, floor: floor, ys: ys, stage: stage };
   }
+  /**
+   * Where the latest note is on the shape, in real time: up the attack, down the decay,
+   * waiting on the level it holds at, then down the release from wherever it was let go.
+   * Nothing once the release is over.
+   */
+  function envNow(v, e, note) {
+    var ms = note.on * 1000, held = note.off === null || note.off === undefined ? ms : ms - note.off * 1000;
+    var at = function (t) {   // the shape at t ms into a held note: [x, y]
+      if (t < v.attack) { var k = t / v.attack; return [e.x0 + (e.xa - e.x0) * k, e.floor + (e.top - e.floor) * k]; }
+      if (t < v.attack + v.decay) { var d = (t - v.attack) / v.decay; return [e.xa + (e.xd - e.xa) * d, e.top + (e.ys - e.top) * d]; }
+      return [(e.xd + e.xs) / 2, e.ys];
+    };
+    if (held >= ms) return at(ms);
+    var from = at(Math.max(0, held)), gone = (ms - held) / v.release;
+    if (gone >= 1) return null;
+    return [e.xs + (e.xr - e.xs) * gone, from[1] + (e.floor - from[1]) * gone];
+  }
   var env = {
-    draw: function (g, v, w, h, c, m) {
+    draw: function (g, v, w, h, c, m, live) {
       var e = envPoints(v, w, h, m);
       g.line(0, e.floor, w, e.floor, a(c.ink, 0.12), 1);
       var pts = [e.x0, e.floor, e.xa, e.top, e.xd, e.ys, e.xs, e.ys, e.xr, e.floor];
       g.path(pts, null, 0, a(c.accent, 0.2));
       g.path(pts, c.accent, 1.6, null);
+      var p = live && live.note ? envNow(v, e, live.note) : null;
+      if (p) now(g, p[0], p[1], c);
     },
     handles: function (v, w, h, m) {
       var e = envPoints(v, w, h, m);
@@ -333,10 +377,10 @@ var PPGraphs = (function () {
   };
 
   /** Everything a host draws for one picture: the kind's own drawing, then its dots. */
-  function render(kind, g, v, w, h, c, m, hot) {
+  function render(kind, g, v, w, h, c, m, hot, live) {
     var k = kinds[kind];
     if (!k) return;
-    k.draw(g, v, w, h, c, m);
+    k.draw(g, v, w, h, c, m, live || null);
     var dots = k.handles(v, w, h, m);
     for (var i = 0; i < dots.length; i++) {
       var d = dots[i], on = hot === d.id;
@@ -360,5 +404,9 @@ var PPGraphs = (function () {
     return out;
   }
 
-  return { kinds: kinds, render: render, pick: pick, drag: drag, has: function (kind) { return !!kinds[kind]; } };
+  // Which kinds have something to show while sound is running, and what they need for it.
+  var moving = { eq: 'spectrum', filter: 'spectrum', tone: 'spectrum', chorus: 'time', tremolo: 'time', env: 'note' };
+
+  return { kinds: kinds, render: render, pick: pick, drag: drag, has: function (kind) { return !!kinds[kind]; },
+           moves: function (kind) { return moving[kind] || null; } };
 })();

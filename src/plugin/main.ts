@@ -21,7 +21,7 @@ import { preloadWorklets } from '../runtime/worklet';
 import { firstNum } from '../runtime/atoms';
 import { Track } from './audio';
 import { DEVICE_HEIGHT, highlightPython, renderDevice, renderPatch } from './device-view';
-import { mountGraph, type GraphDial } from './graph-view';
+import { mountGraph, typeButtons, type GraphDial, type Live, type Mounted } from './graph-view';
 import { Keyboard, PHRASES, Sequencer } from './keys';
 import {
   SCHEMA, decodeSettings, dialIndex, encodeSettings, kindOf, moduleSpec, normalize, presetsOf, themeOf, valuesOf,
@@ -176,7 +176,7 @@ async function apply(next: RunResult): Promise<void> {
   decorate($('device'), editHost, dials);
   drawGraphs(running, theme);
   stopWatching();
-  stopWatching = watchMoved(patch, report.built as ReadonlyMap<string, MaxNode>, $('device'), settings, dials);
+  stopWatching = watchMoved(patch, report.built as ReadonlyMap<string, MaxNode>, $('device'), settings, dials, () => editHost.changed());
   refreshMenu(editHost);
   const hidden = renderPatch($('patch-wrap'), patch);
   $('patch-wrap').dataset.hidden = String(hidden);
@@ -191,16 +191,33 @@ async function apply(next: RunResult): Promise<void> {
 
 // The pictures above the dials. Each is joined to the dials that are playing, so
 // dragging one is turning them, and it is heard and saved the same way.
-let graphOffs: (() => void)[] = [];
+let pictures: Mounted[] = [];
 function drawGraphs(running: ReadonlyMap<string, MaxNode>, theme: { bg: string; card: string; ink: string; track: string }): void {
-  for (const off of graphOffs) off();
-  graphOffs = [];
-  for (const host of $('device').querySelectorAll<HTMLElement>('.dv-graph')) {
-    const id = host.dataset.kind ?? '';
+  for (const picture of pictures) picture.stop();
+  pictures = [];
+  for (const box of $('device').querySelectorAll<HTMLElement>('.dv-graph')) {
+    const id = box.dataset.kind ?? '';
     const spec = moduleSpec(id) ?? SCHEMA.instrument.modules.find((m) => m.id === id);
     const values = valuesOf(settings, id);
     if (!spec || !values) continue;
     const options = settings.instrument?.[id]?.options ?? settings.chain.find((e) => e.module === id)?.options ?? {};
+    // A module that comes in kinds (a filter's four, a distortion's five) has them along
+    // the top of its picture. Choosing one is the same change Customize makes.
+    box.replaceChildren();
+    let host = box;
+    const kinds = spec.options[0];
+    if (kinds) {
+      box.append(typeButtons(`${spec.label} ${kinds.label}`, kinds.choices, options[kinds.id], (choice) => {
+        options[kinds.id] = choice;
+        markCustom();
+        renderSide();
+        renderHead();
+        scheduleBuild();
+      }));
+      host = document.createElement('div');
+      host.className = 'dv-picture';
+      box.append(host);
+    }
     const graphDials: GraphDial[] = [];
     for (const p of spec.params) {
       const live = running.get(`${id}.${p.id}`);
@@ -211,10 +228,54 @@ function drawGraphs(running: ReadonlyMap<string, MaxNode>, theme: { bg: string; 
         watch: (heard) => live.onControlOut?.(0, (m) => { const v = firstNum(m); if (v !== undefined) heard(v); }),
       });
     }
-    graphOffs.push(mountGraph(host, id, options, graphDials,
+    box.style.background = theme.bg;
+    pictures.push(mountGraph(host, id, options, graphDials,
       { ink: theme.ink, track: theme.track, accent: settings.accent, card: theme.card, well: theme.bg },
       () => document.body.classList.contains('is-editing')));
   }
+  watchSound();
+}
+
+// What is sounding, for the pictures that show it: the spectrum behind an EQ's or a
+// filter's curve, a dot going along a tremolo's wave, a dot going round an envelope.
+// The spectrum is the device's output, which is what the stage's own scope shows too.
+const SPECTRUM_POINTS = 48;
+let lastNote: { on: number; off: number | null } | undefined;   // performance.now() of each
+const keysDown = new Set<number>();
+let soundWatched = false;
+function watchSound(): void {
+  if (soundWatched) return;
+  soundWatched = true;
+  const bins = new Uint8Array(new ArrayBuffer(track.analyser.frequencyBinCount));
+  const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let wasPlaying = false;
+  const frame = (): void => {
+    requestAnimationFrame(frame);
+    if (!pictures.length || view !== 'device') return;
+    if (!track.playing || still) {
+      if (wasPlaying) for (const picture of pictures) picture.tick(null);
+      wasPlaying = false;
+      return;
+    }
+    wasPlaying = true;
+    track.analyser.getByteFrequencyData(bins);
+    const nyquist = engine.ctx.sampleRate / 2;
+    const spectrum: number[] = [];
+    for (let i = 0; i < SPECTRUM_POINTS; i++) {
+      // the picture's own axis: 20 Hz to 20 kHz, in octaves
+      const f = 20 * 1000 ** (i / (SPECTRUM_POINTS - 1));
+      const bin = Math.min(bins.length - 1, Math.round((f / nyquist) * bins.length));
+      spectrum.push((bins[bin] / 255) ** 1.5);
+    }
+    const at = performance.now();
+    const live: Live = {
+      spectrum,
+      time: engine.ctx.currentTime,
+      note: lastNote ? { on: (at - lastNote.on) / 1000, off: lastNote.off === null ? null : (at - lastNote.off) / 1000 } : null,
+    };
+    for (const picture of pictures) picture.tick(live);
+  };
+  requestAnimationFrame(frame);
 }
 
 let scriptTimer = 0;
@@ -876,6 +937,9 @@ async function setKind(next: Kind): Promise<void> {
 /** A note for the running instrument. Velocity 0 lets the key go. Starts the audio if it is off. */
 function sendNote(key: number, velocity: number): void {
   if (kind() !== 'instrument') return;
+  // for the envelope's picture: when the latest note began, and when the last key came up
+  if (velocity > 0) { keysDown.add(key); lastNote = { on: performance.now(), off: null }; }
+  else if (keysDown.delete(key) && !keysDown.size && lastNote) lastNote.off = performance.now();
   const send = (): void => noteIn?.controlIns?.[0]?.([key, velocity, 1]);
   if (track.playing) send();
   else if (velocity > 0) void listen().then(send);

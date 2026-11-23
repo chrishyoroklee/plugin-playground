@@ -24,7 +24,12 @@ Try it at <https://chrishyoroklee.github.io/plugin-playground/>.
   does above its dials: an EQ's curve, a filter's slope, a distortion's bend, a delay's
   echoes, a reverb's tail, an envelope's shape. Drag the dot on a picture and its dials
   turn; turn a dial and the picture follows. The dials are the plugin's parameters, and
-  the exact numbers. **Edit**, **Look** has "Dials only" for a device without pictures. Double-click its name to rename it. The corner of the stage has a zoom
+  the exact numbers. **Edit**, **Look** has "Dials only" for a device without pictures.
+  A module that comes in kinds (a filter's four, a distortion's five) has them as buttons
+  along the top of its picture. While sound is running, the page draws it on the
+  pictures: the device's output spectrum behind an EQ's or a filter's curve, a dot going
+  along a tremolo's or a chorus's wave at its real speed, and a dot going round the
+  envelope with the latest note. Double-click its name to rename it. The corner of the stage has a zoom
   control (pinch or Ctrl-scroll works too), and **Patch** shows the Max patch behind it.
 - **Play.** For an effect, the play button runs a sound through the device: choose one
   from the library (recordings, synth loops, a drum machine, test signals) or use your
@@ -42,7 +47,9 @@ Try it at <https://chrishyoroklee.github.io/plugin-playground/>.
   adds a knob of your own: click the dials it should turn, and one knob moves them all.
   Click any dial to make it turn by itself: a slow sweep, a quick wobble, or further the
   louder you play. A dial that is being turned shows an arc for how far, and a dot that
-  runs along it while sound plays. **Colours** changes the device's theme and its dials.
+  runs along it while sound plays; in Edit the end of the arc is a handle, and dragging
+  it round the dial sets how far. **Look** chooses pictures or dials alone, and the
+  device's theme and its dials' colour.
 - **Describe it** (under Customize) makes a device from a sentence. The site has no
   server and pays for nothing, so there are two ways: **Copy prompt** gives you a prompt
   for any chatbot, and you paste its reply back; or you put in your own Anthropic key,
@@ -178,6 +185,11 @@ saved for Live, and the plugin is that patch compiled.
   ([details](scripts/maxcheck/README.md)). The instrument's objects (`adsr~`, `saw~`,
   `rect~`, `tri~`, `poly`) were not: they are right in kind, not confirmed sample for
   sample.
+- What is sounding is drawn on the pictures on the page only. The plugin's window and
+  the Max for Live device show the pictures and follow the dials, without the spectrum
+  or the moving dots, and without the type buttons (changing a module's kind builds a
+  different device, which only the page can do). The dot on a tremolo's wave moves at
+  the wave's speed but is not locked to where the real sweep is in its cycle.
 - The pictures in a Max for Live device have not been seen in Live. There they are a
   `v8ui` object carrying its own script, which is the documented way to do it and needs
   Max 9 (Live 12.2 or newer). The script is the one the page and the plugin's window
