@@ -283,7 +283,7 @@ TITLE_Y = 14
 NAME_Y = 75       # the device's name, alone at the left, level with the middle of the cards
 DIAL_Y = 72
 # A card with a picture: the picture under the title, the dials along the bottom.
-GRAPHS = ("filter", "eq", "peq", "geq", "tilt", "drive", "crush", "chorus", "tremolo", "delay", "reverb", "osc", "tone", "env")
+GRAPHS = ("filter", "eq", "peq", "geq", "tilt", "comp", "drive", "crush", "chorus", "tremolo", "delay", "reverb", "osc", "tone", "env")
 GRAPH_Y, GRAPH_H = 34, 70
 GRAPH_MIN_W = 136
 GRAPH_DIAL_Y = 109
@@ -1156,6 +1156,99 @@ def m_tilt(dev, src, opt, val):
     return out, 3
 
 
+# ── the compressor ──────────────────────────────────────────────────────────────
+#
+# Feed-forward, with the two channels linked so the stereo image holds still:
+#
+#     max(|L|, |R|) ──▶ slide~ (attack up, release down) ──▶ atodb~ ──▶ less the threshold
+#        ──▶ nothing below zero ──▶ times (1 / ratio - 1) ──▶ plus makeup ──▶ dbtoa~ ──▶ gain
+#
+# and that gain times each channel. The louder of the two channels is
+# (|L| + |R| + ||L| - |R||) / 2, which needs nothing but abs~, *~ and +~.
+#
+# slide~ counts in samples, and a plugin may run at 44.1 kHz or 48 or 96. So the attack
+# and release dials go through sig~ into mstosamps~, which knows the rate it runs at, and
+# reach slide~ as signals. Its level is floored at -100 dB (clip~) before atodb~, so
+# silence has a level to take the threshold from. Mix is the parallel blend: the sound as
+# it came in, under the compressed one with its makeup.
+
+COMP_FLOOR = 0.00001   # -100 dB
+
+
+def comp_slope(ratio):
+    """dB taken off for each dB over the threshold."""
+    return 1.0 / float(ratio) - 1.0
+
+
+def m_comp(dev, src, opt, val):
+    s = dev.s
+    d = dev.dials(_module("comp"), val, math_rows=3)
+    x = lambda i: XC + i * DX
+    s.place("comp_less", "* -1.", x(0), dev.ctl(0))
+    s.place("comp_inverse", "pow -1.", x(1), dev.ctl(0))
+    s.place("comp_slope", "+ -1.", x(1), dev.ctl(1))
+    s.wire(d["thresh"] + ".outs[0]", "comp_less.ins[0]")
+    s.wire(d["ratio"] + ".outs[0]", "comp_inverse.ins[0]")
+    s.wire("comp_inverse.outs[0]", "comp_slope.ins[0]")
+    for k, (name, i) in enumerate((("attack", 2), ("release", 3))):
+        s.place("comp_%s_sig" % name, "sig~ %s" % fnum(val[name]), x(i), dev.ctl(0))
+        s.place("comp_%s_n" % name, "mstosamps~", x(i), dev.ctl(1))
+        s.wire(d[name] + ".outs[0]", "comp_%s_sig.ins[0]" % name)
+        s.wire("comp_%s_sig.outs[0]" % name, "comp_%s_n.ins[0]" % name)
+
+    # the level of the louder channel, in one column
+    col, sub = X["L"], X["R"]
+    absl = s.place("comp_absL", "abs~", col, dev.sig(0))
+    absr = s.place("comp_absR", "abs~", sub, dev.sig(0))
+    flip = s.place("comp_flip", "*~ -1.", sub, dev.sig(1))
+    gap = s.place("comp_gap", "+~", col, dev.sig(1))
+    apart = s.place("comp_apart", "abs~", col, dev.sig(2))
+    both = s.place("comp_both", "+~", col, dev.sig(3))
+    peak = s.place("comp_peak", "*~ 0.5", col, dev.sig(4))
+    s.wire(src["L"], absl + ".ins[0]")
+    s.wire(src["R"], absr + ".ins[0]")
+    s.wire(absr + ".outs[0]", flip + ".ins[0]")
+    s.wire(absl + ".outs[0]", gap + ".ins[0]")
+    s.wire(flip + ".outs[0]", gap + ".ins[0]")
+    s.wire(gap + ".outs[0]", apart + ".ins[0]")
+    for part in (absl, absr, apart):
+        s.wire(part + ".outs[0]", both + ".ins[0]")
+    s.wire(both + ".outs[0]", peak + ".ins[0]")
+
+    # the gain computer
+    rate = 44.1   # what the slides start at, until mstosamps~ says (it does on the first sample)
+    follow = s.place("comp_follow", "slide~ %s %s" % (fnum(val["attack"] * rate), fnum(val["release"] * rate)), col, dev.sig(5))
+    floor = s.place("comp_floor", "clip~ %s 1000." % fnum(COMP_FLOOR), col, dev.sig(6))
+    level = s.place("comp_level", "atodb~", col, dev.sig(7))
+    over = s.place("comp_over", "+~ %s" % fnum(-val["thresh"]), col, dev.sig(8))
+    above = s.place("comp_above", "clip~ 0. 1000.", col, dev.sig(9))
+    cut = s.place("comp_cut", "*~ %s" % fnum(comp_slope(val["ratio"])), col, dev.sig(10))
+    lift = s.place("comp_lift", "+~ %s" % fnum(val["makeup"]), col, dev.sig(11))
+    gain = s.place("comp_gain", "dbtoa~", col, dev.sig(12))
+    s.wire(peak + ".outs[0]", follow + ".ins[0]")
+    s.wire("comp_attack_n.outs[0]", follow + ".ins[1]")
+    s.wire("comp_release_n.outs[0]", follow + ".ins[2]")
+    s.wire(follow + ".outs[0]", floor + ".ins[0]")
+    s.wire(floor + ".outs[0]", level + ".ins[0]")
+    s.wire(level + ".outs[0]", over + ".ins[0]")
+    s.wire("comp_less.outs[0]", over + ".ins[1]")
+    s.wire(over + ".outs[0]", above + ".ins[0]")
+    s.wire(above + ".outs[0]", cut + ".ins[0]")
+    s.wire("comp_slope.outs[0]", cut + ".ins[1]")
+    s.wire(cut + ".outs[0]", lift + ".ins[0]")
+    s.wire(d["makeup"] + ".outs[0]", lift + ".ins[1]")
+    s.wire(lift + ".outs[0]", gain + ".ins[0]")
+    wet = {}
+    for ch in ("L", "R"):
+        # `*~ 0.`, not `*~`: with a signal in its right inlet the browser engine adds the
+        # argument to it (Web Audio sums into a gain), so the argument has to be zero.
+        g = s.place("comp_" + ch, "*~ 0.", X[ch] + (SUB if ch == "L" else 0) + 10, dev.sig(13))
+        s.wire(src[ch], g + ".ins[0]")
+        s.wire(gain + ".outs[0]", g + ".ins[1]")
+        wet[ch] = g + ".outs[0]"
+    return dev.mix("comp", d["mix"], val["mix"], src, wet, 14, ctl_row=2)
+
+
 # Makeup gain per distortion type: scale * drive ** exponent. A clipper flattens the peaks
 # as the drive rises, so without this the Drive dial would mostly be a volume dial. The
 # numbers were set by rendering each type in Max at drive 1, 3 and 10 and matching the
@@ -1610,6 +1703,7 @@ MODULES = {
     "peq": m_peq,
     "geq": m_geq,
     "tilt": m_tilt,
+    "comp": m_comp,
     "drive": m_drive,
     "crush": m_crush,
     "chorus": m_chorus,

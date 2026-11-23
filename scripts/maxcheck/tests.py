@@ -36,6 +36,17 @@ for band in ("low", "mid", "high"):
 t("eq_mid_m12_3000", [{"module":"eq","values":{"mid":-12,"freq":3000}}])
 t("eq_mid_p12_300", [{"module":"eq","values":{"mid":12,"freq":300}}])
 t("eq_all", [{"module":"eq","values":{"low":6,"mid":-6,"freq":800,"high":6}}])
+# the other kinds of EQ, the reverb's spaces, and the compressor
+t("peq_all", [{"module":"peq","values":{"lf":110,"lg":6,"f1":320,"g1":-9,"q1":3,"f2":3200,"g2":6,"q2":1.5,"hf":4000,"hg":6}}])
+t("geq_all", [{"module":"geq","values":{"b1":9,"b2":-6,"b3":3,"b4":-9,"b5":6,"b6":-6}}])
+t("tilt_p6", [{"module":"tilt","values":{"tilt":6,"pivot":800}}])
+t("tilt_m6_2000", [{"module":"tilt","values":{"tilt":-6,"pivot":2000}}])
+for space in ("room", "plate"):
+    t("reverb_%s" % space, [{"module":"reverb","options":{"space":space},"values":{"size":55,"damp":10000,"mix":100}}])
+t("comp_def", [{"module":"comp","values":{}}])
+t("comp_hard", [{"module":"comp","values":{"thresh":-40,"ratio":20,"attack":0.1,"release":50,"makeup":12}}])
+t("comp_slow", [{"module":"comp","values":{"thresh":-30,"ratio":4,"attack":100,"release":1000,"makeup":6}}])
+t("comp_parallel", [{"module":"comp","values":{"thresh":-36,"ratio":10,"attack":1,"release":80,"makeup":14,"mix":45}}])
 t("delay_def_eq", [{"module":"delay","options":{"style":"stereo"},"values":{"time":320,"feedback":40,"mix":50}}])
 t("chain_all", [{"module":"filter"},{"module":"drive"},{"module":"crush"},{"module":"chorus"},{"module":"tremolo"},{"module":"delay"},{"module":"reverb"}])
 t("out_p12", [], 12); t("out_m24", [], -24)

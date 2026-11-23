@@ -155,6 +155,21 @@ describe('the other kinds of EQ', () => {
   });
 });
 
+describe('the compressor', () => {
+  const comp = () => setup(modules.find((x) => x.id === 'comp')!, (p) => p.default);
+
+  it('its dots are the bend and the end, and dragging one gives back the dial it stands for', () => {
+    const { v, m } = comp();
+    Object.assign(v, { thresh: -24, ratio: 5, makeup: 3 });
+    const [bend, end] = graphs.kinds.comp.handles(v, 200, 100);
+    expect([bend.id, end.id]).toEqual(['thresh', 'ratio']);
+    expect(graphs.drag('comp', 'thresh', bend.x, bend.y, v, 200, 100, m).thresh).toBeCloseTo(-24, 6);
+    expect(graphs.drag('comp', 'ratio', end.x, end.y, v, 200, 100, m).ratio).toBeCloseTo(5, 6);
+    // pulled flat, it is the ratio dial at its top; pushed up past 1:1, at its bottom
+    expect(graphs.drag('comp', 'ratio', end.x, 200, v, 200, 100, m).ratio).toBe(m.ratio.max);
+  });
+});
+
 describe('what is sounding, on the pictures', () => {
   const live = { spectrum: Array.from({ length: 48 }, (_, i) => (i % 7) / 7), time: 12.34, note: { on: 0.05, off: null } };
 

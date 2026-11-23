@@ -25,7 +25,7 @@ const args = process.argv.slice(2);
 const flag = (name, fallback) => (args.includes(name) ? args[args.indexOf(name) + 1] : fallback);
 const PYTHON = flag('--python', 'python3');
 const OUT = flag('--out', path.join(ROOT, 'build', 'facecheck'));
-const PRESETS = flag('--presets', 'parametric,graphic,tiltbright,smilecurve,vocalplate,shoegaze,tape,wobble').split(',');
+const PRESETS = flag('--presets', 'parametric,graphic,tiltbright,busglue,parallelpunch,smilecurve,vocalplate,shoegaze,tape,wobble').split(',');
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.mp3': 'audio/mpeg',
   '.whl': 'application/octet-stream', '.png': 'image/png', '.svg': 'image/svg+xml', '.wasm': 'application/wasm' };
 

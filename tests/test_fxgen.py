@@ -101,7 +101,7 @@ def test_presets_are_filed_under_the_effect_they_are():
     sections = {}
     for p in PRESETS:
         sections.setdefault(p["group"], []).append(p)
-    assert list(sections) == ["Distortion", "Lo-Fi", "Filter", "EQ", "Chorus", "Tremolo", "Delay", "Reverb", "Motion", "Start"]
+    assert list(sections) == ["Distortion", "Lo-Fi", "Filter", "EQ", "Dynamics", "Chorus", "Tremolo", "Delay", "Reverb", "Motion", "Start"]
     by_label = {m["label"]: m["id"] for m in SCHEMA["modules"]}
     for name, presets in sections.items():
         if name == "Start":
@@ -446,3 +446,8 @@ def test_the_reverb_is_three_spaces_and_the_hall_is_the_one_it_always_was():
     assert fxgen.normalize({"chain": [{"module": "reverb", "options": {"space": "cave"}}]})["chain"][0]["options"]["space"] == "hall"
     # every space stops short of ringing for ever
     assert all(fxgen.reverb_feedback(100, s) < 1.0 for s in fxgen.SPACES)
+
+
+def test_every_compressor_preset_is_in_dynamics():
+    dynamics = [p for p in PRESETS if p["group"] == "Dynamics"]
+    assert len(dynamics) >= 4 and all(any(e["module"] == "comp" for e in p["settings"]["chain"]) for p in dynamics)

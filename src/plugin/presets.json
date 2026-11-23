@@ -1323,7 +1323,7 @@
     }
    ],
    "output": {
-    "gain": -4.0
+    "gain": 1.5
    }
   }
  },
@@ -1432,6 +1432,180 @@
    ],
    "output": {
     "gain": -3.5
+   }
+  }
+ },
+ {
+  "id": "busglue",
+  "name": "Bus Glue",
+  "tag": "A gentle 2:1 on everything: the parts sit together",
+  "group": "Dynamics",
+  "sample": "drums",
+  "settings": {
+   "name": "Bus Glue",
+   "accent": "#3f78bd",
+   "chain": [
+    {
+     "module": "comp",
+     "on": true,
+     "options": {},
+     "values": {
+      "thresh": -20,
+      "ratio": 2,
+      "attack": 30,
+      "release": 300,
+      "makeup": 1,
+      "mix": 100
+     }
+    }
+   ],
+   "output": {
+    "gain": 0
+   }
+  }
+ },
+ {
+  "id": "vocalleveler",
+  "name": "Vocal Leveler",
+  "tag": "Quiet words come up, loud ones come down",
+  "group": "Dynamics",
+  "sample": "vocals",
+  "settings": {
+   "name": "Vocal Leveler",
+   "accent": "#c2457f",
+   "chain": [
+    {
+     "module": "comp",
+     "on": true,
+     "options": {},
+     "values": {
+      "thresh": -26,
+      "ratio": 4,
+      "attack": 5,
+      "release": 120,
+      "makeup": 8,
+      "mix": 100
+     }
+    }
+   ],
+   "output": {
+    "gain": 0.5
+   }
+  }
+ },
+ {
+  "id": "parallelpunch",
+  "name": "Parallel Punch",
+  "tag": "Crushed drums under the dry ones: the hits keep their snap",
+  "group": "Dynamics",
+  "sample": "drums",
+  "settings": {
+   "name": "Parallel Punch",
+   "accent": "#c8553d",
+   "chain": [
+    {
+     "module": "comp",
+     "on": true,
+     "options": {},
+     "values": {
+      "thresh": -38,
+      "ratio": 10,
+      "attack": 1,
+      "release": 80,
+      "makeup": 14,
+      "mix": 45
+     }
+    }
+   ],
+   "output": {
+    "gain": 2.0
+   }
+  }
+ },
+ {
+  "id": "brickwall",
+  "name": "Brickwall",
+  "tag": "Fast and hard at the top: the peaks stop there and go no further",
+  "group": "Dynamics",
+  "sample": "piano",
+  "settings": {
+   "name": "Brickwall",
+   "accent": "#7a5bd0",
+   "chain": [
+    {
+     "module": "comp",
+     "on": true,
+     "options": {},
+     "values": {
+      "thresh": -14,
+      "ratio": 20,
+      "attack": 0.1,
+      "release": 60,
+      "makeup": 0.5,
+      "mix": 100
+     }
+    }
+   ],
+   "output": {
+    "gain": 0
+   }
+  }
+ },
+ {
+  "id": "pump",
+  "name": "Pump",
+  "tag": "A slow release you can hear breathe after every hit",
+  "group": "Dynamics",
+  "sample": "drums",
+  "settings": {
+   "name": "Pump",
+   "accent": "#c98a12",
+   "chain": [
+    {
+     "module": "comp",
+     "on": true,
+     "options": {},
+     "values": {
+      "thresh": -32,
+      "ratio": 12,
+      "attack": 1,
+      "release": 450,
+      "makeup": 17.5,
+      "mix": 100
+     }
+    }
+   ],
+   "output": {
+    "gain": 1.5
+   }
+  }
+ },
+ {
+  "id": "sustainer",
+  "name": "Guitar Sustain",
+  "tag": "Notes hold on longer before they fade",
+  "group": "Dynamics",
+  "sample": "guitar",
+  "settings": {
+   "name": "Guitar Sustain",
+   "accent": "#1f8f86",
+   "chain": [
+    {
+     "module": "comp",
+     "on": true,
+     "options": {},
+     "values": {
+      "thresh": -42,
+      "ratio": 3,
+      "attack": 40,
+      "release": 800,
+      "makeup": 12,
+      "mix": 100
+     }
+    }
+   ],
+   "output": {
+    "gain": 4.5
    }
   }
  },

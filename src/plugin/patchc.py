@@ -346,6 +346,45 @@ class Abs(Expr):
         self.expr = "std::fabs(%s)" % self.input(0)
 
 
+class AtoDb(Expr):
+    prefix = "atodb"
+
+    def setup(self):
+        self.expr = "mxrt::atodb(%s)" % self.input(0)
+
+
+class DbToA(Expr):
+    prefix = "dbtoa"
+
+    def setup(self):
+        self.expr = "mxrt::dbtoa(%s)" % self.input(0)
+
+
+class MsToSamps(Expr):
+    """mstosamps~: milliseconds as samples at the rate the plugin runs at."""
+    prefix = "mstosamps"
+    # Its second outlet gives a number for a number sent in. Only the signal one is modelled:
+    # a cord from the other is refused (outlet out of range), not compiled wrong.
+
+    def setup(self):
+        self.expr = "%s * sr_ / 1000.0" % self.input(0)
+
+
+class Slide(Expr):
+    """slide~ up down: a smoother that rises and falls at different speeds (mxrt::Slide)."""
+    prefix = "slide"
+    stateful = True
+
+    def signal_inlets(self):
+        return {0, 1, 2}
+
+    def setup(self):
+        self.kernel("mxrt::Slide", "")
+        up = self.operand(1, "up", self.box.num(0, 1))
+        down = self.operand(2, "down", self.box.num(1, 1))
+        self.expr = "%s.tick(%s, %s, %s)" % (self.member, self.input(0), up, down)
+
+
 class Sig(Expr):
     """sig~: a number as a signal. A number in the left inlet replaces it."""
     prefix = "sig"
@@ -667,6 +706,10 @@ SIGNAL = {
     "+~": Plus,
     "clip~": Clip,
     "abs~": Abs,
+    "atodb~": AtoDb,
+    "dbtoa~": DbToA,
+    "mstosamps~": MsToSamps,
+    "slide~": Slide,
     "sig~": Sig,
     "snapshot~": Snapshot,
     "tanh~": Tanh,
@@ -1367,9 +1410,11 @@ PROGRAM_FORMAT = 1
 # run it, which is 1 unless it uses something a later one added (NEEDS, below), so a
 # device with none of that still loads in a runtime installed before it existed. When an
 # instruction, a kernel or a function is added: raise this, and list what was added.
-PROGRAM_RUNTIME = 2
+PROGRAM_RUNTIME = 3
 # Runtime 2: `every` (snapshot~), and the functions abs, max and floor.
-NEEDS = {"every": 2, "f abs": 2, "f max": 2, "f floor": 2}
+# Runtime 3: the function atodb and the kernel Slide (atodb~ and slide~, for the compressor).
+NEEDS = {"every": 2, "f abs": 2, "f max": 2, "f floor": 2, "f atodb": 3}
+KERNEL_NEEDS = {"Slide": 3}
 
 # Registers every program has, by number.
 FIXED_REGISTERS = ["sr_", "v", "pitch", "velocity", "in_l", "in_r", "out_l", "out_r"]
@@ -1407,7 +1452,7 @@ class Program:
     FUNCTIONS = {"mxrt::clip": "clip", "mxrt::pong": "pong", "mxrt::overdrive": "overdrive", "mxrt::scale": "scale",
                  "mxrt::toInt": "toInt", "mxrt::mtof": "mtof", "mxrt::dbtoa": "dbtoa", "std::pow": "pow",
                  "std::tanh": "tanh", "std::sqrt": "sqrt", "std::sin": "sin", "std::cos": "cos",
-                 "std::fabs": "abs", "std::max": "max", "std::floor": "floor"}
+                 "std::fabs": "abs", "std::max": "max", "std::floor": "floor", "mxrt::atodb": "atodb"}
 
     def __init__(self, compiler):
         self.c = compiler
@@ -1631,7 +1676,8 @@ class Program:
         for number, lines in enumerate(c.voice_code, start=1):
             body += self.section("voice %d" % number, lines)
 
-        needs = max([1] + [NEEDS.get(" ".join(line.split()[:2 if line.startswith("f ") else 1]), 1) for line in body])
+        needs = max([1] + [NEEDS.get(" ".join(line.split()[:2 if line.startswith("f ") else 1]), 1) for line in body]
+                    + [KERNEL_NEEDS.get(ctype, 1) for _, ctype in self.kernels.values()])
         out = ["ppdevice %d" % PROGRAM_FORMAT, "runtime %d" % needs,
                "name %s" % _quote(name), "slug %s" % slug(name),
                "kind %s" % ("instrument" if c.instrument else "effect"),

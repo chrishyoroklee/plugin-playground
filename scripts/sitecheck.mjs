@@ -309,7 +309,7 @@ async function check(name, url) {
     await page.screenshot({ path: path.join(shots, 'edited.png') });
 
     // 5a. the other kinds of EQ and of reverb: each is its own device with its own picture
-    for (const [preset, kind, dials] of [['Parametric Sculpt', 'peq', 10], ['Graphic Curve', 'geq', 6], ['Tilt Bright', 'tilt', 2]]) {
+    for (const [preset, kind, dials] of [['Parametric Sculpt', 'peq', 10], ['Graphic Curve', 'geq', 6], ['Tilt Bright', 'tilt', 2], ['Bus Glue', 'comp', 6]]) {
       await page.locator('#presets .preset', { hasText: preset }).first().click();
       await settle();
       const canvas = page.locator(`#device .dv-graph[data-kind="${kind}"] canvas`);

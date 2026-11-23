@@ -297,6 +297,69 @@
       ]
     },
     {
+      "id": "comp",
+      "label": "Compressor",
+      "blurb": "Turns the loud parts down: past the Threshold, every Ratio dB in comes out as one. Attack and Release are how fast it grabs and lets go; Makeup brings the level back, and Mix blends in the sound as it was.",
+      "options": [],
+      "params": [
+        {
+          "id": "thresh",
+          "label": "Threshold",
+          "short": "Thresh",
+          "min": -48,
+          "max": 0,
+          "default": -18,
+          "unit": "dB",
+          "exponent": 1.0
+        },
+        {
+          "id": "ratio",
+          "label": "Ratio",
+          "min": 1,
+          "max": 20,
+          "default": 4,
+          "unit": "",
+          "exponent": 2.0
+        },
+        {
+          "id": "attack",
+          "label": "Attack",
+          "min": 0.1,
+          "max": 100,
+          "default": 10,
+          "unit": "ms",
+          "exponent": 3.0
+        },
+        {
+          "id": "release",
+          "label": "Release",
+          "min": 10,
+          "max": 1000,
+          "default": 150,
+          "unit": "ms",
+          "exponent": 2.0
+        },
+        {
+          "id": "makeup",
+          "label": "Makeup",
+          "min": 0,
+          "max": 24,
+          "default": 0,
+          "unit": "dB",
+          "exponent": 1.0
+        },
+        {
+          "id": "mix",
+          "label": "Mix",
+          "min": 0,
+          "max": 100,
+          "default": 100,
+          "unit": "%",
+          "exponent": 1.0
+        }
+      ]
+    },
+    {
       "id": "drive",
       "label": "Distortion",
       "blurb": "Five kinds of clipping, a tone control after it, and automatic level matching so more drive means more dirt, not more volume.",

@@ -2,9 +2,10 @@
 
 Make an audio plugin in the browser, hear it, and download it.
 
-- An **effect**: pick one of 91 presets or build your own chain from eleven modules
-  (filter, four kinds of EQ: three-band, parametric, graphic and tilt, distortion, crush,
-  chorus, tremolo, delay, and a reverb that is a room, a hall or a plate), and hear it on a sound
+- An **effect**: pick one of 97 presets or build your own chain from twelve modules
+  (filter, four kinds of EQ: three-band, parametric, graphic and tilt, a compressor,
+  distortion, crush, chorus, tremolo, delay, and a reverb that is a room, a hall or a
+  plate), and hear it on a sound
   from the library or on your own audio.
 - An **instrument**: a polyphonic synth with 41 presets, played from an on-screen
   keyboard, your computer keyboard, a MIDI keyboard or a looping phrase.
@@ -209,6 +210,15 @@ saved for Live, and the plugin is that patch compiled.
   they are not: a bell's cut is narrower than the same boost, a bell near 5 kHz sits a
   little under its dial (svf~'s tuning), and a high shelf stops about a dB short at the
   very top. All of that is in the picture. None of the EQs was measured against Max.
+- The compressor (`tests/test_comp.py`) is a feed-forward peak compressor with the two
+  channels linked: under the threshold nothing changes, over it the slope is 1 / ratio to
+  a twentieth of a dB, makeup is its dial, and attack and release are milliseconds at 44.1
+  and 96 kHz alike. It reads a sine a little under its peak, so a tone is turned down by
+  up to about a dB less than the curve on its picture. The browser and the C++ agree on
+  it sample for sample. It has not been rendered in Max yet: the batch render ran while
+  the machine's output was a headset at 24 kHz and Max recorded nothing. A device with a
+  compressor needs runtime 3, so anyone with the runtime plugin from before has to
+  install it again.
 - The EQ was not measured against Max. Its dials are held to what they say
   (`tests/test_eq.py`: +12 dB on a band is +12 dB there, a cut mirrors a boost, 0 dB
   everywhere passes the sound untouched), and the browser and the C++ agree on it to

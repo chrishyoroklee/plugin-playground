@@ -60,6 +60,12 @@ What still differs, and why it is left alone:
   the time as written.
 - **A ping-pong delay** has the same 64 samples in one of its two hops in Max.
 
+Two more were the browser's, found with the compressor (November 2026): its `clip~` was
+a lookup table over -1 to 1, so it was wrong for anything that is not a sound (levels in
+dB); it is now exact for any input. And a signal into a `*~`'s right inlet is added to the
+argument (Web Audio sums into a gain), where Max replaces it: a `*~` multiplied by a
+signal is written `*~ 0.` in fxgen.py for that reason.
+
 One thing was the browser's, not Max's: Chrome runs every feedback cycle one render
 quantum (128 samples) late. `tapout~` now offers an early read for cords that close a
 loop (`loopOuts` in `engine/registry.ts`), and `comb~` is a worklet with its loop inside.

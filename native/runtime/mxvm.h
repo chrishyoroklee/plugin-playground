@@ -54,7 +54,7 @@ namespace mxvm {
 
 // The newest device a build of this file understands. patchc's PROGRAM_RUNTIME is what
 // a device asks for.
-constexpr int kRuntimeVersion = 2;  // 2: `every`, and the functions abs, max and floor
+constexpr int kRuntimeVersion = 3;  // 2: `every`, and the functions abs, max and floor. 3: atodb and Slide
 constexpr int kFormat = 1;
 
 enum Register { kSampleRate, kValue, kPitch, kVelocity, kInL, kInR, kOutL, kOutR, kFixedRegisters };
@@ -62,7 +62,7 @@ enum Register { kSampleRate, kValue, kPitch, kVelocity, kInL, kInR, kOutL, kOutR
 enum Op : int {
     kMov, kAdd, kSub, kMul, kDiv, kNeg, kPos, kEvery,
     // functions
-    kClip, kPong, kOverdrive, kScale, kToInt, kMtof, kDbtoa, kPow, kTanh, kSqrt, kSin, kCos, kAbs, kMax, kFloor,
+    kClip, kPong, kOverdrive, kScale, kToInt, kMtof, kDbtoa, kPow, kTanh, kSqrt, kSin, kCos, kAbs, kMax, kFloor, kAtodb,
     // kernels
     kOnePolePrepare, kOnePoleReset, kOnePoleSetFreq, kOnePoleTick,
     kSvfPrepare, kSvfReset, kSvfSetFreq, kSvfSetRes, kSvfTick, kSvfLp, kSvfHp, kSvfBp, kSvfNotch,
@@ -77,6 +77,7 @@ enum Op : int {
     kAdsrPrepare, kAdsrReset, kAdsrGate, kAdsrTick, kAdsrAttack, kAdsrDecay, kAdsrSustain, kAdsrRelease,
     kLinePrepare, kLineReset, kLineJump, kLineRamp, kLineTick,
     kTapPrepare, kTapReset, kTapWrite, kTapRead, kTapReadInLoop,
+    kSlidePrepare, kSlideReset, kSlideTick,
 };
 
 struct Ins {
@@ -88,7 +89,7 @@ struct Ins {
 
 using Code = std::vector<Ins>;
 
-enum KernelType { kOnePole, kSvf, kBiquad, kDegrade, kComb, kAllpass, kCycle, kSaw, kRect, kTri, kAdsr, kLine, kTapLine, kKernelTypes };
+enum KernelType { kOnePole, kSvf, kBiquad, kDegrade, kComb, kAllpass, kCycle, kSaw, kRect, kTri, kAdsr, kLine, kTapLine, kSlide, kKernelTypes };
 
 // A device: everything a file says, checked, and ready to be run by any number of Vm.
 struct Device {
@@ -133,7 +134,7 @@ inline const Named* function(const std::string& name) {
         {"clip", kClip, 3}, {"pong", kPong, 4}, {"overdrive", kOverdrive, 2}, {"scale", kScale, 5},
         {"toInt", kToInt, 1}, {"mtof", kMtof, 1}, {"dbtoa", kDbtoa, 1}, {"pow", kPow, 2},
         {"tanh", kTanh, 1}, {"sqrt", kSqrt, 1}, {"sin", kSin, 1}, {"cos", kCos, 1},
-        {"abs", kAbs, 1}, {"max", kMax, 2}, {"floor", kFloor, 1},
+        {"abs", kAbs, 1}, {"max", kMax, 2}, {"floor", kFloor, 1}, {"atodb", kAtodb, 1},
     };
     for (const Named& f : table)
         if (name == f.name) return &f;
@@ -142,7 +143,7 @@ inline const Named* function(const std::string& name) {
 
 inline int kernelType(const std::string& name) {
     static const char* const names[kKernelTypes] = {"OnePole", "Svf", "Biquad", "Degrade", "Comb", "Allpass", "Cycle",
-                                                    "Saw", "Rect", "Tri", "Adsr", "Line", "TapLine"};
+                                                    "Saw", "Rect", "Tri", "Adsr", "Line", "TapLine", "Slide"};
     for (int t = 0; t < kKernelTypes; t++)
         if (name == names[t]) return t;
     return -1;
@@ -181,6 +182,7 @@ inline const Method* method(int type, const std::string& name, int reads, char k
         {kLine, "ramp", 2, kLineRamp}, {kLine, "tick", 0, kLineTick},
         {kTapLine, "prepare", 2, kTapPrepare}, {kTapLine, "reset", 0, kTapReset}, {kTapLine, "write", 1, kTapWrite},
         {kTapLine, "read", 1, kTapRead}, {kTapLine, "readInLoop", 1, kTapReadInLoop},
+        {kSlide, "prepare", 0, kSlidePrepare}, {kSlide, "reset", 0, kSlideReset}, {kSlide, "tick", 3, kSlideTick},
     };
     static const Method reads_[] = {
         {kSvf, "lp", 0, kSvfLp}, {kSvf, "hp", 0, kSvfHp}, {kSvf, "bp", 0, kSvfBp}, {kSvf, "notch", 0, kSvfNotch},
@@ -387,6 +389,7 @@ public:
         adsr_.assign(device->kernels[kAdsr], {});
         line_.assign(device->kernels[kLine], {});
         tap_.assign(device->kernels[kTapLine], {});
+        slide_.assign(device->kernels[kSlide], {});
     }
 
     double& reg(int i) { return r_[i]; }
@@ -427,6 +430,7 @@ public:
                 case kAbs: out = std::fabs(r[a[0]]); break;
                 case kMax: out = std::max(r[a[0]], r[a[1]]); break;
                 case kFloor: out = std::floor(r[a[0]]); break;
+                case kAtodb: out = mxrt::atodb(r[a[0]]); break;
 
                 case kOnePolePrepare: onePole_[i.k].prepare(r[a[0]], r[a[1]]); break;
                 case kOnePoleReset: onePole_[i.k].reset(); break;
@@ -517,6 +521,9 @@ public:
                 case kTapWrite: tap_[i.k].write(r[a[0]]); break;
                 case kTapRead: out = tap_[i.k].read(r[a[0]]); break;
                 case kTapReadInLoop: out = tap_[i.k].readInLoop(r[a[0]]); break;
+                case kSlidePrepare: slide_[i.k].prepare(); break;
+                case kSlideReset: slide_[i.k].reset(); break;
+                case kSlideTick: out = slide_[i.k].tick(r[a[0]], r[a[1]], r[a[2]]); break;
                 default: break;
             }
             if (i.d >= 0) r[i.d] = out;
@@ -539,6 +546,7 @@ private:
     std::vector<mxrt::Adsr> adsr_;
     std::vector<mxrt::Line> line_;
     std::vector<mxrt::TapLine> tap_;
+    std::vector<mxrt::Slide> slide_;
 };
 
 }  // namespace mxvm

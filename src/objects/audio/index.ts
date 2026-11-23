@@ -5,8 +5,9 @@
 // sound", not sample-accurate parity with Max's DSP.
 
 import { num, register, type MaxNode } from '../../engine/registry';
-import { firstNum } from '../../runtime/atoms';
+import { firstNum, type Msg } from '../../runtime/atoms';
 import { makeOutlets } from '../../runtime/outlets';
+import { PROCESSORS, tryWorkletNode } from '../../runtime/worklet';
 import { stopSource, unwire } from './lifecycle';
 
 // cycle~ : sine oscillator. inlet 0 sets frequency (signal or float), outlet 0 is audio.
@@ -81,10 +82,26 @@ register('gain~', (_args, { ctx }) => {
   } satisfies MaxNode;
 });
 
-// clip~ : hard-clip signal to [lo, hi] (default -1..1) via a WaveShaper.
+// clip~ : hard-clip signal to [lo, hi] (default -1..1). Inlets 1 and 2 move the limits.
+// The real thing is the shaper worklet, exact for any input: a compressor clips levels in
+// decibels, tens of them. Without a worklet a WaveShaper stands in, which only reads
+// inputs between -1 and 1 and so is right only for a sound.
 register('clip~', (args, { ctx }) => {
   const lo = num(args[0], -1);
   const hi = num(args[1], 1);
+  const node = tryWorkletNode(ctx, PROCESSORS.shaper, { processorOptions: { mode: 'clip' } });
+  const pLo = node?.parameters.get('lo'), pHi = node?.parameters.get('hi');
+  if (node && pLo && pHi) {
+    pLo.value = lo;
+    pHi.value = hi;
+    const set = (p: AudioParam) => (m: Msg) => { const n = firstNum(m); if (n !== undefined) p.value = n; };
+    return {
+      signalIns: [node, undefined, undefined],
+      signalOuts: [node],
+      controlIns: [undefined, set(pLo), set(pHi)],
+      dispose: () => { try { node.disconnect(); } catch { /* nothing connected */ } },
+    } satisfies MaxNode;
+  }
   const curve = new Float32Array(1024);
   for (let i = 0; i < curve.length; i++) {
     const x = (i / (curve.length - 1)) * 2 - 1; // -1..1 input range

@@ -25,6 +25,7 @@ export const PROCESSORS = {
   svf: 'mpl-svf',
   shaper: 'mpl-shaper',
   comb: 'mpl-comb',
+  slide: 'mpl-slide',
 } as const;
 
 // The worklet module source. One class per DSP object; each mirrors the matching
@@ -320,6 +321,8 @@ class ShaperProcessor extends AudioWorkletProcessor {
       for (let i = 0; i < y.length; i++) {
         const v = x[i];
         if (mode === 'tanh') y[i] = Math.tanh(v);
+        else if (mode === 'atodb') y[i] = 20 * Math.log10(Math.max(v, 1e-300));
+        else if (mode === 'dbtoa') y[i] = Math.pow(10, v / 20);
         else if (mode === 'overdrive') {
           const a = Math.min(1, Math.abs(v));
           const s = 1 - Math.pow(1 - a, Math.max(0, pv(params.drive, i)));
@@ -394,6 +397,39 @@ class CombProcessor extends AudioWorkletProcessor {
   }
 }
 registerProcessor('${PROCESSORS.comb}', CombProcessor);
+
+// slide~ : y += (x - y) / n, n the slide up while the input is above the output and the
+// slide down otherwise, in samples, never under one. The two can arrive as signals on the
+// second and third inputs; a silent block there means nothing is connected (no slide is
+// zero), and the number is used.
+class SlideProcessor extends AudioWorkletProcessor {
+  static get parameterDescriptors() {
+    return [
+      { name: 'up', defaultValue: 1, automationRate: 'k-rate' },
+      { name: 'down', defaultValue: 1, automationRate: 'k-rate' },
+    ];
+  }
+  constructor() { super(); this.st = []; }
+  process(inputs, outputs, params) {
+    const inp = inputs[0], out = outputs[0];
+    if (!inp || !inp.length) return true;
+    const given = (k) => { const s = inputs[k] && inputs[k][0]; return s && (s[0] !== 0 || s[s.length - 1] !== 0) ? s : null; };
+    const ups = given(1), downs = given(2), up = params.up[0], down = params.down[0];
+    for (let ch = 0; ch < out.length; ch++) {
+      const x = inp[ch] || inp[0], y = out[ch];
+      let y1 = this.st[ch] || 0;
+      for (let i = 0; i < y.length; i++) {
+        const n = Math.max(1, x[i] > y1 ? (ups ? ups[i] : up) : (downs ? downs[i] : down));
+        y1 += (x[i] - y1) / n;
+        if (Math.abs(y1) < 1e-300) y1 = 0;
+        y[i] = y1;
+      }
+      this.st[ch] = y1;
+    }
+    return true;
+  }
+}
+registerProcessor('${PROCESSORS.slide}', SlideProcessor);
 `;
 
 // Contexts whose worklet module has been successfully loaded.

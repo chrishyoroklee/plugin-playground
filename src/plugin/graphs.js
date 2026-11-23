@@ -202,6 +202,46 @@ var PPGraphs = (function () {
     function (v) { return [['tilt', v.pivot, v.tilt]]; },
     function (id, freq, level) { return { tilt: level, pivot: freq }; });
 
+  // ── compressor: level in against level out ──────────────────────────────────────
+  // The straight line is the sound left alone; past the threshold it bends down to one dB
+  // out for every Ratio dB in, and Makeup lifts all of it. Two dots: the bend, which slides
+  // along the line to set the threshold, and the end at full level, which sets the ratio.
+  // With Mix under 100 the blend with the sound as it was is drawn as well, thinner.
+  var COMP_LO = -60, COMP_HI = 12;
+  function cx(db, w) { return 4 + (w - 8) * (db - COMP_LO) / -COMP_LO; }
+  function xc(x, w) { return COMP_LO - COMP_LO * (x - 4) / (w - 8); }
+  function cy(db, h) { return h - 4 - (h - 8) * clamp((db - COMP_LO) / (COMP_HI - COMP_LO), 0, 1); }
+  function yc(y, h) { return COMP_LO + (COMP_HI - COMP_LO) * (h - 4 - y) / (h - 8); }
+  function compOut(level, v) { return (level > v.thresh ? v.thresh + (level - v.thresh) / v.ratio : level) + v.makeup; }
+  var comp = {
+    draw: function (g, v, w, h, c) {
+      g.line(cx(COMP_LO, w), cy(COMP_LO, h), cx(0, w), cy(0, h), a(c.ink, 0.15), 1);
+      g.line(cx(v.thresh, w), 0, cx(v.thresh, w), h, a(c.ink, 0.1), 1);
+      var mix = (v.mix === undefined ? 100 : v.mix) / 100;
+      if (mix < 0.999) {
+        g.path(curve(w, function (x) {
+          var level = xc(x, w), wet = gain(compOut(level, v)), dry = gain(level);
+          return cy(db((1 - mix) * dry + mix * wet), h);
+        }), a(c.accent, 0.5), 1, null);
+      }
+      var pts = curve(w, function (x) { return cy(compOut(xc(x, w), v), h); });
+      g.path(under(pts, w, h), null, 0, a(c.accent, 0.18));
+      g.path(pts, c.accent, 1.6, null);
+    },
+    handles: function (v, w, h) {
+      return [
+        { id: 'thresh', x: cx(v.thresh, w), y: cy(v.thresh + v.makeup, h) },
+        { id: 'ratio', x: cx(0, w), y: cy(compOut(0, v), h) },
+      ];
+    },
+    drag: function (id, x, y, v, w, h) {
+      if (id === 'thresh') return { thresh: xc(x, w) };
+      // where the end is, back to the ratio that puts it there: thresh + -thresh / ratio
+      var rise = yc(y, h) - v.makeup - v.thresh;
+      return { ratio: rise <= 0.05 ? 100 : -v.thresh / rise };
+    },
+  };
+
   // ── filter: the slope, and one dot for cutoff and resonance ─────────────────────
   // svf~ as fxgen drives it: resonance 0.17 to 0.75, and the trim that keeps a loud
   // resonance from clipping.
@@ -456,7 +496,7 @@ var PPGraphs = (function () {
   };
 
   var kinds = {
-    eq: eq, peq: peq, geq: geq, tilt: tilt, filter: filterKind(false), tone: filterKind(true), drive: drive, crush: crush,
+    eq: eq, peq: peq, geq: geq, tilt: tilt, comp: comp, filter: filterKind(false), tone: filterKind(true), drive: drive, crush: crush,
     chorus: waveKind(false), tremolo: waveKind(true), delay: delay, reverb: reverb, osc: osc, env: env,
   };
 

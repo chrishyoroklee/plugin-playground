@@ -7,7 +7,7 @@
 // truly stateful DSP (per-sample slope limiting) is left to a later AudioWorklet.
 
 import { num, register, type MaxNode } from '../../engine/registry';
-import { firstNum } from '../../runtime/atoms';
+import { firstNum, type Msg } from '../../runtime/atoms';
 import { PROCESSORS, tryWorkletNode } from '../../runtime/worklet';
 
 // ── curve helpers ──────────────────────────────────────────────────────────────
@@ -233,3 +233,49 @@ register('round~', (args, { ctx }) => {
 // stateful and cannot be expressed by a memoryless WaveShaper or any stock Web Audio
 // node; it needs an AudioWorklet, which the headless offline mock can't load. Left as
 // its Tier-A stub until a worklet-backed implementation lands.
+
+// ── atodb~ and dbtoa~ : amplitude to decibels and back ────────────────────────────
+// 20 * log10, per sample, in the shaper worklet. Nothing at or below zero has a level in
+// decibels: it reads as the quietest level a double holds. Without a worklet (Node, the
+// headless mock) they pass the signal through; no WaveShaper reaches that range.
+for (const mode of ['atodb', 'dbtoa'] as const) {
+  register(`${mode}~`, (_args, { ctx }) => {
+    const node = tryWorkletNode(ctx, PROCESSORS.shaper, { processorOptions: { mode } });
+    const through = node ?? new GainNode(ctx, { gain: 1 });
+    return {
+      signalIns: [through],
+      signalOuts: [through],
+      dispose: () => { try { through.disconnect(); } catch { /* nothing connected */ } },
+    } satisfies MaxNode;
+  });
+}
+
+// ── slide~ : a smoother that rises and falls at different speeds ──────────────────
+// args and inlets 1 and 2: the slide up and the slide down, in samples. A compressor's
+// level follower. A signal into either replaces the number, as in Max; it reaches the
+// worklet on an input of its own, so it can be told from the number.
+register('slide~', (args, { ctx }) => {
+  const node = tryWorkletNode(ctx, PROCESSORS.slide, { numberOfInputs: 3 });
+  if (!node) {
+    const pass = new GainNode(ctx, { gain: 1 });
+    return { signalIns: [pass, undefined, undefined], signalOuts: [pass], controlIns: [undefined, undefined, undefined] } satisfies MaxNode;
+  }
+  const up = node.parameters.get('up'), down = node.parameters.get('down');
+  if (up) up.value = num(args[0], 1);
+  if (down) down.value = num(args[1], 1);
+  const ins = [1, 2].map((k) => { const g = new GainNode(ctx, { gain: 1 }); g.connect(node, 0, k); return g; });
+  const set = (p: AudioParam | undefined) => (m: Msg) => { const n = firstNum(m); if (n !== undefined && p) p.value = n; };
+  return {
+    signalIns: [node, ins[0], ins[1]],
+    signalOuts: [node],
+    controlIns: [undefined, set(up), set(down)],
+    dispose: () => { for (const n of [...ins, node]) { try { n.disconnect(); } catch { /* nothing connected */ } } },
+  } satisfies MaxNode;
+});
+
+// ── mstosamps~ : milliseconds as samples, at the context's rate ───────────────────
+// The signal outlet only; the number outlet (a number in, a number out) is not modelled.
+register('mstosamps~', (_args, { ctx }) => {
+  const scale = new GainNode(ctx, { gain: (ctx.sampleRate || 44100) / 1000 });
+  return { signalIns: [scale], signalOuts: [scale, undefined] } satisfies MaxNode;
+});

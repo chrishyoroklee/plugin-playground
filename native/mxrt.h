@@ -182,7 +182,27 @@ inline double pong(double x, int mode, double lo, double hi) {
     return clip(x, lo, hi);
 }
 
+// atodb~ and dbtoa~: amplitude to decibels and back, 20 * log10. Nothing at or below
+// zero has a level in decibels; it is read as the quietest level a double can hold.
+// (dbtoa is above, with the control objects: the same sum.)
+inline double atodb(double x) { return 20.0 * std::log10(std::max(x, 1e-300)); }
+
 // ── filters ─────────────────────────────────────────────────────────────────────
+
+// slide~: y += (x - y) / n, with n the slide up while the input is above the output and
+// the slide down otherwise, both in samples and never under one. A compressor's level
+// follower: it rises at the attack and falls at the release.
+struct Slide {
+    double y = 0;
+
+    void prepare() { reset(); }
+    void reset() { y = 0; }
+    double tick(double x, double up, double down) {
+        const double n = std::max(1.0, x > y ? up : down);
+        y = flush(y + (x - y) / n);
+        return y;
+    }
+};
 
 // onepole~: y += g * (x - y), g = 1 - exp(-2*pi*fc/sr). Max takes cutoffs up to sr/4.
 struct OnePole {

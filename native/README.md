@@ -178,7 +178,8 @@ in the browser and in a plugin, and nothing here knows the word "modulation".
 control side. patchc compiles it as a countdown in the sample loop that runs, when it
 reaches zero, the statements a number leaving the box would run. In a device file that
 is the instruction `every`, with a section of its own. It is what runtime 2 added; a
-device that uses none of it still asks for runtime 1.
+device that uses none of it still asks for runtime 1. Runtime 3 added the function
+`atodb` and the kernel `Slide` (`atodb~` and `slide~`, for the compressor).
 
 ## Adding an object
 
@@ -214,7 +215,7 @@ no preset uses.
   `.github/workflows/native.yml` does this on Linux, macOS and Windows.
 
 Where that stands (November 2026): CI builds the runtime on Linux, macOS and Windows,
-makes every preset from it with the helper (91 effects and 41 instruments) and each
+makes every preset from it with the helper (97 effects and 41 instruments) and each
 passes hostcheck. It runs the installer, opens three devices with what was installed
 (Ping-Pong, Tape Lo-Fi and the instrument Soft Pad) and puts them through
 clap-validator, pluginval at strictness 5 (VST3 everywhere, the Audio Unit on macOS) and
