@@ -7,6 +7,8 @@
 import fxgenSource from './fxgen.py?raw';
 import patchcSource from './patchc.py?raw';
 import schemaSource from './schema.json?raw';
+import graphsSource from './graphs.js?raw';
+import graphMaxSource from './graph-max.js?raw';
 import { normalize, toWire, type Settings } from './model';
 
 const PYODIDE_CDN = 'https://cdn.jsdelivr.net/pyodide/v314.0.3/full/';
@@ -65,7 +67,7 @@ export class PyRuntime {
 
     this.ready = booted.then(async () => {
       onStatus('loading the generator…');
-      await this.send({ type: 'install', dir: '/fxgen', files: { 'fxgen.py': fxgenSource, 'patchc.py': patchcSource, 'schema.json': schemaSource } });
+      await this.send({ type: 'install', dir: '/fxgen', files: { 'fxgen.py': fxgenSource, 'patchc.py': patchcSource, 'schema.json': schemaSource, 'graphs.js': graphsSource, 'graph-max.js': graphMaxSource } });
     });
     this.ready.catch(() => {});
   }

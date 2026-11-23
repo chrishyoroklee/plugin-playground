@@ -42,6 +42,15 @@ def dial_names(result):
     return [b["saved_attribute_attributes"]["valueof"]["parameter_longname"] for b in boxes(result, "live.dial")]
 
 
+def unchecked(cords):
+    """
+    The cords maxpylang could not check, other than the pictures'. A picture is a v8ui,
+    which maxpylang does not know yet: fxgen places it as a jsui, and a jsui has no type
+    data, so the one cord out of each picture goes unchecked. Nothing else may.
+    """
+    return [why for why in cords["not_checked_because"] if not why[0].startswith("jsui ")]
+
+
 @pytest.fixture(scope="module")
 def full():
     return fxgen.run(everything_on())
@@ -52,13 +61,14 @@ def test_every_preset_builds_and_checks_clean(preset):
     result = fxgen.run(preset["settings"])
     cords = result["coverage"]["cords"]
     assert cords["flagged"] == 0
-    assert cords["not_checked"] == 0, cords["not_checked_because"]
-    assert cords["checked"] == cords["total"] > 0
-    assert result["coverage"]["objects"]["not_seen_into"] == []
+    assert unchecked(cords) == []
+    assert cords["checked"] + cords["not_checked"] == cords["total"] > 0
+    assert all(name.startswith("jsui ") for name in result["coverage"]["objects"]["not_seen_into"])
     assert result["warnings"] == []  # an unknown object would be an UnknownObjectWarning here
     # The script saves with verbose=False, so all maxpylang prints is its check report.
     report = [line for line in result["log"].splitlines() if line]
-    assert all(line.startswith("PatchCheck:") for line in report), result["log"]
+    # (and, under its last line, which objects it could not see into: the pictures)
+    assert all(line.startswith("PatchCheck:") or line.strip().startswith("not seen into: jsui ") for line in report), result["log"]
     assert "no unknown objects" in result["log"]
 
 
@@ -229,7 +239,8 @@ def test_the_script_is_the_program_that_ran(tmp_path, monkeypatch):
     """Exec the emitted source on its own: it must write the same device run() reports."""
     result = fxgen.run(PRESETS[0]["settings"], want_amxd=False)
     monkeypatch.chdir(tmp_path)
-    exec(compile(result["script"], "script.py", "exec"), {"__name__": "__main__"})
+    # with the pictures' drawing code handed in, as run() hands it in
+    exec(compile(result["script"], "script.py", "exec"), {"__name__": "__main__", "GRAPH_SOURCE": fxgen.graph_source()})
     assert mp.load_amxd(str(tmp_path / result["filename"])) == result["json"]
 
 
@@ -282,8 +293,8 @@ def test_every_instrument_builds_checks_clean_and_loads(preset, tmp_path):
 
     result = fxgen.run(preset["settings"])
     cords = result["coverage"]["cords"]
-    assert cords["flagged"] == 0 and cords["not_checked"] == 0, cords["not_checked_because"]
-    assert cords["checked"] == cords["total"] > 0
+    assert cords["flagged"] == 0 and unchecked(cords) == []
+    assert cords["checked"] + cords["not_checked"] == cords["total"] > 0
     assert result["warnings"] == []
 
     data = base64.b64decode(result["amxd"])
@@ -374,7 +385,7 @@ def test_a_moved_dial_is_worked_out_under_the_dial_and_checks_clean():
     assert sum(t.startswith("snapshot~") for t in texts) == 2
     assert any(t.startswith("tri~") for t in texts) and "abs~" in texts
     cords = result["coverage"]["cords"]
-    assert cords["flagged"] == 0 and cords["not_checked"] == 0 and not result["warnings"]
+    assert cords["flagged"] == 0 and unchecked(cords) == [] and not result["warnings"]
     # the dials: the two modules', the output's, and one each for the LFO, the follower and the knob in use
     dials = [b["box"]["varname"] for b in result["json"]["patcher"]["boxes"] if b["box"].get("maxclass") == "live.dial"]
     assert {"sweep_speed", "loudness_sensitivity", "knobs_wobble"} <= set(dials) and "knobs_wobble_2" not in dials

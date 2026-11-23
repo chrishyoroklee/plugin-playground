@@ -112,6 +112,7 @@ export function toSettings(answer: unknown, kind: Kind, current: Settings): Sett
     name: typeof a.name === 'string' && a.name.trim() ? a.name : current.name,
     accent: current.accent,
     theme: current.theme,
+    look: current.look,
     chain,
     output: { gain: Number(a.output_gain ?? 0) },
     motion: {

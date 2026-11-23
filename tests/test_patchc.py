@@ -75,7 +75,8 @@ def test_the_presets_use_every_object_patchc_knows():
     used = set()
     for entry in PRESETS + INSTRUMENTS:
         used |= set(patchc.objects(patch_of(entry["settings"])))
-    assert used == set(patchc.SUPPORTED)
+    # a picture and the cords to and from it are set aside, not compiled (patchc.without_pictures)
+    assert used - {"v8ui", "prepend"} == set(patchc.SUPPORTED)
 
 
 def _with_box(patch, text, numinlets=1, numoutlets=1):

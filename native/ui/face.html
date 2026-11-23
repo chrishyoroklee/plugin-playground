@@ -10,6 +10,9 @@
     plugin -> page   ppFace(face)                          once
                      ppValues([v0, v1, ...])               whenever the host moved something
 
+  The pictures above the dials are drawn by src/plugin/graphs.js, the same file the page
+  and the Max for Live device use. It is pasted into the first script below when the
+  plugin is built (CMakeLists.txt).
   The dial is the page's own (src/objects/ui/live-dial.ts), geometry and gestures both,
   so a device looks and handles the same in the browser and in a DAW. Keep them in step.
   __FONTS__ is replaced with the two DM Mono files when the plugin is built.
@@ -24,6 +27,8 @@ body { font-family: 'DM Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospa
 #device { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
 .panel { position: absolute; box-shadow: 0 0 0 1px rgba(47, 16, 7, 0.07) inset; }
 .label { position: absolute; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: 0.08em; font-weight: 500; }
+.graph { position: absolute; border-radius: 8px; overflow: hidden; cursor: grab; }
+.graph canvas { display: block; width: 100%; height: 100%; touch-action: none; }
 .dial { position: absolute; cursor: ns-resize; outline: none; }
 .dial svg { display: block; overflow: visible; }
 .dial text { font-family: inherit; }
@@ -34,9 +39,13 @@ body { font-family: 'DM Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospa
 <body>
 <div id="device"></div>
 <script>
+__GRAPHS__
+</script>
+<script>
 (function () {
   'use strict';
   var SVG = 'http://www.w3.org/2000/svg';
+  var pictures = [];   // each picture's redraw, for when the host moves a dial
   // The knob's travel: 270 degrees, from 7:30 round to 4:30.
   var A0 = 135, SWEEP = 270, CX = 22, CY = 25, R = 11.6;
   var dials = [];   // by parameter index: {param, value, redraw}
@@ -108,7 +117,7 @@ body { font-family: 'DM Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospa
     var p = item.param, index = item.index;
     var lo = Math.min(p.min, p.max), hi = Math.max(p.min, p.max);
     var bound = function (v) { var c = Math.min(hi, Math.max(lo, v)); return p.integer ? Math.round(c) : c; };
-    var state = { param: p, value: bound(p.initial), redraw: null, held: false };
+    var state = { param: p, index: index, value: bound(p.initial), redraw: null, held: false };
 
     var root = document.createElement('div');
     root.className = 'dial';
@@ -187,7 +196,96 @@ body { font-family: 'DM Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospa
       set(valueAt(p, positionOf(p, state.value) - e.deltaY * (e.shiftKey ? 0.0002 : 0.001)));
     }, { passive: false });
 
+    state.set = set;
     dials[index] = state;
+    return root;
+  }
+
+  // A picture of a module, above its dials: graphs.js on a canvas, as on the page
+  // (src/plugin/graph-view.ts). It reads its dials' values and, dragged, turns them.
+  function graph(item) {
+    var root = document.createElement('div');
+    root.className = 'graph';
+    if (typeof PPGraphs === 'undefined' || !PPGraphs.has(item.kind)) return root;
+    var w = item.rect[2], h = item.rect[3], ratio = 4;
+    var canvas = document.createElement('canvas');
+    canvas.width = Math.round(w * ratio);
+    canvas.height = Math.round(h * ratio);
+    root.appendChild(canvas);
+    var ctx = canvas.getContext('2d');
+    var c = item.colours || {};
+    var css = function (k) { return 'rgba(' + Math.round(k[0] * 255) + ', ' + Math.round(k[1] * 255) + ', ' + Math.round(k[2] * 255) + ', ' + (k.length > 3 ? k[3] : 1) + ')'; };
+    if (c.well) root.style.background = css(c.well);
+    var palette = { ink: c.ink || [0.18, 0.06, 0.03], track: c.track || [0.9, 0.74, 0.7], accent: c.accent || [0.25, 0.47, 0.74], card: c.card || [1, 1, 1] };
+    var values = {}, ranges = {}, tied = {}, hot = null, key;
+    for (key in item.options) values[key] = item.options[key];
+    item.dials.forEach(function (d) {
+      var state = dials[d.index];
+      if (!state) return;
+      tied[d.id] = state;
+      ranges[d.id] = { min: state.param.min, max: state.param.max, exponent: state.param.exponent };
+    });
+    var g = {
+      path: function (pts, stroke, width, fill) {
+        if (pts.length < 4) return;
+        ctx.beginPath();
+        ctx.moveTo(pts[0], pts[1]);
+        for (var i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]);
+        if (fill) { ctx.closePath(); ctx.fillStyle = css(fill); ctx.fill(); }
+        else if (stroke) { ctx.strokeStyle = css(stroke); ctx.lineWidth = width || 1; ctx.lineJoin = 'round'; ctx.stroke(); }
+      },
+      dot: function (x, y, r, fill, stroke) {
+        ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fillStyle = css(fill); ctx.fill();
+        ctx.strokeStyle = css(stroke); ctx.lineWidth = 1.6; ctx.stroke();
+      },
+      line: function (x0, y0, x1, y1, colour, width) {
+        ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1);
+        ctx.strokeStyle = css(colour); ctx.lineWidth = width || 1; ctx.lineCap = 'round'; ctx.stroke();
+      }
+    };
+    var draw = function () {
+      for (var id in tied) values[id] = tied[id].value;
+      ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+      ctx.clearRect(0, 0, w, h);
+      PPGraphs.render(item.kind, g, values, w, h, palette, ranges, hot);
+    };
+    var at = function (e) {
+      var box = canvas.getBoundingClientRect();
+      return [(e.clientX - box.left) * (w / box.width), (e.clientY - box.top) * (h / box.height)];
+    };
+    var each = function (type) { for (var id in tied) send({ type: type, index: tied[id].index }); };
+    var move = function (e) {
+      if (!hot) return;
+      var p = at(e), next = PPGraphs.drag(item.kind, hot, p[0], p[1], values, w, h, ranges);
+      for (var id in next) if (tied[id]) tied[id].set(next[id]);
+      draw();
+    };
+    canvas.addEventListener('pointerdown', function (e) {
+      if (e.button !== 0) return;
+      var p = at(e);
+      for (var id in tied) values[id] = tied[id].value;
+      hot = PPGraphs.pick(item.kind, p[0], p[1], values, w, h, ranges);
+      if (!hot) return;
+      canvas.setPointerCapture(e.pointerId);
+      for (id in tied) tied[id].held = true;
+      each('begin');   // one gesture for the host to record, on every dial the picture can turn
+      e.preventDefault();
+      move(e);
+    });
+    canvas.addEventListener('pointermove', move);
+    var release = function (e) {
+      if (!hot) return;
+      hot = null;
+      for (var id in tied) tied[id].held = false;
+      if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
+      each('end');
+      draw();
+    };
+    canvas.addEventListener('pointerup', release);
+    canvas.addEventListener('pointercancel', release);
+    pictures.push(draw);
+    draw();
     return root;
   }
 
@@ -202,6 +300,7 @@ body { font-family: 'DM Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospa
     var host = document.getElementById('device');
     host.replaceChildren();
     dials = [];
+    pictures = [];
     document.body.style.background = face.background || '#feddd4';
     host.style.width = face.width + 'px';
     host.style.height = face.height + 'px';
@@ -222,6 +321,8 @@ body { font-family: 'DM Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospa
         el.style.lineHeight = item.rect[3] + 'px';
       } else if (item.type === 'dial') {
         el = dial(item);
+      } else if (item.type === 'graph') {
+        el = graph(item);   // after its dials: face() lists the pictures last
       } else {
         return;
       }
@@ -243,6 +344,7 @@ body { font-family: 'DM Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospa
       d.value = values[i];
       d.redraw();
     }
+    pictures.forEach(function (draw) { draw(); });
   };
 
   // Ask for the face once both weights of the font are in, so that the names on the cards

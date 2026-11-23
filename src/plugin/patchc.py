@@ -727,6 +727,60 @@ class Param:
         self.value = "value_[%d]" % index
 
 
+# ── pictures ────────────────────────────────────────────────────────────────────
+
+def without_pictures(patcher):
+    """
+    The patch without its pictures: (boxes, cords, pictures).
+
+    A picture (fxgen's graph(): an EQ's curve, a delay's echoes) is a v8ui that draws a
+    module from its dials and sets them when it is dragged. It makes no sound. In the
+    patch it is the v8ui, a `prepend` from each dial into it and a `route` from it back
+    to the dials, and none of the three is compiled: the plugin's own window draws the
+    same picture from the same dials (native/ui/face.html). What is kept is where each
+    one goes, for that window: [{"kind", "rect"}].
+    """
+    boxes = [e["box"] for e in patcher.get("boxes", [])]
+    lines = [e["patchline"] for e in patcher.get("lines", [])]
+    drawn = {b["id"] for b in boxes if b.get("maxclass") == "v8ui"}
+    gone = set(drawn)
+    for line in lines:
+        src, dst = line["source"][0], line["destination"][0]
+        if dst in drawn:
+            gone.add(src)
+        if src in drawn:
+            gone.add(dst)
+    by_id = {b["id"]: b for b in boxes}
+    pictures = []
+    for b in boxes:
+        if b["id"] not in drawn:
+            continue
+        # What the picture was set up with is the first line of its script: `var PP = {...};`
+        setup = {}
+        first = str((b.get("textfile") or {}).get("text", "")).split("\n", 1)[0].strip()
+        if first.startswith("var PP = ") and first.endswith(";"):
+            try:
+                setup = json.loads(first[len("var PP = "):-1])
+            except ValueError:
+                setup = {}
+        # Which dial is which: each dial reaches the picture through a `prepend <its id>`.
+        dials = {}
+        for line in lines:
+            if line["destination"][0] != b["id"]:
+                continue
+            words = str(by_id.get(line["source"][0], {}).get("text", "")).split()
+            if len(words) == 2 and words[0] == "prepend":
+                feeder = next((l["source"][0] for l in lines if l["destination"][0] == line["source"][0]), None)
+                if feeder:
+                    dials[words[1]] = feeder
+        pictures.append({"kind": str(setup.get("kind") or str(b.get("varname", "")).rsplit("_graph", 1)[0]),
+                         "rect": [float(v) for v in (b.get("presentation_rect") or [0, 0, 0, 0])[:4]],
+                         "options": setup.get("options") or {}, "colours": setup.get("colours") or {}, "dials": dials})
+    return ([b for b in boxes if b["id"] not in gone],
+            [l for l in lines if l["source"][0] not in gone and l["destination"][0] not in gone],
+            pictures)
+
+
 # ── the compiler ────────────────────────────────────────────────────────────────
 
 class Compiler:
@@ -736,13 +790,13 @@ class Compiler:
             raise CompileError("not a Max patch: there is no \"patcher\" at the top")
         self.name = name
         self.device_width = patcher.get("devicewidth") or 0
+        boxes, lines, self.pictures = without_pictures(patcher)
         self.boxes = {}
-        for order, entry in enumerate(patcher.get("boxes", [])):
-            box = Box(entry["box"], order)
+        for order, entry in enumerate(boxes):
+            box = Box(entry, order)
             self.boxes[box.id] = box
         self.cords = []   # (source box, outlet, destination box, inlet), in patch order
-        for entry in patcher.get("lines", []):
-            line = entry["patchline"]
+        for line in lines:
             (src, outlet), (dst, inlet) = line["source"], line["destination"]
             if src not in self.boxes or dst not in self.boxes:
                 raise CompileError("a cord runs between %s and %s, and one of them is not in the patch" % (src, dst))
@@ -1061,6 +1115,14 @@ class Compiler:
                               "ink": colour(raw.get("textcolor"), "#2f1007"), "track": colour(raw.get("dialcolor"), "#e6bdb3"),
                               "param": {"name": p.name, "short": p.short, "min": p.min, "max": p.max, "initial": p.initial,
                                         "exponent": p.exponent, "unit": p.unit, "integer": p.integer}})
+        # The pictures, each with the parameters behind its dials, so the window can draw
+        # them from the same values and turn the same dials (graphs.js, as on the page).
+        for picture in self.pictures:
+            tied = [{"id": name, "index": by_box[box_id].index} for name, box_id in picture["dials"].items() if box_id in by_box]
+            if tied and picture["rect"][2] > 0:
+                width = max(width, picture["rect"][0] + picture["rect"][2])
+                items.append({"type": "graph", "rect": picture["rect"], "kind": picture["kind"], "options": picture["options"],
+                              "colours": picture["colours"], "dials": tied})
         # The backdrop is the panel as wide as the device; the window round it takes its colour.
         backdrop = next((i["color"] for i in items if i["type"] == "panel" and i["rect"][2] >= 0.9 * width and width > 0), "#feddd4")
         return {"width": width, "height": 169.0, "background": backdrop, "items": items}

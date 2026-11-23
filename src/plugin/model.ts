@@ -111,6 +111,8 @@ export interface Motion {
 export interface Settings {
   /** A theme's id. Left out for the first theme, which is the one every device had before there were themes. */
   theme?: string;
+  /** 'dials' for a device with no pictures above its dials. Left out for the usual look, which has them. */
+  look?: 'dials';
   motion?: Motion;
   /** Only written on an instrument, as fxgen.py does; an effect has neither field. */
   kind?: 'instrument';
@@ -258,7 +260,10 @@ export function normalize(input: unknown): Settings {
   const output: Record<string, number> = {};
   for (const p of SCHEMA.output.params) output[p.id] = clampParam(p, s.output?.[p.id] ?? p.default);
   const motion = normalizeMotion(s.motion, kind);
-  const themed = SCHEMA.themes.slice(1).some((t) => t.id === s.theme) ? { theme: s.theme } : {};
+  const themed = {
+    ...(SCHEMA.themes.slice(1).some((t) => t.id === s.theme) ? { theme: s.theme } : {}),
+    ...(s.look === 'dials' ? { look: 'dials' as const } : {}),
+  };
   if (kind === 'effect') return { name, accent, chain, output, ...themed, ...(motion ? { motion } : {}) };
 
   const instrument: Record<string, Section> = {};
@@ -307,6 +312,7 @@ export function encodeSettings(s: Settings): string {
     chain: s.chain.filter((e) => e.on).map((e) => ({ module: e.module, on: true, options: e.options, values: e.values })),
     output: s.output,
     theme: s.theme,
+    look: s.look,
     motion: s.motion,
   };
   const bytes = new TextEncoder().encode(JSON.stringify(slim));

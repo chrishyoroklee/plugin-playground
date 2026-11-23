@@ -20,8 +20,11 @@ Try it at <https://chrishyoroklee.github.io/plugin-playground/>.
 - **Presets / Customize** (left panel) picks a starting point, then changes it: the
   name, the accent colour, the synth's sections, and which effects are on and in what
   order.
-- **The device** in the middle is what you get. Turn its dials; they are the plugin's
-  parameters. Double-click its name to rename it. The corner of the stage has a zoom
+- **The device** in the middle is what you get. Each effect has a picture of what it
+  does above its dials: an EQ's curve, a filter's slope, a distortion's bend, a delay's
+  echoes, a reverb's tail, an envelope's shape. Drag the dot on a picture and its dials
+  turn; turn a dial and the picture follows. The dials are the plugin's parameters, and
+  the exact numbers. **Edit**, **Look** has "Dials only" for a device without pictures. Double-click its name to rename it. The corner of the stage has a zoom
   control (pinch or Ctrl-scroll works too), and **Patch** shows the Max patch behind it.
 - **Play.** For an effect, the play button runs a sound through the device: choose one
   from the library (recordings, synth loops, a drum machine, test signals) or use your
@@ -134,6 +137,7 @@ saved for Live, and the plugin is that patch compiled.
 | `src/plugin/presets.json`, `instruments.json` | The preset libraries |
 | `src/plugin/fxgen.py` | The generator: settings to a Max patch |
 | `src/plugin/patchc.py` | The compiler: a Max patch to C++ |
+| `src/plugin/graphs.js`, `graph-view.ts`, `graph-max.js` | The pictures above the dials: what is drawn and what a drag does (one file, used by the page, the plugin's window and the Live device), and how the page and Max each draw it |
 | `src/plugin/keys.ts` | Playing an instrument: the keyboard, MIDI, phrases |
 | `src/plugin/sounds.ts` | The sound library; most of it is computed in the browser |
 | `src/plugin/theme.ts` | Light and dark; the colours are variables at the top of `plugin.css` |
@@ -174,6 +178,12 @@ saved for Live, and the plugin is that patch compiled.
   ([details](scripts/maxcheck/README.md)). The instrument's objects (`adsr~`, `saw~`,
   `rect~`, `tri~`, `poly`) were not: they are right in kind, not confirmed sample for
   sample.
+- The pictures in a Max for Live device have not been seen in Live. There they are a
+  `v8ui` object carrying its own script, which is the documented way to do it and needs
+  Max 9 (Live 12.2 or newer). The script is the one the page and the plugin's window
+  run, and it is tested against a stand-in for Max's drawing calls
+  (`test/graphs.test.ts`), which is not the same as Max drawing it. What an older Live
+  makes of the object is not known either: "Dials only" leaves it out.
 - The EQ was not measured against Max. Its dials are held to what they say
   (`tests/test_eq.py`: +12 dB on a band is +12 dB there, a cut mirrors a boost, 0 dB
   everywhere passes the sound untouched), and the browser and the C++ agree on it to

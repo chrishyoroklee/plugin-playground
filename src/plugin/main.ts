@@ -21,6 +21,7 @@ import { preloadWorklets } from '../runtime/worklet';
 import { firstNum } from '../runtime/atoms';
 import { Track } from './audio';
 import { DEVICE_HEIGHT, highlightPython, renderDevice, renderPatch } from './device-view';
+import { mountGraph, type GraphDial } from './graph-view';
 import { Keyboard, PHRASES, Sequencer } from './keys';
 import {
   SCHEMA, decodeSettings, dialIndex, encodeSettings, kindOf, moduleSpec, normalize, presetsOf, themeOf, valuesOf,
@@ -153,11 +154,13 @@ async function apply(next: RunResult): Promise<void> {
   // Listen to each dial, so a knob turned here becomes the value that gets saved. The
   // dials include any the device's motion adds, and those are named by the user.
   const dials = dialIndex(next.settings.motion);
+  const running = new Map<string, MaxNode>();   // "module.dial" -> the dial that is playing
   for (const node of patch.nodes) {
     if (node.maxclass !== 'live.dial') continue;
     const target = dials.get(String(node.raw?.varname ?? ''));
     const live = report.built.get(node.id);
     if (!target || !live?.onControlOut) continue;
+    running.set(`${target.module}.${target.param}`, live as MaxNode);
     const off = live.onControlOut(0, (m) => {
       const v = firstNum(m);
       if (v !== undefined) dialMoved(target.module, target.param, v);
@@ -171,6 +174,7 @@ async function apply(next: RunResult): Promise<void> {
   $('device').style.setProperty('--dv-ink', theme.ink);
   $('device').style.setProperty('--dv-card', theme.card);
   decorate($('device'), editHost, dials);
+  drawGraphs(running, theme);
   stopWatching();
   stopWatching = watchMoved(patch, report.built as ReadonlyMap<string, MaxNode>, $('device'), settings, dials);
   refreshMenu(editHost);
@@ -183,6 +187,34 @@ async function apply(next: RunResult): Promise<void> {
   renderCheck(next);
   renderCode(next);
   renderHead();
+}
+
+// The pictures above the dials. Each is joined to the dials that are playing, so
+// dragging one is turning them, and it is heard and saved the same way.
+let graphOffs: (() => void)[] = [];
+function drawGraphs(running: ReadonlyMap<string, MaxNode>, theme: { bg: string; card: string; ink: string; track: string }): void {
+  for (const off of graphOffs) off();
+  graphOffs = [];
+  for (const host of $('device').querySelectorAll<HTMLElement>('.dv-graph')) {
+    const id = host.dataset.kind ?? '';
+    const spec = moduleSpec(id) ?? SCHEMA.instrument.modules.find((m) => m.id === id);
+    const values = valuesOf(settings, id);
+    if (!spec || !values) continue;
+    const options = settings.instrument?.[id]?.options ?? settings.chain.find((e) => e.module === id)?.options ?? {};
+    const graphDials: GraphDial[] = [];
+    for (const p of spec.params) {
+      const live = running.get(`${id}.${p.id}`);
+      if (!live) continue;
+      graphDials.push({
+        id: p.id, min: p.min, max: p.max, exponent: p.exponent ?? 1, value: values[p.id] ?? p.default,
+        set: (value) => live.controlIns?.[0]?.([value]),
+        watch: (heard) => live.onControlOut?.(0, (m) => { const v = firstNum(m); if (v !== undefined) heard(v); }),
+      });
+    }
+    graphOffs.push(mountGraph(host, id, options, graphDials,
+      { ink: theme.ink, track: theme.track, accent: settings.accent, card: theme.card, well: theme.bg },
+      () => document.body.classList.contains('is-editing')));
+  }
 }
 
 let scriptTimer = 0;

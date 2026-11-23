@@ -117,7 +117,9 @@ def test_the_eq_is_a_module_like_the_others():
     assert entry["module"] == "eq" and entry["values"] == {"low": 15.0, "mid": 0.0, "freq": 200.0, "high": 0.0}
     result = fxgen.run({"chain": [{"module": "eq", "on": True, "values": {"low": 6, "mid": -3, "high": 4}}]}, want_amxd=True)
     cords = result["coverage"]["cords"]
-    assert cords["flagged"] == 0 and cords["not_checked"] == 0 and not result["warnings"]
+    # the one cord nothing checks is the picture's (a v8ui, which maxpylang does not know yet)
+    assert cords["flagged"] == 0 and not result["warnings"]
+    assert all(why[0].startswith("jsui ") for why in cords["not_checked_because"])
     dials = [b["box"]["varname"] for b in result["json"]["patcher"]["boxes"] if b["box"].get("maxclass") == "live.dial"]
     assert dials == ["eq_low", "eq_mid", "eq_mid_freq", "eq_high", "output_gain"]
     assert result["amxd"]

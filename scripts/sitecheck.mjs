@@ -272,7 +272,7 @@ async function check(name, url) {
     await settle();
     note(linked === 2 && (await page.locator('#device .dv-widget[data-knob]').count()) === 1, 'Edit: a knob of one\'s own links to the dials clicked', `${linked} linked`);
 
-    await page.locator('.edit-add', { hasText: 'Colours' }).click();
+    await page.locator('.edit-add', { hasText: 'Look' }).click();
     await page.locator('.edit-theme', { hasText: 'Midnight' }).click();
     await settle();
     const backdrop = await page.locator('#device .dv-panel').first().evaluate((e) => getComputedStyle(e).backgroundColor);
@@ -282,6 +282,47 @@ async function check(name, url) {
     note((await onDevice()) === cardsBefore, 'Edit: an effect\'s x takes it off');
     await stopEditing();
     await page.screenshot({ path: path.join(shots, 'edited.png') });
+
+    // 5b. pictures: an EQ's curve is there, dragging it turns the dial, and Look can take them away
+    await page.locator('#presets .preset', { hasText: 'Mid Push' }).first().click();
+    await settle();
+    const picture = page.locator('#device .dv-graph[data-kind="eq"] canvas');
+    const midBefore = await page.locator('#device .live-dial[data-param="EQ Mid"]').getAttribute('aria-valuenow');
+    const pb = await picture.boundingBox();
+    const inked = pb && await picture.evaluate((c) => {
+      const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+      let n = 0;
+      for (let i = 3; i < d.length; i += 4) if (d[i] > 0) n++;
+      return n;
+    });
+    note(!!pb && inked > 200, 'a picture is drawn above the EQ\'s dials', `${inked} pixels`);
+    if (pb) {
+      // the middle dot sits at the Freq dial's frequency and the Mid dial's gain: take it down and to the left
+      const handle = await page.evaluate(() => {
+        const s = JSON.parse(decodeURIComponent(escape(atob(location.hash.slice(3).replace(/-/g, '+').replace(/_/g, '/')))));
+        return s.chain.find((e) => e.module === 'eq').values;
+      });
+      const hx = pb.x + pb.width * Math.log(handle.freq / 20) / Math.log(1000);
+      const hy = pb.y + pb.height / 2 - (handle.mid / 18) * (pb.height / 2 - 3 * pb.height / 70);
+      await page.mouse.move(hx, hy);
+      await page.mouse.down();
+      await page.mouse.move(hx - pb.width * 0.15, pb.y + pb.height * 0.8, { steps: 6 });
+      await page.mouse.up();
+      await page.waitForTimeout(700);
+      const midAfter = Number(await page.locator('#device .live-dial[data-param="EQ Mid"]').getAttribute('aria-valuenow'));
+      const saved = await page.evaluate(() => JSON.parse(decodeURIComponent(escape(atob(location.hash.slice(3).replace(/-/g, '+').replace(/_/g, '/'))))).chain.find((e) => e.module === 'eq').values);
+      note(midAfter < 0 && Math.abs(saved.mid - midAfter) < 0.01 && saved.freq < handle.freq, 'dragging the picture turns the dials, and is saved',
+        `Mid ${midBefore} to ${midAfter.toFixed(1)} dB, Freq ${Math.round(handle.freq)} to ${Math.round(saved.freq)} Hz`);
+    }
+    await page.locator('#btn-edit').click();
+    await page.locator('.edit-add', { hasText: 'Look' }).click();
+    await page.locator('.edit-look', { hasText: 'Dials only' }).click();
+    await settle();
+    note((await page.locator('#device .dv-graph').count()) === 0 && (await page.locator('#device .live-dial').count()) === 5, 'Look: Dials only takes the pictures away');
+    await page.locator('.edit-look', { hasText: 'A picture and dials' }).click();
+    await settle();
+    note((await page.locator('#device .dv-graph').count()) === 1, 'Look: and puts them back');
+    await stopEditing();
 
     // 6. a link reopens exactly this device
     await page.waitForTimeout(600);

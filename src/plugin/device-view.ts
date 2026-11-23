@@ -98,6 +98,12 @@ export function renderDevice(host: HTMLElement, json: unknown, built: ReadonlyMa
         el.style.lineHeight = `${h}px`;
         break;
       }
+      case 'v8ui':
+        // A picture of a module (fxgen's graph()). The page draws it itself, from the same
+        // drawing code the box carries: see graph-view.ts, which fills this in.
+        el.className = 'dv-graph';
+        el.dataset.kind = String(box.varname ?? '').replace(/_graph$/, '');
+        break;
       default: {
         const widget = built.get(String(box.id))?.el;
         if (!widget) continue;

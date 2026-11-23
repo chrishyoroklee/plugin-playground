@@ -350,7 +350,7 @@ export function decorate(device: HTMLElement, host: EditHost, index: DialIndex):
       host.changed();
     }));
   }
-  adds.append(button('edit-add', 'Colours', 'Change the device\'s colours', (e) => {
+  adds.append(button('edit-add', 'Look', 'Pictures or dials alone, and the device\'s colours', (e) => {
     drawLookMenu(host);
     openMenu(host, (e.currentTarget as HTMLElement).getBoundingClientRect());
   }));
@@ -380,8 +380,20 @@ function renderHint(host: EditHost): void {
 function drawLookMenu(host: EditHost): void {
   const s = host.settings();
   const menu = host.menu;
-  menu.replaceChildren(el('h2', '', 'Colours'));
-  menu.append(el('p', 'edit-ask', 'The device'));
+  menu.replaceChildren(el('h2', '', 'Look'));
+  // Pictures above the dials (an EQ's curve, a delay's echoes), or the dials alone.
+  menu.append(el('p', 'edit-ask', 'Each effect shows'));
+  const looks = el('div', 'edit-looks');
+  for (const [id, label] of [['', 'A picture and dials'], ['dials', 'Dials only']] as const) {
+    const b = button('edit-look', label, '', () => {
+      if (id) s.look = id; else delete s.look;
+      host.changed();
+      drawLookMenu(host);
+    });
+    b.setAttribute('aria-pressed', String((s.look ?? '') === id));
+    looks.append(b);
+  }
+  menu.append(looks, el('p', 'edit-ask', 'The device'));
   const themes = el('div', 'edit-themes');
   for (const theme of SCHEMA.themes) {
     const b = button('edit-theme', '', theme.label, () => {

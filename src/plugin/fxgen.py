@@ -52,6 +52,30 @@ def schema():
     return SCHEMA if SCHEMA is not None else load_schema()
 
 
+GRAPH_SOURCE = None
+
+
+def load_graphs(source=None):
+    """
+    The pictures' drawing code, as the text that goes inside each v8ui: graphs.js (what
+    is drawn, shared with the page and the plugin's window) and then graph-max.js (how
+    it is drawn in Max). `source` is that text; without it the sibling files are read.
+    """
+    global GRAPH_SOURCE
+    if source is None:
+        parts = []
+        for name in ("graphs.js", "graph-max.js"):
+            with open(os.path.join(HERE, name), encoding="utf-8") as fh:
+                parts.append(fh.read())
+        source = "\n".join(parts)
+    GRAPH_SOURCE = source
+    return GRAPH_SOURCE
+
+
+def graph_source():
+    return GRAPH_SOURCE if GRAPH_SOURCE is not None else load_graphs()
+
+
 # ── settings ────────────────────────────────────────────────────────────────────
 
 DEFAULT_NAME = "MaxPy FX"
@@ -131,6 +155,10 @@ def normalize(settings):
     themes = [t["id"] for t in sch.get("themes", [])]
     if settings.get("theme") in themes[1:]:
         out["theme"] = settings["theme"]
+    # Pictures above the dials (an EQ's curve, a delay's echoes) are how a device looks
+    # unless it asks for dials alone. Like the first theme, the usual look is not written.
+    if settings.get("look") == "dials":
+        out["look"] = "dials"
     motion = _normalize_motion(settings.get("motion"), kind)
     if motion:
         out["motion"] = motion
@@ -254,10 +282,17 @@ CARD_Y, CARD_H = 6, 157
 TITLE_Y = 14
 NAME_Y = 75       # the device's name, alone at the left, level with the middle of the cards
 DIAL_Y = 72
+# A card with a picture: the picture under the title, the dials along the bottom.
+GRAPHS = ("filter", "eq", "drive", "crush", "chorus", "tremolo", "delay", "reverb", "osc", "tone", "env")
+GRAPH_Y, GRAPH_H = 34, 70
+GRAPH_MIN_W = 136
+GRAPH_DIAL_Y = 109
 
 UNITSTYLE = {"": "FLOAT", "x": "FLOAT", "Hz": "HERTZ", "ms": "MS", "%": "PERCENT", "dB": "DB", "bit": "INT"}
 
-PREAMBLE = '''import maxpylang as mp
+PREAMBLE = '''import json
+
+import maxpylang as mp
 
 patch = mp.MaxPatch(verbose=False)
 
@@ -335,6 +370,48 @@ def card(at, x, w, color):
     box(p)["background"] = 1  # (gap M4L-02)
     show(p, x, 6, w, 157)
     return p
+
+
+# The pictures' drawing code (graphs.js and graph-max.js, next to fxgen.py). fxgen hands
+# it in when it runs this script; run by hand without it, the pictures are empty boxes
+# and the dials work the same.
+GRAPH_SOURCE = globals().get("GRAPH_SOURCE", "")
+
+
+def graph(kind, at, slot, options, dials):
+    """
+    A picture of a module above its dials, which can be dragged: a v8ui (Max 9, so Live
+    12.2 or newer) carrying its own drawing code. `dials` is [(id, the live.dial), ...].
+    Each dial tells the picture its value, and a drag on the picture sets the dials, so
+    the dials stay the parameters Ableton automates and saves.
+    """
+    g = place("jsui", *at, fit=False)
+    b = box(g)
+    setup = {
+        "kind": kind,
+        "options": options,
+        "dials": [{"id": name, "min": v["parameter_mmin"], "max": v["parameter_mmax"],
+                   "exponent": v["parameter_exponent"], "value": v["parameter_initial"][0]}
+                  for name, v in ((name, box(d)["saved_attribute_attributes"]["valueof"]) for name, d in dials)],
+        "colours": {"ink": INK[:3], "track": TRACK[:3], "accent": ACCENT[:3], "card": CARD[:3], "well": BG},
+    }
+    # maxpylang knows jsui and not yet v8ui, so it is placed as one and renamed. Its
+    # cord out is the one cord in the device that maxpylang's checks cannot see into.
+    b["maxclass"] = "v8ui"
+    b.pop("text", None)
+    b["filename"] = "none"
+    b["border"] = 0
+    b["varname"] = "%s_graph" % kind
+    b["textfile"] = {"text": "var PP = %s;\\n%s" % (json.dumps(setup), GRAPH_SOURCE),
+                     "filename": "none", "flags": 0, "embed": 1, "autowatch": 1}
+    show(g, *slot)
+    back = place("route " + " ".join(name for name, _ in dials), at[0], at[1] + 30)
+    cords = [[g.outs[0], back.ins[0]]]
+    for i, (name, d) in enumerate(dials):
+        tell = place("prepend " + name, at[0] + 170 + i * 110, at[1])
+        cords += [[d.outs[0], tell.ins[0]], [tell.outs[0], g.ins[0]], [back.outs[i], d.ins[0]]]
+    patch.connect(*cords, verbose=False)
+    return g
 
 
 def note(text, x, y):
@@ -430,6 +507,8 @@ class Device:
         self.card_x = BRAND_W + CARD_GAP
         self.park_y = 30
         self.mod_rows = 0
+        self.dial_y = DIAL_Y
+        self.pictured = settings.get("look") != "dials"
         self.sources = {}   # motion source id -> the outlet carrying its signal
         self.routes = {}    # "module.dial" -> [(source id, amount), ...]
 
@@ -440,6 +519,12 @@ class Device:
         n = len(mod["params"])
         w = CARD_PAD * 2 + n * DIAL_STEP - (DIAL_STEP - DIAL_W)
         w = max(w, 2 * CARD_PAD + 60)
+        self.graph = None
+        self.dial_y = DIAL_Y
+        if self.pictured and mod["id"] in GRAPHS:
+            w = max(w, 2 * CARD_PAD + GRAPH_MIN_W)
+            self.dial_y = GRAPH_DIAL_Y
+            self.graph = (self.card_x + CARD_PAD, GRAPH_Y, w - 2 * CARD_PAD, GRAPH_H)
         x = self.card_x
         self.s.emit("card((%d, %d), x=%d, w=%d, color=CARD)" % (XP, self.park_y, x, w))
         self.s.emit('label("%s", (%d, %d), (%d, %d, %d, 18), size=10.0, bold=True, color=INK)'
@@ -454,7 +539,7 @@ class Device:
         self.s.emit(
             '%s = dial("%s %s", "%s", at=(%d, %d), slot=(%d, %d), lo=%s, hi=%s, init=%s, unit=%s, exponent=%s)'
             % (var, mod["label"], param["label"], param.get("short", param["label"]),
-               XC + index * DX, self.y + ROW, first_x + index * DIAL_STEP, DIAL_Y,
+               XC + index * DX, self.y + ROW, first_x + index * DIAL_STEP, self.dial_y,
                pynum(param["min"]), pynum(param["max"]), pynum(value),
                UNITSTYLE[param["unit"]], pynum(param.get("exponent", 1.0))))
         return var
@@ -470,11 +555,27 @@ class Device:
         moved = [p for p in mod["params"] if self.routes.get("%s.%s" % (mod["id"], p["id"]))]
         self.mod_rows = MOTION_ROWS if moved else 0
         out = {}
+        drawn = []
         for i, p in enumerate(mod["params"]):
             out[p["id"]] = self.dial(mod, p, i, first_x, values[p["id"]])
+            drawn.append((p["id"], out[p["id"]]))
+            if i == len(mod["params"]) - 1 and self.graph:
+                # after the last dial, which it reads, and before anything that moves one
+                self.s.emit("%s = graph(%s, (%d, %d), %r, %s, [%s])" % (
+                    self.s.name(mod["id"] + "_graph"), json.dumps(mod["id"]), XP + 200, self.park_y, self.graph,
+                    repr(self.options_of(mod["id"])), ", ".join('("%s", %s)' % pair for pair in drawn)))
+                self.park_y += 70
+        for i, p in enumerate(mod["params"]):
             if p in moved:
                 out[p["id"]] = self.moved(mod, p, i, out[p["id"]], values[p["id"]])
         return out
+
+    def options_of(self, module):
+        """A module's choices (a filter's mode, an oscillator's wave), which its picture draws by."""
+        st = self.settings
+        if module in (st.get("instrument") or {}):
+            return dict(st["instrument"][module].get("options") or {})
+        return dict(next((e.get("options") or {} for e in st.get("chain", []) if e["module"] == module), {}))
 
     def moved(self, mod, param, index, dial, value):
         """
@@ -1375,7 +1476,7 @@ def run(settings, want_amxd=True):
     st = normalize(settings)
     src = script(st)
     out = io.StringIO()
-    ns = {"__name__": "__fxgen__"}
+    ns = {"__name__": "__fxgen__", "GRAPH_SOURCE": graph_source()}
     cwd = os.getcwd()
     result = {"settings": st, "script": src, "filename": filename(st)}
     with tempfile.TemporaryDirectory() as tmp:
