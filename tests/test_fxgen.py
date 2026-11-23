@@ -91,7 +91,7 @@ def test_presets_are_filed_under_the_effect_they_are():
     sections = {}
     for p in PRESETS:
         sections.setdefault(p["group"], []).append(p)
-    assert list(sections) == ["Distortion", "Lo-Fi", "Filter", "Chorus", "Tremolo", "Delay", "Reverb", "Motion", "Start"]
+    assert list(sections) == ["Distortion", "Lo-Fi", "Filter", "EQ", "Chorus", "Tremolo", "Delay", "Reverb", "Motion", "Start"]
     by_label = {m["label"]: m["id"] for m in SCHEMA["modules"]}
     for name, presets in sections.items():
         if name == "Start":

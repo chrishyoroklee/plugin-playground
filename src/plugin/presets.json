@@ -1094,6 +1094,141 @@
   }
  },
  {
+  "id": "smilecurve",
+  "name": "Smile Curve",
+  "tag": "More bass, more treble, less middle",
+  "group": "EQ",
+  "sample": "drums",
+  "settings": {
+   "name": "Smile Curve",
+   "accent": "#3f78bd",
+   "chain": [
+    {
+     "module": "eq",
+     "on": true,
+     "options": {},
+     "values": {
+      "low": 6,
+      "mid": -5,
+      "freq": 700,
+      "high": 6
+     }
+    }
+   ],
+   "output": {
+    "gain": -6.5
+   }
+  }
+ },
+ {
+  "id": "midpush",
+  "name": "Mid Push",
+  "tag": "A bump in the middle that cuts through a mix",
+  "group": "EQ",
+  "sample": "guitar",
+  "settings": {
+   "name": "Mid Push",
+   "accent": "#c98a12",
+   "chain": [
+    {
+     "module": "eq",
+     "on": true,
+     "options": {},
+     "values": {
+      "low": -2,
+      "mid": 8,
+      "freq": 1400,
+      "high": -1
+     }
+    }
+   ],
+   "output": {
+    "gain": 0
+   }
+  }
+ },
+ {
+  "id": "warmup",
+  "name": "Warm Up",
+  "tag": "Fuller lows and a softer top",
+  "group": "EQ",
+  "sample": "piano",
+  "settings": {
+   "name": "Warm Up",
+   "accent": "#c8553d",
+   "chain": [
+    {
+     "module": "eq",
+     "on": true,
+     "options": {},
+     "values": {
+      "low": 5,
+      "mid": -2,
+      "freq": 2500,
+      "high": -5
+     }
+    }
+   ],
+   "output": {
+    "gain": 0
+   }
+  }
+ },
+ {
+  "id": "air",
+  "name": "Air",
+  "tag": "A lift at the top and a little less weight",
+  "group": "EQ",
+  "sample": "vocals",
+  "settings": {
+   "name": "Air",
+   "accent": "#1f8f86",
+   "chain": [
+    {
+     "module": "eq",
+     "on": true,
+     "options": {},
+     "values": {
+      "low": -3,
+      "mid": 0,
+      "freq": 1000,
+      "high": 9
+     }
+    }
+   ],
+   "output": {
+    "gain": 0
+   }
+  }
+ },
+ {
+  "id": "bassboost",
+  "name": "Bass Boost",
+  "tag": "A lot more low end",
+  "group": "EQ",
+  "sample": "drums",
+  "settings": {
+   "name": "Bass Boost",
+   "accent": "#7a5bd0",
+   "chain": [
+    {
+     "module": "eq",
+     "on": true,
+     "options": {},
+     "values": {
+      "low": 9,
+      "mid": -2,
+      "freq": 400,
+      "high": 0
+     }
+    }
+   ],
+   "output": {
+    "gain": -9.0
+   }
+  }
+ },
+ {
   "id": "wide",
   "name": "Wide Chorus",
   "tag": "Doubles the sound and spreads it out",

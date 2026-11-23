@@ -2,8 +2,8 @@
 
 Make an audio plugin in the browser, hear it, and download it.
 
-- An **effect**: pick one of 77 presets or build your own chain from seven modules
-  (filter, distortion, crush, chorus, tremolo, delay, reverb), and hear it on a sound
+- An **effect**: pick one of 82 presets or build your own chain from eight modules
+  (filter, EQ, distortion, crush, chorus, tremolo, delay, reverb), and hear it on a sound
   from the library or on your own audio.
 - An **instrument**: a polyphonic synth with 41 presets, played from an on-screen
   keyboard, your computer keyboard, a MIDI keyboard or a looping phrase.
@@ -150,6 +150,12 @@ saved for Live, and the plugin is that patch compiled.
   checks and reloads as a device) and the compiled C++ (every preset is rendered and
   held to the page's engine; instruments are played and checked for pitch, envelope and
   voice handling).
+- `node scripts/sitecheck.mjs --browser all` uses the built site the way a visitor does,
+  in Chromium, Firefox and WebKit: every preset builds, it plays, each download is the
+  file it claims to be, Edit does what its buttons say, a shared link reopens the same
+  device, and nothing logs an error. It makes no sound: the browsers are muted and the
+  page's output is turned to zero. It needs `npm run build` and `npx playwright install`,
+  and is run by hand before a release, not by the workflows.
 - `.github/workflows/native.yml` runs the Python tests and builds every preset as a
   plugin on Linux, macOS and Windows. Each build loads its own plugin and compares it
   with the C++ it came from; three presets also go through clap-validator, pluginval and,
@@ -168,6 +174,15 @@ saved for Live, and the plugin is that patch compiled.
   ([details](scripts/maxcheck/README.md)). The instrument's objects (`adsr~`, `saw~`,
   `rect~`, `tri~`, `poly`) were not: they are right in kind, not confirmed sample for
   sample.
+- The EQ was not measured against Max. Its dials are held to what they say
+  (`tests/test_eq.py`: +12 dB on a band is +12 dB there, a cut mirrors a boost, 0 dB
+  everywhere passes the sound untouched), and the browser and the C++ agree on it to
+  the last bit of a 16-bit file.
+- Describe it has not made a real request to Anthropic here, for want of a key. The
+  request is built the way the SDK documents, and the answer's path (the same one a
+  pasted answer takes) is tested.
+- The plugin's own window exists on macOS only. On Windows and Linux the host shows its
+  own sliders.
 - The page plays an instrument with the browser's own oscillators, so the page and the
   plugin agree in pitch, level and envelope, not waveform for waveform.
 

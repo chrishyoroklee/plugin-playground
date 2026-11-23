@@ -708,6 +708,108 @@ def m_filter(dev, src, opt, val):
     return out, 2
 
 
+# The EQ is three bands added to the sound itself, each by how far its gain is from 1:
+#
+#   out = in + (low - 1) * lows + (mid - 1) * middle + (high - 1) * highs
+#
+# The lows are a onepole~ low-pass and the highs are what a second onepole~ leaves behind
+# (in minus its low-pass), which makes two gentle shelves. Left at that, a cut would not
+# be the mirror of a boost: -12 dB would take far less away than +12 dB adds. It is the
+# mirror if the corner moves with the gain, down for the low shelf and up for the high
+# one as the gain rises (corner = centre / sqrt(gain), and centre * sqrt(gain)), which
+# also puts exactly half the gain, in dB, at the centre frequency whatever the gain is.
+#
+# The middle is svf~'s band-pass at the resonance where its peak is exactly as loud as
+# what went in, so a Mid of +6 dB is +6 dB at the Freq dial, tapering off about an octave
+# either side. svf~'s band-pass comes out a sample ahead of the sound it was made from.
+# That does not matter to a boost, but a cut works by cancelling, and at 2.5 kHz a sample
+# is 20 degrees: -12 dB came out as -8.6. So the band is held back one sample (a biquad~
+# that only delays) before it is added, and a cut is as deep as its dial says.
+#
+# onepole~ does not quite reach silence at the top of the range, so the high shelf by
+# itself stops about a fifth short of its dial. Its band is scaled up to make up for it
+# (EQ_HIGH_FIT * gain ** EQ_HIGH_BEND, fitted so that 10 kHz reads the dial to within 0.7 dB).
+#
+# With every gain at 0 dB the three terms are zero and the sound passes untouched.
+EQ_LOW_HZ = 250.0
+EQ_HIGH_HZ = 2500.0
+EQ_HIGH_FIT, EQ_HIGH_BEND = 1.37, 0.13   # the pair with the least error at 10 kHz over -15 to +15 dB: 0.63 dB
+EQ_ALIGN = "biquad~ 0. 1. 0. 0. 0."   # y[n] = x[n-1]: one sample later, nothing else
+
+
+def eq_amount(db):
+    """How much of a band is added for a gain in dB: its gain, less the 1 already there."""
+    return 10 ** (float(db) / 20.0) - 1.0
+
+
+def eq_corner(centre, db, power):
+    """A shelf's corner for a gain in dB: centre * gain ** power (-0.5 for the low shelf, 0.5 for the high)."""
+    return centre * (10 ** (float(db) / 20.0)) ** power
+
+
+def eq_high_fit(db):
+    """What the high band is scaled by, to reach its dial at the top of the range."""
+    return EQ_HIGH_FIT * (10 ** (float(db) / 20.0)) ** EQ_HIGH_BEND
+
+
+def m_eq(dev, src, opt, val):
+    s = dev.s
+    d = dev.dials(_module("eq"), val, math_rows=6)
+    for i, band in enumerate(("low", "mid", None, "high")):
+        if band is None:
+            continue   # the third dial is the middle's frequency, which goes straight to svf~
+        x = XC + i * DX
+        s.place("eq_%s_amp" % band, "dbtoa", x, dev.ctl(0))
+        s.place("eq_%s_add" % band, "+ -1.", x, dev.ctl(1))
+        s.wire(d[band] + ".outs[0]", "eq_%s_amp.ins[0]" % band)
+        s.wire("eq_%s_amp.outs[0]" % band, "eq_%s_add.ins[0]" % band)
+    for band, centre, power in (("low", EQ_LOW_HZ, -0.5), ("high", EQ_HIGH_HZ, 0.5)):
+        x = XC + (0 if band == "low" else 3) * DX
+        s.place("eq_%s_root" % band, "pow %s" % fnum(power), x, dev.ctl(2))
+        s.place("eq_%s_hz" % band, "* %s" % fnum(centre), x, dev.ctl(3))
+        s.wire("eq_%s_amp.outs[0]" % band, "eq_%s_root.ins[0]" % band)
+        s.wire("eq_%s_root.outs[0]" % band, "eq_%s_hz.ins[0]" % band)
+    s.place("eq_high_bend", "pow %s" % fnum(EQ_HIGH_BEND), XC + 3 * DX, dev.ctl(4))
+    s.place("eq_high_fit", "* %s" % fnum(EQ_HIGH_FIT), XC + 3 * DX, dev.ctl(5))
+    s.wire("eq_high_amp.outs[0]", "eq_high_bend.ins[0]")
+    s.wire("eq_high_bend.outs[0]", "eq_high_fit.ins[0]")
+    out = {}
+    for ch in ("L", "R"):
+        lo = s.place("eq_lows" + ch, "onepole~ %s" % fnum(eq_corner(EQ_LOW_HZ, val["low"], -0.5)), X[ch], dev.sig(0))
+        lo_g = s.place("eq_low" + ch, "*~ %s" % fnum(eq_amount(val["low"])), X[ch] + SUB, dev.sig(0))
+        mid = s.place("eq_middle" + ch, "svf~ %s %s" % (fnum(val["freq"]), fnum(SVF_RES[0])), X[ch], dev.sig(1))
+        late = s.place("eq_align" + ch, EQ_ALIGN, X[ch] + SUB, dev.sig(1))
+        mid_g = s.place("eq_mid" + ch, "*~ %s" % fnum(eq_amount(val["mid"])), X[ch] + SUB, dev.sig(2))
+        under = s.place("eq_under" + ch, "onepole~ %s" % fnum(eq_corner(EQ_HIGH_HZ, val["high"], 0.5)), X[ch], dev.sig(3))
+        flip = s.place("eq_flip" + ch, "*~ -1.", X[ch] + SUB, dev.sig(3))
+        highs = s.place("eq_highs" + ch, "+~", X[ch], dev.sig(4))
+        hi_g = s.place("eq_high" + ch, "*~ %s" % fnum(eq_amount(val["high"])), X[ch] + SUB, dev.sig(4))
+        fit = s.place("eq_fit" + ch, "*~ %s" % fnum(eq_high_fit(val["high"])), X[ch] + SUB, dev.sig(5))
+        total = s.place("eq_" + ch, "+~", X[ch], dev.sig(6))
+        s.wire(src[ch], lo + ".ins[0]")
+        s.wire("eq_low_hz.outs[0]", lo + ".ins[1]")
+        s.wire(lo + ".outs[0]", lo_g + ".ins[0]")
+        s.wire("eq_low_add.outs[0]", lo_g + ".ins[1]")
+        s.wire(src[ch], mid + ".ins[0]")
+        s.wire(d["freq"] + ".outs[0]", mid + ".ins[1]")
+        s.wire(mid + ".outs[2]", late + ".ins[0]")   # svf~ outlets: lowpass, highpass, bandpass, notch
+        s.wire(late + ".outs[0]", mid_g + ".ins[0]")
+        s.wire("eq_mid_add.outs[0]", mid_g + ".ins[1]")
+        s.wire(src[ch], under + ".ins[0]")
+        s.wire("eq_high_hz.outs[0]", under + ".ins[1]")
+        s.wire(under + ".outs[0]", flip + ".ins[0]")
+        s.wire(src[ch], highs + ".ins[0]")
+        s.wire(flip + ".outs[0]", highs + ".ins[0]")
+        s.wire(highs + ".outs[0]", hi_g + ".ins[0]")
+        s.wire("eq_high_add.outs[0]", hi_g + ".ins[1]")
+        s.wire(hi_g + ".outs[0]", fit + ".ins[0]")
+        s.wire("eq_high_fit.outs[0]", fit + ".ins[1]")
+        for part in (src[ch], lo_g + ".outs[0]", mid_g + ".outs[0]", fit + ".outs[0]"):
+            s.wire(part, total + ".ins[0]")
+        out[ch] = total + ".outs[0]"
+    return out, 7
+
+
 # Makeup gain per distortion type: scale * drive ** exponent. A clipper flattens the peaks
 # as the drive rises, so without this the Drive dial would mostly be a volume dial. The
 # numbers were set by rendering each type in Max at drive 1, 3 and 10 and matching the
@@ -1142,6 +1244,7 @@ def m_synth(dev, inst):
 
 MODULES = {
     "filter": m_filter,
+    "eq": m_eq,
     "drive": m_drive,
     "crush": m_crush,
     "chorus": m_chorus,

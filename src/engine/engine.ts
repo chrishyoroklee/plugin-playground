@@ -238,7 +238,9 @@ export class Engine {
     for (const n of this.nodes.values()) n.stop?.();
     if (this.nested) return;
     scheduler.stop();
-    if (this.ctx instanceof AudioContext) await this.ctx.suspend();
+    // Only a context that is running. Safari never settles suspend() on one that has not
+    // been started by a click yet, and whatever awaited this would wait for good.
+    if (this.ctx instanceof AudioContext && this.ctx.state === 'running') await this.ctx.suspend();
   }
 
   // ── Incremental editing ───────────────────────────────────────────────────

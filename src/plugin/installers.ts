@@ -61,7 +61,7 @@ export const SYSTEMS: SystemInfo[] = [
       { id: 'old', label: 'Windows 8.1 or older', ok: false },
     ],
     steps: 'Run the setup program.',
-    opens: 'Open the file. It installs as “{name}”, a VST3 and CLAP plugin. Then rescan plugins in your DAW.',
+    opens: 'Open the file. It installs as “{name}”, a VST3 and CLAP plugin. Then rescan plugins in your DAW. For now it shows your DAW’s own sliders: the window that looks like this page is on macOS only.',
     unsigned: 'The installer is not signed yet, so Windows may say it protected your PC: press More info, then Run anyway.',
   },
   {
@@ -75,7 +75,7 @@ export const SYSTEMS: SystemInfo[] = [
       { id: 'old', label: 'Older than that', ok: false },
     ],
     steps: 'Unpack it and run sh install.sh in the folder. Linux has no single installer format, so this is a script.',
-    opens: 'Open the file, or run plugin-playground-install on it. It installs as “{name}”, a VST3 and CLAP plugin. Then rescan plugins in your DAW.',
+    opens: 'Open the file, or run plugin-playground-install on it. It installs as “{name}”, a VST3 and CLAP plugin. Then rescan plugins in your DAW. For now it shows your DAW’s own sliders: the window that looks like this page is on macOS only.',
     unsigned: '',
   },
 ];

@@ -1,0 +1,354 @@
+// sitecheck: use the site the way a visitor does, in a real browser, and say what broke.
+//
+//   node scripts/sitecheck.mjs                         # the built site in dist/, served here, in Chromium
+//   node scripts/sitecheck.mjs --browser webkit        # ...or firefox, or all
+//   node scripts/sitecheck.mjs --url https://chrishyoroklee.github.io/plugin-playground/
+//   node scripts/sitecheck.mjs --quick                 # a handful of presets, not every one
+//
+// The unit tests hold the pieces. This holds the page: that it loads and starts Python,
+// that every preset builds in the browser's engine, that it makes sound, that each
+// download is the file it claims to be, that Edit does what its buttons say, that a
+// shared link reopens the same device, and that nothing logs an error along the way.
+// It needs the network (Pyodide comes from a CDN) and `npx playwright install`. It makes
+// no sound: see MUTE.
+
+import { chromium, firefox, webkit } from 'playwright';
+import { createServer } from 'node:http';
+import { readFile, mkdir, writeFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const args = process.argv.slice(2);
+const flag = (name, fallback) => (args.includes(name) ? args[args.indexOf(name) + 1] : fallback);
+const QUICK = args.includes('--quick');
+const ENGINES = { chromium, firefox, webkit };
+const wanted = flag('--browser', 'chromium');
+const browsers = wanted === 'all' ? Object.keys(ENGINES) : [wanted];
+const OUT = flag('--out', path.join(ROOT, 'build', 'sitecheck'));
+
+// ── the built site, served from a folder, as GitHub Pages serves it ─────────────
+
+const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.mp3': 'audio/mpeg',
+  '.whl': 'application/octet-stream', '.md': 'text/markdown', '.png': 'image/png', '.svg': 'image/svg+xml', '.wasm': 'application/wasm' };
+
+async function serve() {
+  const dist = path.join(ROOT, 'dist');
+  if (!existsSync(path.join(dist, 'index.html'))) throw new Error('there is no dist/: run `npm run build` first');
+  const server = createServer(async (req, res) => {
+    const url = decodeURIComponent(new URL(req.url, 'http://x').pathname).replace(/^\/plugin-playground/, '');
+    // With no installers built here, say that one exists, so the Download menu shows what a visitor sees.
+    if (url === '/downloads/index.json' && !existsSync(path.join(dist, 'downloads', 'index.json'))) {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ runtime: { macos: 'downloads/plugin-playground-macos.pkg', windows: 'downloads/plugin-playground-windows-setup.exe', linux: 'downloads/plugin-playground-linux.tar.gz' } }));
+      return;
+    }
+    const file = path.join(dist, url.endsWith('/') ? url + 'index.html' : url);
+    try {
+      const body = await readFile(file);
+      res.writeHead(200, { 'content-type': TYPES[path.extname(file)] ?? 'application/octet-stream' });
+      res.end(body);
+    } catch {
+      res.writeHead(404);
+      res.end('not found');
+    }
+  });
+  await new Promise((done) => server.listen(0, '127.0.0.1', done));
+  return { url: `http://127.0.0.1:${server.address().port}/plugin-playground/`, close: () => server.close() };
+}
+
+// ── silence ─────────────────────────────────────────────────────────────────────
+
+// Runs in the page before anything of its own. Whatever the page connects to "the
+// speakers" is connected to a gain of zero in front of them.
+const MUTE = () => {
+  const real = Object.getOwnPropertyDescriptor(BaseAudioContext.prototype, 'destination').get;
+  const silent = new WeakMap();
+  Object.defineProperty(BaseAudioContext.prototype, 'destination', {
+    configurable: true,
+    get() {
+      const out = real.call(this);
+      if (typeof OfflineAudioContext !== 'undefined' && this instanceof OfflineAudioContext) return out;
+      if (!silent.has(this)) {
+        const gate = this.createGain();
+        gate.gain.value = 0;
+        gate.connect(out);
+        silent.set(this, gate);
+      }
+      return silent.get(this);
+    },
+  });
+  for (const tag of [HTMLAudioElement, HTMLVideoElement]) {
+    const play = tag.prototype.play;
+    tag.prototype.play = function () { this.muted = true; this.volume = 0; return play.call(this); };
+  }
+  window.__muted = true;
+};
+
+// ── one browser ─────────────────────────────────────────────────────────────────
+
+async function check(name, url) {
+  const problems = [];
+  const note = (ok, what, detail = '') => {
+    console.log(`  ${ok ? 'ok  ' : 'FAIL'}  ${what}${detail ? `  ${detail}` : ''}`);
+    if (!ok) problems.push(`${what}${detail ? `: ${detail}` : ''}`);
+  };
+  // Silent, always. The page is asked to play, and a headless browser still has the
+  // machine's speakers: so the browser is muted where it has a switch for that, and in
+  // every browser the page's way out to the speakers is swapped for one turned to zero.
+  // The checks read the page's own level meter, which sits before the output.
+  const launch = name === 'chromium' ? { args: ['--mute-audio', '--autoplay-policy=no-user-gesture-required'] }
+    : name === 'firefox' ? { firefoxUserPrefs: { 'media.volume_scale': '0.0', 'media.autoplay.default': 0, 'media.autoplay.blocking_policy': 0 } } : {};
+  const browser = await ENGINES[name].launch(launch);
+  const context = await browser.newContext({ acceptDownloads: true, viewport: { width: 1400, height: 950 } });
+  await context.addInitScript(MUTE);
+  if (name === 'chromium') await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  const page = await context.newPage();
+  const errors = [];
+  const failed = [];
+  page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
+  page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+  page.on('response', (r) => { if (r.status() >= 400) failed.push(`${r.status()} ${r.url()}`); });
+  const shots = path.join(OUT, name);
+  await mkdir(shots, { recursive: true });
+
+  const state = () => page.evaluate(() => document.body.dataset.state);
+  const settle = async (timeout = 90000) => {
+    await page.waitForTimeout(350);
+    await page.waitForFunction(() => ['ready', 'error'].includes(document.body.dataset.state), null, { timeout });
+    return state();
+  };
+  const level = () => page.evaluate(() => Number(getComputedStyle(document.getElementById('meter-l')).getPropertyValue('--level')));
+  const loudest = async (ms = 1500) => {
+    let top = 0;
+    for (let waited = 0; waited < ms; waited += 100) { await page.waitForTimeout(100); top = Math.max(top, await level()); }
+    return top;
+  };
+  const stopEditing = async () => {
+    await page.keyboard.press('Escape');
+    if (await page.evaluate(() => document.body.classList.contains('is-editing'))) await page.locator('#btn-edit').click();
+  };
+
+  try {
+    // 1. it loads, and Python starts
+    const began = Date.now();
+    await page.goto(url);
+    const first = await settle(240000).catch(() => 'timeout');
+    note(first === 'ready', 'the page loads and builds its first device', `${((Date.now() - began) / 1000).toFixed(1)} s`);
+    if (first !== 'ready') throw new Error('the page did not start');
+    // Not a check of the site: a check that this run cannot be heard, before it presses Play.
+    const gain = await page.evaluate(() => {
+      if (!window.__muted) return 'the mute did not run';
+      const probe = new AudioContext();
+      const value = probe.destination.gain ? probe.destination.gain.value : 'not a gain';
+      void probe.close();
+      return value;
+    });
+    if (gain !== 0) throw new Error(`this run would be audible (${gain}); stopping before it plays anything`);
+
+    // 2. every preset builds, on both tabs. Nothing has been played yet, which is how a
+    // visitor first meets the tabs (and where Safari once never switched).
+    const lists = {};
+    for (const tab of ['effect', 'instrument']) {
+      await page.locator(`#mode-${tab}`).click();
+      const switched = await page.waitForFunction((id) => document.getElementById(id).getAttribute('aria-selected') === 'true', `mode-${tab}`, { timeout: 15000 })
+        .then(() => true, () => false);
+      note(switched, `the ${tab === 'effect' ? 'Effect' : 'Instrument'} tab opens before anything has been played`);
+      if (!switched) continue;
+      await settle();
+      const count = await page.locator('#presets .preset').count();
+      lists[tab] = await page.locator('#presets .preset b').first().textContent();
+      const which = QUICK ? [0, 1, Math.floor(count / 2), count - 2, count - 1] : [...Array(count).keys()];
+      const bad = [];
+      for (const i of which) {
+        const preset = page.locator('#presets .preset').nth(i);
+        const title = await preset.locator('b').textContent();
+        await preset.click();
+        const s = await settle().catch(() => 'timeout');
+        const dials = await page.locator('#device .live-dial').count();
+        const shown = await page.locator('#device-title').textContent();
+        if (s !== 'ready' || dials < 1 || shown !== title) bad.push(`${title} (${s}, ${dials} dials, titled "${shown}")`);
+        if (await page.locator('#drawer.open').count()) await page.locator('#drawer-close').click();
+      }
+      note(bad.length === 0, `${which.length} of ${count} ${tab} presets build`, bad.slice(0, 5).join('; '));
+    }
+    note(lists.effect !== lists.instrument, 'the two tabs list different presets', `${lists.effect} / ${lists.instrument}`);
+
+    // 3. it makes sound: an effect on its sample, bypassed, and an instrument on a key
+    await page.locator('#mode-effect').click();
+    await settle();
+    await page.locator('#presets .preset', { hasText: 'Shoegaze Wall' }).first().click();
+    await settle();
+    await page.locator('#btn-play').click();
+    const wet = await loudest(2500);
+    note(wet > 0.05, 'an effect plays its sample', `meter ${wet.toFixed(2)}`);
+    await page.locator('#btn-bypass').click();
+    const dry = await loudest(1200);
+    note(dry > 0.05, 'bypass plays the sample dry', `meter ${dry.toFixed(2)}`);
+    await page.locator('#btn-bypass').click();
+    await page.locator('#btn-play').click();
+    await page.waitForTimeout(300);
+
+    await page.locator('#mode-instrument').click();
+    await settle();
+    await page.locator('#presets .preset', { hasText: 'Saw Lead' }).first().click();
+    await settle();
+    const key = page.locator('#piano .key').nth(12);
+    const box = await key.boundingBox();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height * 0.7);
+    await page.mouse.down();
+    const played = await loudest(1200);
+    await page.mouse.up();
+    note(played > 0.05, 'an instrument sounds when a key is pressed', `meter ${played.toFixed(2)}`);
+    await page.waitForTimeout(600);
+
+    // 4. the downloads are the files they say they are
+    for (const tab of ['effect', 'instrument']) {
+      await page.locator(`#mode-${tab}`).click();
+      await settle();
+      await page.locator('#btn-download').click();
+      const [amxd] = await Promise.all([page.waitForEvent('download', { timeout: 60000 }), page.locator('#dl-amxd').click()]);
+      const amxdBytes = await readFile(await amxd.path());
+      note(amxdBytes.subarray(0, 4).toString('latin1') === 'ampf' && amxdBytes.length > 4000, `${tab}: the Max for Live device downloads`,
+        `${amxd.suggestedFilename()}, ${amxdBytes.length} bytes`);
+      if (!(await page.locator('#downloads.open').count())) await page.locator('#btn-download').click();
+      const [dev] = await Promise.all([page.waitForEvent('download', { timeout: 60000 }), page.locator('#dl-device').click()]);
+      const text = (await readFile(await dev.path())).toString('utf8');
+      const ok = text.startsWith('ppdevice 1\n') && text.includes(`\nkind ${tab}\n`) && text.includes('\n@end\n') && /\nface \S+/.test(text) && /\nsettings \S+/.test(text);
+      note(ok && dev.suggestedFilename().endsWith('.ppdevice'), `${tab}: the plugin's device file downloads`, `${dev.suggestedFilename()}, ${text.length} bytes`);
+      const href = await page.locator('#dl-installer').getAttribute('href');
+      note(!!href && /plugin-playground-(macos|windows|linux)/.test(href), `${tab}: the installer is offered`, href ?? 'no link');
+      await page.keyboard.press('Escape');
+      await page.mouse.click(700, 500);
+    }
+
+    // 5. Edit: effects, the EQ, a knob, a dial that turns by itself, colours
+    await page.locator('#mode-effect').click();
+    await settle();
+    await page.locator('#presets .preset', { hasText: 'Quarter Echo' }).first().click();
+    await settle();
+    await page.locator('#btn-edit').click();
+    await page.waitForTimeout(200);
+    const onDevice = () => page.locator('#device .edit-card.is-effect').count();
+    const cardsBefore = await onDevice();
+    await page.locator('.edit-add', { hasText: 'Effect' }).click();
+    const offered = await page.locator('#dial-pop .edit-option b').allTextContents();
+    note(offered.includes('EQ') && offered.includes('Reverb'), 'Edit: + Effect offers what is not on the device', offered.join(', '));
+    await page.locator('#dial-pop .edit-option', { hasText: 'EQ' }).click();
+    await settle();
+    const eqDials = await page.locator('#device .dv-widget[data-module="eq"]').count();
+    note((await onDevice()) === cardsBefore + 1 && eqDials === 4, 'Edit: the EQ goes on with its four dials', `${eqDials} dials`);
+
+    const cards = page.locator('#device .edit-card.is-effect');
+    const grip = await cards.last().locator('.edit-grip').boundingBox();
+    const target = await cards.first().boundingBox();
+    const orderOf = () => page.locator('#chain .mod.is-on').evaluateAll((els) => els.map((e) => e.dataset.id));
+    const before = await orderOf();
+    await page.mouse.move(grip.x + grip.width / 2, grip.y + 10);
+    await page.mouse.down();
+    await page.mouse.move(grip.x - 30, grip.y + 10, { steps: 4 });
+    await page.mouse.move(target.x + 4, target.y + 12, { steps: 8 });
+    await page.mouse.up();
+    await settle();
+    const after = await orderOf();
+    note(after[0] === before[before.length - 1], 'Edit: dragging an effect moves it', `${before.join(' > ')}  to  ${after.join(' > ')}`);
+
+    await page.locator('#device .dv-widget[data-target="delay.time"]').click();
+    await page.locator('#dial-pop .edit-option', { hasText: 'Sweep' }).click();
+    await settle();
+    note((await page.locator('#device .dv-widget.is-moved').count()) === 1 && (await page.locator('#device .moved-ring').count()) === 1,
+      'Edit: a dial set to sweep is marked and shows how far');
+    await page.keyboard.press('Escape');
+
+    await page.locator('.edit-add', { hasText: 'Knob' }).click();
+    await settle();
+    await page.locator('#device .dv-widget[data-target="delay.mix"]').click();
+    await settle();
+    await page.locator('#device .dv-widget[data-target="eq.high"]').click();
+    await settle();
+    const linked = await page.locator('#device .dv-widget.is-linked').count();
+    await page.locator('.edit-done').click();
+    await settle();
+    note(linked === 2 && (await page.locator('#device .dv-widget[data-knob]').count()) === 1, 'Edit: a knob of one\'s own links to the dials clicked', `${linked} linked`);
+
+    await page.locator('.edit-add', { hasText: 'Colours' }).click();
+    await page.locator('.edit-theme', { hasText: 'Midnight' }).click();
+    await settle();
+    const backdrop = await page.locator('#device .dv-panel').first().evaluate((e) => getComputedStyle(e).backgroundColor);
+    note(backdrop === 'rgb(23, 24, 28)', 'Edit: a theme recolours the device', backdrop);
+    await page.locator('#device .edit-card.is-effect').first().locator('.edit-x').click();
+    await settle();
+    note((await onDevice()) === cardsBefore, 'Edit: an effect\'s x takes it off');
+    await stopEditing();
+    await page.screenshot({ path: path.join(shots, 'edited.png') });
+
+    // 6. a link reopens exactly this device
+    await page.waitForTimeout(600);
+    const link = await page.evaluate(() => location.href);
+    const mine = await page.evaluate(() => ({ code: document.getElementById('code').textContent, title: document.getElementById('device-title').textContent }));
+    const second = await context.newPage();
+    await second.goto(link);
+    await second.waitForFunction(() => ['ready', 'error'].includes(document.body.dataset.state), null, { timeout: 240000 });
+    const theirs = await second.evaluate(() => ({ code: document.getElementById('code').textContent, title: document.getElementById('device-title').textContent }));
+    note(link.includes('#s=') && theirs.code === mine.code && theirs.title === mine.title, 'a link reopens the same device, script for script');
+    await second.close();
+
+    // 7. Describe it, the free way: a pasted answer becomes a device
+    await page.locator('#tab-build').click();
+    await page.locator('#ai-request').fill('a bright slap echo');
+    await page.evaluate(() => { document.getElementById('ai-paste-box').open = true; });
+    const answer = { name: 'Slap Check', explanation: 'A short bright echo.', synth: [], output_gain: 0, lfo1: { shape: 'sine', rate: 1 }, lfo2: { shape: 'sine', rate: 6 },
+      follow_sens: 6, knobs: [], motion: [],
+      chain: [{ id: 'delay', options: [{ id: 'style', choice: 'stereo' }], dials: [{ id: 'time', value: 110 }, { id: 'feedback', value: 10 }, { id: 'mix', value: 30 }] },
+        { id: 'eq', options: [], dials: [{ id: 'low', value: -2 }, { id: 'mid', value: 0 }, { id: 'freq', value: 1000 }, { id: 'high', value: 5 }] }] };
+    await page.locator('#ai-answer').fill(`Here it is:\n\`\`\`json\n${JSON.stringify(answer, null, 1)}\n\`\`\``);
+    await page.locator('#ai-apply').click();
+    await settle();
+    note((await page.locator('#device-title').textContent()) === 'Slap Check' && (await page.locator('#device .live-dial').count()) === 8,
+      'Describe it: a pasted answer builds the device', await page.locator('#ai-note').textContent());
+
+    // 8. dark mode, and a phone-sized window
+    await page.locator('#btn-settings').click();
+    await page.locator('#dark-mode').click();
+    await page.waitForTimeout(200);
+    note((await page.evaluate(() => document.documentElement.dataset.theme)) === 'dark', 'dark mode switches on');
+    await page.screenshot({ path: path.join(shots, 'dark.png') });
+    await page.locator('#dark-mode').click();
+    await page.keyboard.press('Escape');
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.waitForTimeout(400);
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    note(overflow <= 1, 'at phone width nothing runs off the side', `${overflow} px`);
+    await page.screenshot({ path: path.join(shots, 'phone.png') });
+    await page.setViewportSize({ width: 1400, height: 950 });
+
+    // 9. nothing went wrong quietly
+    const quiet = [...new Set(failed)].filter((f) => !/favicon/.test(f));
+    note(quiet.length === 0, 'no request failed', quiet.slice(0, 4).join('; '));
+    const loud = [...new Set(errors)].filter((e) => !/Failed to load resource/.test(e));
+    note(loud.length === 0, 'no error was logged', loud.slice(0, 4).join(' | '));
+  } catch (err) {
+    note(false, 'the check itself stopped', String(err.message ?? err).split('\n')[0]);
+    await page.screenshot({ path: path.join(shots, 'stopped.png') }).catch(() => {});
+    if (errors.length) console.log(`        logged: ${[...new Set(errors)].slice(0, 3).join(' | ')}`);
+  }
+  await browser.close();
+  return problems;
+}
+
+const given = flag('--url', '');
+const local = given ? null : await serve();
+const url = given || local.url;
+await mkdir(OUT, { recursive: true });
+let total = 0;
+const report = {};
+for (const name of browsers) {
+  console.log(`\n${name}  ${url}`);
+  report[name] = await check(name, url);
+  total += report[name].length;
+}
+local?.close();
+await writeFile(path.join(OUT, 'report.json'), JSON.stringify(report, null, 1));
+console.log(total ? `\n${total} problem${total === 1 ? '' : 's'}` : '\nall of it works');
+process.exit(total ? 1 : 0);

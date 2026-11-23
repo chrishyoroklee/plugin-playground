@@ -1368,7 +1368,13 @@ function init(): void {
     }
   });
 
-  new ResizeObserver(() => fitDevice()).observe($('device-wrap'));
+  // On the next frame, not inside the observer: fitting changes sizes, and Safari reports a
+  // resize made while it is still handing out resizes as an error.
+  let fitting = 0;
+  new ResizeObserver(() => {
+    cancelAnimationFrame(fitting);
+    fitting = requestAnimationFrame(() => fitDevice());
+  }).observe($('device-wrap'));
 
   // Zoom: the buttons on the stage, or pinch / Ctrl-scroll over it.
   $('zoom-out').addEventListener('click', () => setZoom(zoomOf[view] / 1.25));

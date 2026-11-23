@@ -3,7 +3,7 @@
 //   node headless.mjs web_patches.json signal.wav <subdir for the WAVs>
 import { chromium } from 'playwright';
 const [tests, wav, outDir] = process.argv.slice(2);
-const browser = await chromium.launch({ headless: true });
+const browser = await chromium.launch({ headless: true, args: ['--mute-audio'] })   // it renders offline; muted all the same;
 const page = await browser.newPage();
 page.on('pageerror', (e) => console.log('pageerror', e.message));
 await page.goto('http://localhost:5173/');

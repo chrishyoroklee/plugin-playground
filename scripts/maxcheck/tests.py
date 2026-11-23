@@ -31,6 +31,11 @@ t("delay_min", [{"module":"delay","options":{"style":"stereo"},"values":{"time":
 for s in (0, 55, 100): t("reverb_size%d"%s, [{"module":"reverb","values":{"size":s,"damp":10000,"mix":100}}])
 t("reverb_def", [{"module":"reverb","values":{"size":55,"damp":6000,"mix":25}}])
 t("reverb_damp500", [{"module":"reverb","values":{"size":55,"damp":500,"mix":100}}])
+for band in ("low", "mid", "high"):
+    for db in (12, -12): t("eq_%s_%s%d"%(band, "p" if db > 0 else "m", abs(db)), [{"module":"eq","values":{band:db}}])
+t("eq_mid_m12_3000", [{"module":"eq","values":{"mid":-12,"freq":3000}}])
+t("eq_mid_p12_300", [{"module":"eq","values":{"mid":12,"freq":300}}])
+t("eq_all", [{"module":"eq","values":{"low":6,"mid":-6,"freq":800,"high":6}}])
 t("delay_def_eq", [{"module":"delay","options":{"style":"stereo"},"values":{"time":320,"feedback":40,"mix":50}}])
 t("chain_all", [{"module":"filter"},{"module":"drive"},{"module":"crush"},{"module":"chorus"},{"module":"tremolo"},{"module":"delay"},{"module":"reverb"}])
 t("out_p12", [], 12); t("out_m24", [], -24)

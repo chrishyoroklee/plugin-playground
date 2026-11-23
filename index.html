@@ -5,6 +5,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="light dark" />
     <meta name="description" content="Plugin Playground: build an audio effect or a MIDI instrument in your browser, hear it, and download it as a Max for Live device or a VST3, CLAP or Audio Unit plugin. Free and open source, built on MaxPyLang." />
+    <!-- What a link to the site looks like when it is shared. -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Plugin Playground" />
+    <meta property="og:title" content="Plugin Playground: make an audio plugin in your browser" />
+    <meta property="og:description" content="Build an effect or a synth, hear it, and download it for Ableton Live, Logic Pro or any DAW. Free and open source. In beta." />
+    <meta property="og:url" content="https://chrishyoroklee.github.io/plugin-playground/" />
+    <meta property="og:image" content="https://chrishyoroklee.github.io/plugin-playground/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="canonical" href="https://chrishyoroklee.github.io/plugin-playground/" />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M8.2 1.8v4M15.8 1.8v4' fill='none' stroke='%233f78bd' stroke-width='2.4' stroke-linecap='round'/><rect x='3' y='5' width='18' height='16.5' rx='5' fill='%233f78bd'/><path d='M10 9.6v7.3l6-3.65z' fill='%23fff8f4'/></svg>" />
     <title>Plugin Playground</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -33,6 +44,7 @@
             <path class="brand-play" d="M10 9.6v7.3l6-3.65z" />
           </svg>
           <span class="brand-name">Plugin Playground</span>
+          <span class="brand-beta" title="New, and still changing. Tell us what breaks: the ? button has the link.">Beta</span>
         </a>
         <div class="topbar-right">
           <div id="help" class="pop help">
@@ -48,6 +60,10 @@
               </ol>
               <p class="muted small">For other hosts, the same device compiles to a VST3, CLAP or Audio Unit plugin: see Download.</p>
               <p class="muted small">What you hear is checked against Max itself: the filter, distortion, crush, delay and reverb match a Max 9 render sample for sample. Chorus, flanger and tremolo differ only in where their sweep starts.</p>
+              <p class="muted small">
+                This is a beta. If something breaks or sounds wrong,
+                <a href="https://github.com/chrishyoroklee/plugin-playground/issues/new" target="_blank" rel="noopener">tell us on GitHub</a>.
+              </p>
               <p class="muted small foot">
                 Open source, built on <a href="https://github.com/Barnard-PL-Labs/MaxPyLang">MaxPyLang</a>.
                 The recordings are CC0 from Freesound (<a href="samples/fx/CREDITS.md">credits</a>); the other sounds are computed in your browser.

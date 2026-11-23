@@ -79,6 +79,11 @@ decodes it: positive samples divided by 32767, negative by 32768):
   above -80 dB, on 86 of the 88. The other two are the whole chain (0.3 dB in one window
   above -60 dB, 0.5 dB in a quieter one) and Blown Speaker's click, below.
 
+The EQ came later and was added the same way: 9 tests and its 5 presets, rendered in
+headless Chromium and in the C++. The browser's files were 16-bit that time, and the two
+agree to within half a step of one (0.000016 of full scale) on all 14. The EQ has not
+been rendered in Max.
+
 Where the samples differ by more, and why:
 
 | Tests | Largest difference | Cause |

@@ -52,6 +52,51 @@
       ]
     },
     {
+      "id": "eq",
+      "label": "EQ",
+      "blurb": "Three bands: more or less bass, more or less treble, and a middle you can move.",
+      "options": [],
+      "params": [
+        {
+          "id": "low",
+          "label": "Low",
+          "min": -15,
+          "max": 15,
+          "default": 0,
+          "unit": "dB",
+          "exponent": 1.0
+        },
+        {
+          "id": "mid",
+          "label": "Mid",
+          "min": -15,
+          "max": 15,
+          "default": 0,
+          "unit": "dB",
+          "exponent": 1.0
+        },
+        {
+          "id": "freq",
+          "label": "Mid Freq",
+          "short": "Freq",
+          "min": 200,
+          "max": 5000,
+          "default": 1000,
+          "unit": "Hz",
+          "exponent": 3.0
+        },
+        {
+          "id": "high",
+          "label": "High",
+          "min": -15,
+          "max": 15,
+          "default": 0,
+          "unit": "dB",
+          "exponent": 1.0
+        }
+      ]
+    },
+    {
       "id": "drive",
       "label": "Distortion",
       "blurb": "Five kinds of clipping, a tone control after it, and automatic level matching so more drive means more dirt, not more volume.",
