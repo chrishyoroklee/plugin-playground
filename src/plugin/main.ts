@@ -658,7 +658,6 @@ function pluginCard(plugin: Plugin, onScreen: boolean): HTMLElement {
   head.type = 'button';
   head.className = 'plugin-head';
   head.setAttribute('aria-expanded', String(open));
-  head.style.setProperty('--dot', plugin.presets[0].settings.accent ?? SCHEMA.accents[0]);
   const count = plugin.presets.length;
   head.append(
     Object.assign(document.createElement('b'), { textContent: plugin.name }),
@@ -674,6 +673,9 @@ function pluginCard(plugin: Plugin, onScreen: boolean): HTMLElement {
   const rows = document.createElement('div');
   rows.className = 'preset-list';
   const grouped = new Set(plugin.presets.map((p) => p.group)).size > 1;
+  // Where the presets are different types of the one effect (Tube and Fuzz, Room and
+  // Hall), each row says which, at its right: the one thing a row's name may not.
+  const typeOf = typeNamer(plugin);
   let last = '';
   for (const p of plugin.presets) {
     if (grouped && p.group !== last) {
@@ -683,17 +685,35 @@ function pluginCard(plugin: Plugin, onScreen: boolean): HTMLElement {
     const b = document.createElement('button');
     b.type = 'button';
     b.className = `preset${p.id === activePreset && onScreen ? ' is-active' : ''}`;
-    b.style.setProperty('--dot', p.settings.accent ?? SCHEMA.accents[0]);
     b.title = p.tag;
-    b.append(
-      Object.assign(document.createElement('b'), { textContent: p.name }),
-      Object.assign(document.createElement('span'), { textContent: p.tag }),
-    );
+    b.append(Object.assign(document.createElement('b'), { textContent: p.name }));
+    const type = typeOf(p);
+    if (type) b.append(Object.assign(document.createElement('em'), { textContent: type }));
+    b.append(Object.assign(document.createElement('span'), { textContent: p.tag }));
     b.addEventListener('click', () => loadPreset(p, plugin));
     rows.append(b);
   }
   card.append(head, rows);
   return card;
+}
+
+/**
+ * For a plugin that is one effect with types: each preset's type, by its label. Returns
+ * nothing for any preset when they are all the same type, or the plugin has none.
+ */
+function typeNamer(plugin: Plugin): (p: Preset) => string | undefined {
+  const none = (): undefined => undefined;
+  if (plugin.rack || kind() === 'instrument') return none;
+  const module = plugin.presets[0].settings.chain?.find((e) => e.on !== false)?.module;
+  const spec = module ? moduleSpec(module) : undefined;
+  const kinds = spec?.options[0];
+  if (!spec || !kinds) return none;
+  const label = (p: Preset): string => {
+    const id = normalize(p.settings).chain.find((e) => e.module === spec.id)?.options[kinds.id];
+    return kinds.choices.find((c) => c.id === id)?.label ?? '';
+  };
+  if (new Set(plugin.presets.map(label)).size < 2) return none;
+  return label;
 }
 
 /** Open a preset: the device becomes its plugin, named for the plugin, with this preset's settings. */
