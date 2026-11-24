@@ -517,6 +517,81 @@
   }
  },
  {
+  "id": "crunchybits",
+  "name": "Crunchy Bits",
+  "tag": "Full rate, few bits: a fizz on every note",
+  "group": "Lo-Fi",
+  "sample": "drums",
+  "settings": {
+   "name": "Crunchy Bits",
+   "accent": "#c98a12",
+   "chain": [
+    {
+     "module": "crush",
+     "on": true,
+     "options": {},
+     "values": {
+      "rate": 100,
+      "bits": 5
+     }
+    }
+   ],
+   "output": {
+    "gain": 0
+   }
+  }
+ },
+ {
+  "id": "lowrate",
+  "name": "Low Rate",
+  "tag": "All the bits, a fraction of the samples: metallic and aliased",
+  "group": "Lo-Fi",
+  "sample": "piano",
+  "settings": {
+   "name": "Low Rate",
+   "accent": "#1f8f86",
+   "chain": [
+    {
+     "module": "crush",
+     "on": true,
+     "options": {},
+     "values": {
+      "rate": 12,
+      "bits": 16
+     }
+    }
+   ],
+   "output": {
+    "gain": 0
+   }
+  }
+ },
+ {
+  "id": "brokenconsole",
+  "name": "Broken Console",
+  "tag": "Both at once, down to four bits",
+  "group": "Lo-Fi",
+  "sample": "vocals",
+  "settings": {
+   "name": "Broken Console",
+   "accent": "#c8553d",
+   "chain": [
+    {
+     "module": "crush",
+     "on": true,
+     "options": {},
+     "values": {
+      "rate": 20,
+      "bits": 4
+     }
+    }
+   ],
+   "output": {
+    "gain": 0
+   }
+  }
+ },
+ {
   "id": "telephone",
   "name": "Telephone",
   "tag": "Narrow band-pass with a clipped edge",

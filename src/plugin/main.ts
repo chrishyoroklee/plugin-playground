@@ -23,6 +23,7 @@ import { Track } from './audio';
 import { DEVICE_HEIGHT, highlightPython, renderDevice, renderPatch } from './device-view';
 import { mountGraph, typeButtons, type GraphDial, type Live, type Mounted } from './graph-view';
 import { Keyboard, PHRASES, Sequencer } from './keys';
+import { defaultsOf, pluginOfPreset, pluginOfSettings, pluginsOf, type Plugin } from './plugins';
 import {
   SCHEMA, decodeSettings, dialIndex, encodeSettings, kindOf, moduleSpec, normalize, presetsOf, themeOf, valuesOf,
   type ChainEntry, type Kind, type ModuleSpec, type Preset, type Section, type Settings,
@@ -53,6 +54,8 @@ const GAP_LOG = 'https://github.com/Barnard-PL-Labs/MaxPyLang/blob/main/docs/typ
 // ── state ───────────────────────────────────────────────────────────────────────
 
 let activePreset: string | undefined;
+/** The plugin chosen in the left panel, which tells apart two plugins of the same shape. */
+let activePlugin: string | undefined;
 let result: RunResult | undefined;
 let buildSeq = 0;
 let view: 'device' | 'patch' = 'device';
@@ -63,7 +66,7 @@ let deviceWidth = 0;
 /** The running device's notein, when it is an instrument: where played notes are sent. */
 let noteIn: MaxNode | undefined;
 /** The device of the kind not on screen, kept for when its tab is chosen again. */
-const parked: Partial<Record<Kind, { settings: Settings; preset: string | undefined }>> = {};
+const parked: Partial<Record<Kind, { settings: Settings; preset: string | undefined; plugin: string | undefined }>> = {};
 /** The Plugin Playground installer for each system, if this site was published with them. */
 let runtime: RuntimeFiles = {};
 // Last, because choosing the starting device also sets the preset and sample above.
@@ -87,8 +90,10 @@ function initialSettings(): Settings {
 function firstPreset(which: Kind): Settings {
   const first = presetsOf(which)[0];
   activePreset = first.id;
+  const plugin = pluginOfPreset(which, first.id);
+  activePlugin = plugin?.id;
   if (first.sample) sampleId = first.sample;
-  return normalize(first.settings);
+  return { ...normalize(first.settings), name: plugin?.name ?? first.name };
 }
 
 const capitalize = (s: string): string => (s ? s[0].toUpperCase() + s.slice(1) : s);
@@ -315,6 +320,57 @@ function syncHash(): void {
 
 function renderHead(): void {
   $('device-title').textContent = settings.name;
+  renderPresetBar();
+}
+
+/** The plugin on screen, if the device is one: same effects, same order, whatever its dials say. */
+const currentPlugin = (): Plugin | undefined => pluginOfSettings(kind(), settings, activePlugin);
+
+/**
+ * The preset menu on the plugin's header: its presets (and how it comes, for a plugin that
+ * is one effect), the one it is on, and arrows to step through them.
+ */
+function renderPresetBar(): void {
+  const plugin = currentPlugin();
+  const bar = $('preset-bar');
+  bar.hidden = !plugin;
+  if (!plugin) return;
+  const pick = $<HTMLSelectElement>('preset-pick');
+  pick.replaceChildren();
+  const option = (value: string, text: string): HTMLOptionElement => Object.assign(document.createElement('option'), { value, textContent: text });
+  if (!activePreset) pick.append(option('', 'Edited'));
+  if (defaultsOf(plugin, kind())) pick.append(option('default', 'Default'));
+  const groups = [...new Set(plugin.presets.map((p) => p.group))];
+  for (const group of groups) {
+    const into = groups.length > 1 ? Object.assign(document.createElement('optgroup'), { label: group }) : pick;
+    for (const p of plugin.presets.filter((x) => x.group === group)) into.append(option(p.id, p.name));
+    if (into !== pick) pick.append(into);
+  }
+  pick.value = activePreset ?? '';
+  pick.title = plugin.presets.find((p) => p.id === activePreset)?.tag ?? '';
+}
+
+/** Open a preset of the plugin on screen, by its value in the menu ('default' for none). */
+function choosePreset(value: string): void {
+  const plugin = currentPlugin();
+  if (!plugin) return;
+  const preset = plugin.presets.find((p) => p.id === value);
+  if (preset) { loadPreset(preset, plugin); return; }
+  const fresh = defaultsOf(plugin, kind());
+  if (!fresh) return;
+  settings = fresh;
+  activePreset = 'default';
+  activePlugin = plugin.id;
+  renderSide();
+  renderDownloads();
+  scheduleBuild();
+}
+
+function stepPreset(by: number): void {
+  const values = [...$<HTMLSelectElement>('preset-pick').options].map((o) => o.value).filter((v) => v);
+  const at = values.indexOf(activePreset ?? '');
+  const next = values[(at + by + values.length) % values.length];
+  if (next) choosePreset(next);
 }
 
 /** Give the device a new name, from wherever it was typed. */
@@ -515,16 +571,19 @@ function markCustom(): void {
   if (!activePreset) return;
   activePreset = undefined;
   for (const el of document.querySelectorAll('.preset.is-active')) el.classList.remove('is-active');
+  renderPresetBar();
   renderDownloads();
 }
 
 /** The preset sections of the tab on screen, in file order, as the left panel lists them. */
-const sections = (): string[] => [...new Set(presetsOf(kind()).map((p) => p.group))];
+const sections = (): string[] => [...new Set(pluginsOf(kind()).map((p) => p.category))];
 let section = 'All';
 
 function renderSections(): void {
   const host = $('sections');
   host.replaceChildren();
+  // One category (the instrument's one synth) needs no chips to choose between.
+  host.hidden = sections().filter((g) => g !== 'Start').length < 2;
   // 'Start' holds only the empty device; it is listed under All and needs no chip.
   for (const name of ['All', ...sections().filter((g) => g !== 'Start')]) {
     const b = document.createElement('button');
@@ -543,37 +602,90 @@ function renderSections(): void {
   }
 }
 
+/** Plugins that are open in the left panel, showing their presets. The one on screen always is. */
+const opened = new Set<string>();
+
+/**
+ * The left panel: each category's plugins (and then its racks), each a card that opens to
+ * show its presets. Clicking a plugin opens it on its first preset.
+ */
 function renderPresets(): void {
   const host = $('presets');
   host.replaceChildren();
-  for (const group of sections()) {
-    if (section !== 'All' && section !== group) continue;
-    const list = presetsOf(kind()).filter((p) => p.group === group);
+  const current = currentPlugin();
+  for (const category of sections()) {
+    if (section !== 'All' && section !== category) continue;
+    const plugins = pluginsOf(kind()).filter((p) => p.category === category);
     const head = document.createElement('h3');
-    head.append(group, Object.assign(document.createElement('small'), { textContent: String(list.length) }));
+    head.append(category);
     host.append(head);
-    const rows = document.createElement('div');
-    rows.className = 'preset-list';
-    for (const p of list) {
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.className = `preset${p.id === activePreset ? ' is-active' : ''}`;
-      b.style.setProperty('--dot', p.settings.accent ?? SCHEMA.accents[0]);
-      b.title = p.tag;
-      b.append(
-        Object.assign(document.createElement('b'), { textContent: p.name }),
-        Object.assign(document.createElement('span'), { textContent: p.tag }),
-      );
-      b.addEventListener('click', () => loadPreset(p));
-      rows.append(b);
+    const singles = plugins.filter((p) => !p.rack);
+    const racks = plugins.filter((p) => p.rack);
+    for (const p of singles) host.append(pluginCard(p, p.id === current?.id));
+    if (racks.length) {
+      const sub = document.createElement('h4');
+      sub.className = 'racks-head';
+      sub.textContent = singles.length ? 'Racks: several effects in a row' : 'Racks';
+      host.append(sub);
+      for (const p of racks) host.append(pluginCard(p, p.id === current?.id));
     }
-    host.append(rows);
   }
 }
 
-function loadPreset(p: Preset): void {
-  settings = normalize(p.settings);
+function pluginCard(plugin: Plugin, onScreen: boolean): HTMLElement {
+  const card = document.createElement('div');
+  const open = onScreen || opened.has(plugin.id);
+  card.className = `plugin${onScreen ? ' is-active' : ''}${open ? ' is-open' : ''}${plugin.rack ? ' is-rack' : ''}`;
+  card.dataset.plugin = plugin.id;
+  card.dataset.presets = `|${plugin.presets.map((p) => p.name).join('|')}|`;
+  const head = document.createElement('button');
+  head.type = 'button';
+  head.className = 'plugin-head';
+  head.setAttribute('aria-expanded', String(open));
+  head.style.setProperty('--dot', plugin.presets[0].settings.accent ?? SCHEMA.accents[0]);
+  const count = plugin.presets.length;
+  head.append(
+    Object.assign(document.createElement('b'), { textContent: plugin.name }),
+    Object.assign(document.createElement('small'), { textContent: `${count} preset${count === 1 ? '' : 's'}` }),
+    Object.assign(document.createElement('span'), { textContent: plugin.blurb }),
+  );
+  head.addEventListener('click', () => {
+    if (!onScreen) { opened.add(plugin.id); loadPreset(plugin.presets[0], plugin); return; }
+    if (opened.has(plugin.id)) opened.delete(plugin.id); else opened.add(plugin.id);
+    card.classList.toggle('is-open');
+    head.setAttribute('aria-expanded', String(card.classList.contains('is-open')));
+  });
+  const rows = document.createElement('div');
+  rows.className = 'preset-list';
+  const grouped = new Set(plugin.presets.map((p) => p.group)).size > 1;
+  let last = '';
+  for (const p of plugin.presets) {
+    if (grouped && p.group !== last) {
+      last = p.group;
+      rows.append(Object.assign(document.createElement('h4'), { className: 'preset-group', textContent: p.group }));
+    }
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = `preset${p.id === activePreset && onScreen ? ' is-active' : ''}`;
+    b.style.setProperty('--dot', p.settings.accent ?? SCHEMA.accents[0]);
+    b.title = p.tag;
+    b.append(
+      Object.assign(document.createElement('b'), { textContent: p.name }),
+      Object.assign(document.createElement('span'), { textContent: p.tag }),
+    );
+    b.addEventListener('click', () => loadPreset(p, plugin));
+    rows.append(b);
+  }
+  card.append(head, rows);
+  return card;
+}
+
+/** Open a preset: the device becomes its plugin, named for the plugin, with this preset's settings. */
+function loadPreset(p: Preset, plugin = pluginOfPreset(kind(), p.id)): void {
+  settings = { ...normalize(p.settings), name: plugin?.name ?? p.name };
   activePreset = p.id;
+  activePlugin = plugin?.id;
+  if (plugin) opened.add(plugin.id);
   if (p.sample && !customBuffer) void chooseSample(p.sample);
   renderSide();
   renderDownloads();
@@ -915,11 +1027,12 @@ async function setKind(next: Kind): Promise<void> {
   if (next === kind()) return;
   await setPlaying(false);
   await quiet();
-  parked[kind()] = { settings, preset: activePreset };
+  parked[kind()] = { settings, preset: activePreset, plugin: activePlugin };
   const back = parked[next];
   if (back) {
     settings = back.settings;
     activePreset = back.preset;
+    activePlugin = back.plugin;
   } else {
     settings = firstPreset(next);
   }
@@ -1359,6 +1472,9 @@ function init(): void {
   // The name can also be changed where it is shown: above the stage, and on the device.
   $('device-title').title = 'Double-click to rename';
   $('device-title').addEventListener('dblclick', () => editName($('device-title')));
+  $<HTMLSelectElement>('preset-pick').addEventListener('change', (e) => choosePreset((e.target as HTMLSelectElement).value));
+  $('preset-prev').addEventListener('click', () => stepPreset(-1));
+  $('preset-next').addEventListener('click', () => stepPreset(1));
   $('device').addEventListener('dblclick', (e) => {
     const label = (e.target as HTMLElement).closest<HTMLElement>('.dv-label');
     if (label && label.textContent === settings.name) editName(label);

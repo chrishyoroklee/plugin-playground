@@ -130,6 +130,21 @@ async function check(name, url) {
     if (await page.evaluate(() => document.body.classList.contains('is-editing'))) await page.locator('#btn-edit').click();
   };
 
+  // A preset, the way a visitor reaches it: open its plugin in the left panel, then click it.
+  const presetRow = (name) => page.locator('#presets .preset').filter({ has: page.locator('b', { hasText: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`) }) }).first();
+  const reveal = async (row) => {
+    if (await row.isVisible()) return;
+    await row.locator('xpath=ancestor::div[contains(@class, "plugin")][1]').locator('.plugin-head').click();
+    await settle();
+    if (!(await row.isVisible())) await row.locator('xpath=ancestor::div[contains(@class, "plugin")][1]').locator('.plugin-head').click();
+  };
+  const choose = async (name) => {
+    const row = presetRow(name);
+    await reveal(row);
+    await row.click();
+  };
+  const presetShown = () => page.evaluate(() => { const s = document.getElementById('preset-pick'); return s.options[s.selectedIndex]?.textContent ?? ''; });
+
   try {
     // 1. it loads, and Python starts
     const began = Date.now();
@@ -164,21 +179,48 @@ async function check(name, url) {
       for (const i of which) {
         const preset = page.locator('#presets .preset').nth(i);
         const title = await preset.locator('b').textContent();
+        await reveal(preset);
         await preset.click();
         const s = await settle().catch(() => 'timeout');
         const dials = await page.locator('#device .live-dial').count();
-        const shown = await page.locator('#device-title').textContent();
-        if (s !== 'ready' || dials < 1 || shown !== title) bad.push(`${title} (${s}, ${dials} dials, titled "${shown}")`);
+        const shown = await presetShown();
+        if (s !== 'ready' || dials < 1 || shown !== title) bad.push(`${title} (${s}, ${dials} dials, menu says "${shown}")`);
         if (await page.locator('#drawer.open').count()) await page.locator('#drawer-close').click();
       }
       note(bad.length === 0, `${which.length} of ${count} ${tab} presets build`, bad.slice(0, 5).join('; '));
     }
     note(lists.effect !== lists.instrument, 'the two tabs list different presets', `${lists.effect} / ${lists.instrument}`);
 
+    // 2b. a category lists plugins, and a plugin's presets are inside it
+    await page.locator('#mode-effect').click();
+    await settle();
+    await page.locator('#sections .section-chip', { hasText: /^EQ$/ }).click();
+    const eqPlugins = await page.locator('#presets .plugin:not(.is-rack) .plugin-head b').allTextContents();
+    note(eqPlugins.join(',') === 'Three Band EQ,Parametric EQ,Graphic EQ,Tilt EQ', 'EQ lists four plugins, not a dozen presets', eqPlugins.join(', '));
+    await page.locator('#presets .plugin[data-plugin="eq"] .plugin-head').click();
+    await settle();
+    const inside = await page.locator('#presets .plugin[data-plugin="eq"] .preset b').allTextContents();
+    const title = await page.locator('#device-title').textContent();
+    note(title === 'Three Band EQ' && inside.includes('Smile Curve') && inside.includes('Mid Push'), 'opening a plugin shows its presets inside it', `${title}: ${inside.join(', ')}`);
+    const menu = await page.locator('#preset-pick option').allTextContents();
+    await page.locator('#preset-pick').selectOption({ label: 'Mid Push' });
+    await settle();
+    const afterPick = await presetShown();
+    await page.locator('#preset-next').click();
+    await settle();
+    const afterNext = await presetShown();
+    await page.locator('#preset-pick').selectOption({ label: 'Default' });
+    await settle();
+    const flat = await page.evaluate(() => JSON.parse(decodeURIComponent(escape(atob(location.hash.slice(3).replace(/-/g, '+').replace(/_/g, '/'))))).chain.find((e) => e.module === 'eq').values);
+    note(menu[0] === 'Default' && afterPick === 'Mid Push' && afterNext !== 'Mid Push' && flat.low === 0 && flat.mid === 0 && flat.high === 0
+      && await page.locator('#device-title').textContent() === 'Three Band EQ',
+      'the plugin\'s preset menu and arrows change its settings, and Default is flat', `${menu.join(', ')}; then ${afterPick}, ${afterNext}`);
+    await page.locator('#sections .section-chip', { hasText: /^All$/ }).click();
+
     // 3. it makes sound: an effect on its sample, bypassed, and an instrument on a key
     await page.locator('#mode-effect').click();
     await settle();
-    await page.locator('#presets .preset', { hasText: 'Shoegaze Wall' }).first().click();
+    await choose('Shoegaze Wall');
     await settle();
     await page.locator('#btn-play').click();
     const wet = await loudest(2500);
@@ -192,7 +234,7 @@ async function check(name, url) {
 
     await page.locator('#mode-instrument').click();
     await settle();
-    await page.locator('#presets .preset', { hasText: 'Saw Lead' }).first().click();
+    await choose('Saw Lead');
     await settle();
     const key = page.locator('#piano .key').nth(12);
     const box = await key.boundingBox();
@@ -226,7 +268,7 @@ async function check(name, url) {
     // 5. Edit: effects, the EQ, a knob, a dial that turns by itself, colours
     await page.locator('#mode-effect').click();
     await settle();
-    await page.locator('#presets .preset', { hasText: 'Quarter Echo' }).first().click();
+    await choose('Quarter Echo');
     await settle();
     await page.locator('#btn-edit').click();
     await page.waitForTimeout(200);
@@ -310,7 +352,7 @@ async function check(name, url) {
 
     // 5a. the other kinds of EQ and of reverb: each is its own device with its own picture
     for (const [preset, kind, dials] of [['Parametric Sculpt', 'peq', 10], ['Graphic Curve', 'geq', 6], ['Tilt Bright', 'tilt', 2], ['Bus Glue', 'comp', 6]]) {
-      await page.locator('#presets .preset', { hasText: preset }).first().click();
+      await choose(preset);
       await settle();
       const canvas = page.locator(`#device .dv-graph[data-kind="${kind}"] canvas`);
       const drawn = (await canvas.count()) === 1 && await canvas.evaluate((c) => {
@@ -322,7 +364,7 @@ async function check(name, url) {
       const count = await page.locator(`#device .dv-widget[data-module="${kind}"]`).count();
       note(drawn > 200 && count === dials, `${preset}: its own picture and ${dials} dials`, `${drawn} pixels, ${count} dials`);
     }
-    await page.locator('#presets .preset', { hasText: 'Vocal Plate' }).first().click();
+    await choose('Vocal Plate');
     await settle();
     const spaces = page.locator('#device .dv-types button');
     const spaceNames = await spaces.allTextContents();
@@ -332,7 +374,7 @@ async function check(name, url) {
     note(spaceNames.join(',') === 'Room,Hall,Plate' && nowRoom === 'room', 'the reverb has three spaces, picked on its picture', `${spaceNames.join(', ')}; now ${nowRoom}`);
 
     // 5b. pictures: an EQ's curve is there, dragging it turns the dial, and Look can take them away
-    await page.locator('#presets .preset', { hasText: 'Mid Push' }).first().click();
+    await choose('Mid Push');
     await settle();
     const picture = page.locator('#device .dv-graph[data-kind="eq"] canvas');
     const midBefore = await page.locator('#device .live-dial[data-param="EQ Mid"]').getAttribute('aria-valuenow');
@@ -380,7 +422,7 @@ async function check(name, url) {
         `${silent} pixels silent, ${most} playing`);
     }
     // a module's kinds are along the top of its picture
-    await page.locator('#presets .preset', { hasText: 'Telephone' }).first().click();
+    await choose('Telephone');
     await settle();
     const types = page.locator('#device .dv-graph[data-kind="filter"] .dv-types button');
     const was = await page.locator('#device .dv-graph[data-kind="filter"] .dv-types button[aria-checked="true"]').getAttribute('data-choice');

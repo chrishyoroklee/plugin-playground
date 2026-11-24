@@ -43,20 +43,20 @@ const MUTE = () => {
   });
 };
 
-/** The faces of these presets, as patchc writes them into a .ppdevice. */
-function faces(ids) {
+/** The faces of these devices (settings as the page has them), as patchc writes them into a .ppdevice. */
+function faces(all) {
   const code = `
 import json, sys
 sys.path.insert(0, ${JSON.stringify(path.join(ROOT, 'scripts'))})
 import plugin
-presets = {p["id"]: p for p in json.load(open(${JSON.stringify(path.join(ROOT, 'src', 'plugin', 'presets.json'))}))}
-out = {}
-for i in ${JSON.stringify(ids)}:
-    made = plugin.fxgen.run(presets[i]["settings"], want_amxd=False)
-    out[i] = {"name": presets[i]["name"], "face": plugin.patchc.Compiler(made["json"], made["settings"]["name"]).face()}
+out = []
+for settings in json.load(sys.stdin):
+    made = plugin.fxgen.run(settings, want_amxd=False)
+    out.append(plugin.patchc.Compiler(made["json"], made["settings"]["name"]).face())
 print(json.dumps(out))`;
-  return JSON.parse(execFileSync(PYTHON, ['-c', code], { encoding: 'utf8', maxBuffer: 1 << 26 }));
+  return JSON.parse(execFileSync(PYTHON, ['-c', code], { input: JSON.stringify(all), encoding: 'utf8', maxBuffer: 1 << 26 }));
 }
+const names = Object.fromEntries(JSON.parse(await readFile(path.join(ROOT, 'src', 'plugin', 'presets.json'), 'utf8')).map((p) => [p.id, p.name]));
 
 /** face.html as the plugin is built with it: the drawing code and the fonts pasted in. */
 async function faceHtml() {
@@ -110,7 +110,6 @@ const INK = (selector) => [...document.querySelectorAll(selector)].map((c) => {
   return { left: c.getBoundingClientRect().left, grid: grid.map((n) => n / cell) };
 }).sort((a, b) => a.left - b.left).map((p) => p.grid);
 
-const made = faces(PRESETS);
 const html = await faceHtml();
 await mkdir(OUT, { recursive: true });
 const site = await serve();
@@ -122,10 +121,27 @@ await page.goto(site.url);
 await page.waitForFunction(() => document.querySelectorAll('#presets .preset').length > 20 && !document.querySelector('#presets .preset[disabled]'), null, { timeout: 180000 });
 const window_ = await context.newPage();
 
-let wrong = 0;
+// Each preset as a visitor opens it (its plugin, then the preset), and its settings as the
+// page then has them, from the share link.
+const opened = [];
 for (const id of PRESETS) {
-  const { name, face } = made[id];
-  await page.locator('#presets .preset').filter({ has: page.locator('b', { hasText: new RegExp(`^${name}$`) }) }).first().click();
+  const name = names[id];
+  const row = page.locator('#presets .preset').filter({ has: page.locator('b', { hasText: new RegExp(`^${name}$`) }) }).first();
+  if (!(await row.isVisible())) await row.locator('xpath=ancestor::div[contains(@class, "plugin")][1]').locator('.plugin-head').click();
+  await page.waitForTimeout(300);
+  await row.click();
+  await page.waitForTimeout(2500);
+  opened.push(await page.evaluate(() => JSON.parse(decodeURIComponent(escape(atob(location.hash.slice(3).replace(/-/g, '+').replace(/_/g, '/')))))));
+}
+const made = faces(opened);
+
+let wrong = 0;
+for (const [n, id] of PRESETS.entries()) {
+  const name = names[id], face = made[n];
+  const row = page.locator('#presets .preset').filter({ has: page.locator('b', { hasText: new RegExp(`^${name}$`) }) }).first();
+  if (!(await row.isVisible())) await row.locator('xpath=ancestor::div[contains(@class, "plugin")][1]').locator('.plugin-head').click();
+  await page.waitForTimeout(300);
+  await row.click();
   await page.waitForFunction((n) => document.querySelectorAll('#device .dv-widget').length === n, face.items.filter((i) => i.type === 'dial').length, { timeout: 60000 });
   await page.waitForTimeout(600);
   const onPage = await page.evaluate(MEASURE, { panel: '.dv-panel', label: '.dv-label', dial: '.dv-widget', graph: '.dv-graph' });

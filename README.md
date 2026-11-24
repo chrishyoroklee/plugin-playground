@@ -2,11 +2,12 @@
 
 Make an audio plugin in the browser, hear it, and download it.
 
-- An **effect**: pick one of 97 presets or build your own chain from twelve modules
-  (filter, four kinds of EQ: three-band, parametric, graphic and tilt, a compressor,
-  distortion, crush, chorus, tremolo, delay, and a reverb that is a room, a hall or a
-  plate), and hear it on a sound
-  from the library or on your own audio.
+- An **effect**: pick a plugin by category and one of its presets from the menu on its
+  header (EQ holds a Three Band, a Parametric, a Graphic and a Tilt EQ; Smile Curve and
+  Mid Push are presets of the Three Band one). There are twelve plugins (filter, the four
+  EQs, a compressor, distortion, bitcrusher, chorus, tremolo, delay, and a reverb that is
+  a room, a hall or a plate), racks of several of them in a row, 100 presets in all, and
+  Edit to build your own chain. Hear it on a sound from the library or on your own audio.
 - An **instrument**: a polyphonic synth with 41 presets, played from an on-screen
   keyboard, your computer keyboard, a MIDI keyboard or a looping phrase.
 
