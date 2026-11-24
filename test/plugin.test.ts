@@ -2,6 +2,7 @@
 // (live.dial, plugin~, plugout~, overdrive~), and the settings model the page edits.
 // The Python half, fxgen.py, is tested natively in tests/test_fxgen.py.
 
+import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import '../src/objects/ui/live-dial';
 import '../src/objects/audio/plug';
@@ -215,7 +216,7 @@ describe('settings model', () => {
     const modules = new Set(SCHEMA.modules.map((m) => m.id));
     for (const p of PRESETS) {
       for (const e of p.settings.chain ?? []) expect(modules.has(e.module)).toBe(true);
-      if (p.sample) expect(['piano', 'guitar', 'vocals', 'drums']).toContain(p.sample);
+      if (p.sample) expect(SOUNDS.filter((s) => s.url).map((s) => s.id)).toContain(p.sample);
     }
   });
 });
@@ -240,7 +241,14 @@ describe('sound library', () => {
 
   it('lists the recordings and the computed sounds, each once, each one or the other', () => {
     expect(new Set(SOUNDS.map((s) => s.id)).size).toBe(SOUNDS.length);
-    expect(SOUNDS.filter((s) => s.url).map((s) => s.id)).toEqual(['piano', 'guitar', 'vocals', 'drums']);
+    const recordings = SOUNDS.filter((s) => s.url).map((s) => s.id);
+    expect(recordings).toEqual(['piano', 'electric', 'riff', 'strat', 'guitar', 'vocals', 'drums']);
+    // each is a file the page ships, credited
+    const credits = readFileSync(new URL('../public/samples/fx/CREDITS.md', import.meta.url), 'utf8');
+    for (const id of recordings) {
+      expect(existsSync(new URL(`../public/samples/fx/${id}.mp3`, import.meta.url)), id).toBe(true);
+      expect(credits, id).toContain(`\`${id}.mp3\``);
+    }
     expect(computed.length).toBeGreaterThanOrEqual(10);
     for (const s of SOUNDS) expect(Boolean(s.url) !== Boolean(s.render), s.id).toBe(true);
   });

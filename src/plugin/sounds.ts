@@ -1,6 +1,8 @@
 // The sound library: what the page can play through a device.
 //
-// Two kinds of sound. The recordings are the four CC0 clips in public/samples/fx. The
+// Two kinds of sound. The recordings are the CC0 clips in public/samples/fx: three of
+// them are an electric guitar recorded clean and direct (DI), with no amp, which is what
+// a distortion or a fuzz is meant to be fed. The
 // rest are computed here, in the browser, the first time each is chosen: a few synth
 // loops, a drum machine, and the test signals an effect is usually judged with. Computing
 // them means the library costs nothing to download and has no licences to track.
@@ -354,7 +356,10 @@ const recording = (id: string, label: string, blurb: string): Sound => ({
 
 const RECORDINGS: Sound[] = [
   recording('piano', 'Piano', 'A chord melody, with room to ring'),
-  recording('guitar', 'Guitar', 'An acoustic loop, strummed'),
+  recording('electric', 'Electric guitar', 'Clean DI: strums, then picking'),
+  recording('riff', 'Guitar riff', 'Clean DI single notes: fuzz it'),
+  recording('strat', 'Clean Strat', 'DI picked loop, 71 bpm'),
+  recording('guitar', 'Acoustic guitar', 'An acoustic loop, strummed'),
   recording('vocals', 'Vocals', 'A sung melody, on its own'),
   recording('drums', 'Drums', 'A live kit, 100 bpm'),
 ];

@@ -36,7 +36,8 @@ Try it at <https://chrishyoroklee.github.io/plugin-playground/>.
   the envelope with the latest note. Double-click its name to rename it. The corner of the stage has a zoom
   control (pinch or Ctrl-scroll works too), and **Patch** shows the Max patch behind it.
 - **Play.** For an effect, the play button runs a sound through the device: choose one
-  from the library (recordings, synth loops, a drum machine, test signals) or use your
+  from the library (recordings, among them a clean DI electric guitar to drive a
+  distortion with, synth loops, a drum machine, test signals) or use your
   own file. For an instrument, click or drag the keyboard, play the letters printed on
   its keys, press **MIDI** to use a MIDI keyboard, or press play to loop a phrase.
 - **Download** offers the Max for Live device and the plugin. The plugin takes two steps.
@@ -255,7 +256,7 @@ Where the generated script works around something MaxPyLang cannot say yet, it s
 
 ## Credits and licence
 
-The four recordings in the sound library are CC0, from Freesound
+The recordings in the sound library are CC0, from Freesound
 ([credits](public/samples/fx/CREDITS.md)); the other sounds are computed. The page sets
 its text in DM Sans and DM Mono, loaded from Google Fonts. The plugin builds use CLAP,
 clap-wrapper and the VST3 SDK (MIT) and, for the Audio Unit, Apple's AudioUnitSDK

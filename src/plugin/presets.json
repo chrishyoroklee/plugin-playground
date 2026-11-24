@@ -4,7 +4,7 @@
   "name": "Warm Tube",
   "tag": "Gentle, smooth saturation",
   "group": "Distortion",
-  "sample": "guitar",
+  "sample": "electric",
   "settings": {
    "name": "Warm Tube",
    "accent": "#3f78bd",
@@ -31,7 +31,7 @@
   "name": "Overdrive",
   "tag": "Max's overdrive~, halfway",
   "group": "Distortion",
-  "sample": "guitar",
+  "sample": "electric",
   "settings": {
    "name": "Overdrive",
    "accent": "#3f78bd",
@@ -85,7 +85,7 @@
   "name": "Fuzz Box",
   "tag": "Lopsided, square and buzzy",
   "group": "Distortion",
-  "sample": "guitar",
+  "sample": "riff",
   "settings": {
    "name": "Fuzz Box",
    "accent": "#c2457f",
@@ -139,7 +139,7 @@
   "name": "Shoegaze Wall",
   "tag": "Drive, chorus, echo, room",
   "group": "Distortion",
-  "sample": "guitar",
+  "sample": "electric",
   "settings": {
    "name": "Shoegaze Wall",
    "accent": "#c2457f",
@@ -200,7 +200,7 @@
   "name": "Edge of Breakup",
   "tag": "Grit only when you dig in",
   "group": "Distortion",
-  "sample": "guitar",
+  "sample": "electric",
   "settings": {
    "name": "Edge of Breakup",
    "accent": "#3f78bd",
@@ -275,7 +275,7 @@
   "name": "Stacked Fuzz",
   "tag": "Hard fuzz, tamed, small room",
   "group": "Distortion",
-  "sample": "guitar",
+  "sample": "riff",
   "settings": {
    "name": "Stacked Fuzz",
    "accent": "#1f8f86",
@@ -409,7 +409,7 @@
   "name": "Velvet Drive",
   "tag": "Soft drive and a short echo",
   "group": "Distortion",
-  "sample": "guitar",
+  "sample": "electric",
   "settings": {
    "name": "Velvet Drive",
    "accent": "#c2457f",
@@ -1660,7 +1660,7 @@
   "name": "Guitar Sustain",
   "tag": "Notes hold on longer",
   "group": "Dynamics",
-  "sample": "guitar",
+  "sample": "electric",
   "settings": {
    "name": "Guitar Sustain",
    "accent": "#1f8f86",
@@ -1717,7 +1717,7 @@
   "name": "Slow Ensemble",
   "tag": "Deep, slow and lush",
   "group": "Chorus",
-  "sample": "guitar",
+  "sample": "strat",
   "settings": {
    "name": "Slow Ensemble",
    "accent": "#c8553d",
@@ -1811,7 +1811,7 @@
   "name": "Dimension",
   "tag": "Barely moving, just wider",
   "group": "Chorus",
-  "sample": "guitar",
+  "sample": "strat",
   "settings": {
    "name": "Dimension",
    "accent": "#7a5bd0",
@@ -1867,7 +1867,7 @@
   "name": "Slow Flange Sweep",
   "tag": "A long comb sweep, small room",
   "group": "Chorus",
-  "sample": "guitar",
+  "sample": "strat",
   "settings": {
    "name": "Slow Flange Sweep",
    "accent": "#3f78bd",
@@ -1961,7 +1961,7 @@
   "name": "Surf Tremolo",
   "tag": "Fast tremolo, splashy room",
   "group": "Tremolo",
-  "sample": "guitar",
+  "sample": "strat",
   "settings": {
    "name": "Surf Tremolo",
    "accent": "#c8553d",
@@ -2091,7 +2091,7 @@
   "name": "Gentle Sway",
   "tag": "Felt more than heard",
   "group": "Tremolo",
-  "sample": "guitar",
+  "sample": "strat",
   "settings": {
    "name": "Gentle Sway",
    "accent": "#c8553d",
@@ -2262,7 +2262,7 @@
   "name": "Quarter Echo",
   "tag": "Half-second fading repeats",
   "group": "Delay",
-  "sample": "guitar",
+  "sample": "strat",
   "settings": {
    "name": "Quarter Echo",
    "accent": "#1f8f86",
@@ -2395,7 +2395,7 @@
   "name": "Dotted Eighth",
   "tag": "The rhythmic guitar delay",
   "group": "Delay",
-  "sample": "guitar",
+  "sample": "strat",
   "settings": {
    "name": "Dotted Eighth",
    "accent": "#1f8f86",
@@ -2461,7 +2461,7 @@
   "name": "Dirty Repeats",
   "tag": "Echoes that get grittier",
   "group": "Delay",
-  "sample": "guitar",
+  "sample": "riff",
   "settings": {
    "name": "Dirty Repeats",
    "accent": "#7a5bd0",
@@ -2944,7 +2944,7 @@
   "name": "Auto Wah",
   "tag": "Opens the harder you play",
   "group": "Motion",
-  "sample": "guitar",
+  "sample": "riff",
   "settings": {
    "name": "Auto Wah",
    "accent": "#2e7d5b",
@@ -3182,7 +3182,7 @@
   "name": "Slow Phase",
   "tag": "A notch drifting by itself",
   "group": "Motion",
-  "sample": "guitar",
+  "sample": "strat",
   "settings": {
    "name": "Slow Phase",
    "accent": "#3f78bd",
@@ -3266,7 +3266,7 @@
   "name": "Touch Drive",
   "tag": "Driven when you dig in",
   "group": "Motion",
-  "sample": "guitar",
+  "sample": "riff",
   "settings": {
    "name": "Touch Drive",
    "accent": "#1f8f86",
