@@ -2,7 +2,7 @@
  {
   "id": "tube",
   "name": "Warm Tube",
-  "tag": "A gentle push into smooth tanh saturation",
+  "tag": "Gentle, smooth saturation",
   "group": "Distortion",
   "sample": "guitar",
   "settings": {
@@ -29,7 +29,7 @@
  {
   "id": "overdrive",
   "name": "Overdrive",
-  "tag": "Max's own overdrive~, turned up halfway",
+  "tag": "Max's overdrive~, halfway",
   "group": "Distortion",
   "sample": "guitar",
   "settings": {
@@ -56,7 +56,7 @@
  {
   "id": "crunch",
   "name": "Crunch",
-  "tag": "Hard clipping with the top rolled off",
+  "tag": "Hard clip, top rolled off",
   "group": "Distortion",
   "sample": "drums",
   "settings": {
@@ -83,7 +83,7 @@
  {
   "id": "fuzz",
   "name": "Fuzz Box",
-  "tag": "Lopsided clipping, square and buzzy",
+  "tag": "Lopsided, square and buzzy",
   "group": "Distortion",
   "sample": "guitar",
   "settings": {
@@ -110,7 +110,7 @@
  {
   "id": "fold",
   "name": "Wavefolder",
-  "tag": "Peaks fold back on themselves instead of flattening",
+  "tag": "Peaks fold back on themselves",
   "group": "Distortion",
   "sample": "piano",
   "settings": {
@@ -137,7 +137,7 @@
  {
   "id": "shoegaze",
   "name": "Shoegaze Wall",
-  "tag": "Overdrive into chorus into echo into a long room",
+  "tag": "Drive, chorus, echo, room",
   "group": "Distortion",
   "sample": "guitar",
   "settings": {
@@ -198,7 +198,7 @@
  {
   "id": "edgeofbreakup",
   "name": "Edge of Breakup",
-  "tag": "Just past clean: grit only when you dig in",
+  "tag": "Grit only when you dig in",
   "group": "Distortion",
   "sample": "guitar",
   "settings": {
@@ -235,7 +235,7 @@
  {
   "id": "bassgrit",
   "name": "Bass Grit",
-  "tag": "Dark tube drive that keeps the low end thick",
+  "tag": "Dark drive, thick low end",
   "group": "Distortion",
   "sample": "drums",
   "settings": {
@@ -273,7 +273,7 @@
  {
   "id": "stackedfuzz",
   "name": "Stacked Fuzz",
-  "tag": "Fuzz pushed hard, tamed by a low-pass and a small room",
+  "tag": "Hard fuzz, tamed, small room",
   "group": "Distortion",
   "sample": "guitar",
   "settings": {
@@ -321,7 +321,7 @@
  {
   "id": "foldshimmer",
   "name": "Fold Shimmer",
-  "tag": "Folded harmonics smeared by chorus into a bright hall",
+  "tag": "Folded, chorused, bright hall",
   "group": "Distortion",
   "sample": "piano",
   "settings": {
@@ -370,7 +370,7 @@
  {
   "id": "drumsmash",
   "name": "Drum Smash",
-  "tag": "Hard clipping and a tight room: parallel-crush drums",
+  "tag": "Clipped drums in a tight room",
   "group": "Distortion",
   "sample": "drums",
   "settings": {
@@ -407,7 +407,7 @@
  {
   "id": "velvetdrive",
   "name": "Velvet Drive",
-  "tag": "Soft overdrive with the top rolled off and a short echo",
+  "tag": "Soft drive and a short echo",
   "group": "Distortion",
   "sample": "guitar",
   "settings": {
@@ -446,7 +446,7 @@
  {
   "id": "tape",
   "name": "Tape Lo-Fi",
-  "tag": "Worn cassette: soft crush, dull top, slow wobble",
+  "tag": "Worn cassette, slow wobble",
   "group": "Lo-Fi",
   "sample": "piano",
   "settings": {
@@ -494,7 +494,7 @@
  {
   "id": "arcade",
   "name": "8-Bit Arcade",
-  "tag": "Five bits and a tenth of the sample rate",
+  "tag": "Five bits, a tenth the rate",
   "group": "Lo-Fi",
   "sample": "drums",
   "settings": {
@@ -519,7 +519,7 @@
  {
   "id": "crunchybits",
   "name": "Crunchy Bits",
-  "tag": "Full rate, few bits: a fizz on every note",
+  "tag": "Few bits: a fizz on every note",
   "group": "Lo-Fi",
   "sample": "drums",
   "settings": {
@@ -544,7 +544,7 @@
  {
   "id": "lowrate",
   "name": "Low Rate",
-  "tag": "All the bits, a fraction of the samples: metallic and aliased",
+  "tag": "Few samples: metallic, aliased",
   "group": "Lo-Fi",
   "sample": "piano",
   "settings": {
@@ -569,7 +569,7 @@
  {
   "id": "brokenconsole",
   "name": "Broken Console",
-  "tag": "Both at once, down to four bits",
+  "tag": "Both at once, four bits",
   "group": "Lo-Fi",
   "sample": "vocals",
   "settings": {
@@ -594,7 +594,7 @@
  {
   "id": "telephone",
   "name": "Telephone",
-  "tag": "Narrow band-pass with a clipped edge",
+  "tag": "Narrow band, clipped edge",
   "group": "Lo-Fi",
   "sample": "vocals",
   "settings": {
@@ -632,7 +632,7 @@
  {
   "id": "speaker",
   "name": "Blown Speaker",
-  "tag": "Fuzz, a crushed top end and no highs",
+  "tag": "Fuzz, crushed, no highs",
   "group": "Lo-Fi",
   "sample": "drums",
   "settings": {
@@ -679,7 +679,7 @@
  {
   "id": "vhs",
   "name": "VHS",
-  "tag": "Pitch that wavers, a soft top and a little grain",
+  "tag": "Wavering pitch, soft grain",
   "group": "Lo-Fi",
   "sample": "piano",
   "settings": {
@@ -727,7 +727,7 @@
  {
   "id": "dustysampler",
   "name": "Dusty Sampler",
-  "tag": "A twelve-bit sampler with a warm output stage",
+  "tag": "Twelve bits, warm output",
   "group": "Lo-Fi",
   "sample": "drums",
   "settings": {
@@ -774,7 +774,7 @@
  {
   "id": "robotvoice",
   "name": "Robot Voice",
-  "tag": "Six bits through a slow metallic comb",
+  "tag": "Six bits into a metal comb",
   "group": "Lo-Fi",
   "sample": "vocals",
   "settings": {
@@ -811,7 +811,7 @@
  {
   "id": "amradio",
   "name": "AM Radio",
-  "tag": "A narrow band, some grain, and a signal that fades in and out",
+  "tag": "Narrow, grainy, fading",
   "group": "Lo-Fi",
   "sample": "vocals",
   "settings": {
@@ -858,7 +858,7 @@
  {
   "id": "cassettebounce",
   "name": "Cassette Bounce",
-  "tag": "Tape saturation, a hint of grain and a short slap",
+  "tag": "Tape grain and a short slap",
   "group": "Lo-Fi",
   "sample": "guitar",
   "settings": {
@@ -906,7 +906,7 @@
  {
   "id": "underwater",
   "name": "Underwater",
-  "tag": "Everything above 600 Hz gone, and drifting",
+  "tag": "Muffled and drifting",
   "group": "Filter",
   "sample": "guitar",
   "settings": {
@@ -955,7 +955,7 @@
  {
   "id": "sweep",
   "name": "Resonant Low-Pass",
-  "tag": "A sharp peak, ready to be swept by hand",
+  "tag": "A sharp peak to sweep by hand",
   "group": "Filter",
   "sample": "drums",
   "settings": {
@@ -982,7 +982,7 @@
  {
   "id": "thin",
   "name": "Thin Air",
-  "tag": "High-pass at 900 Hz: all air, no body",
+  "tag": "All air, no body",
   "group": "Filter",
   "sample": "vocals",
   "settings": {
@@ -1009,7 +1009,7 @@
  {
   "id": "notch",
   "name": "Hollow Notch",
-  "tag": "A notch scooped out of the middle",
+  "tag": "A notch in the middle",
   "group": "Filter",
   "sample": "piano",
   "settings": {
@@ -1036,7 +1036,7 @@
  {
   "id": "warmblanket",
   "name": "Warm Blanket",
-  "tag": "A gentle low-pass that takes the edge off",
+  "tag": "Takes the edge off",
   "group": "Filter",
   "sample": "piano",
   "settings": {
@@ -1090,7 +1090,7 @@
  {
   "id": "vowelpeak",
   "name": "Vowel Peak",
-  "tag": "A sharp band-pass that makes it talk",
+  "tag": "A band-pass that talks",
   "group": "Filter",
   "sample": "guitar",
   "settings": {
@@ -1117,7 +1117,7 @@
  {
   "id": "brightlift",
   "name": "Bright Lift",
-  "tag": "High-pass with a peak: all snap and sizzle",
+  "tag": "All snap and sizzle",
   "group": "Filter",
   "sample": "drums",
   "settings": {
@@ -1144,7 +1144,7 @@
  {
   "id": "subthump",
   "name": "Sub Thump",
-  "tag": "A resonant high-pass at the very bottom: tighter, punchier lows",
+  "tag": "Tighter, punchier lows",
   "group": "Filter",
   "sample": "drums",
   "settings": {
@@ -1171,7 +1171,7 @@
  {
   "id": "smilecurve",
   "name": "Smile Curve",
-  "tag": "More bass, more treble, less middle",
+  "tag": "More lows and highs, less mid",
   "group": "EQ",
   "sample": "drums",
   "settings": {
@@ -1198,7 +1198,7 @@
  {
   "id": "midpush",
   "name": "Mid Push",
-  "tag": "A bump in the middle that cuts through a mix",
+  "tag": "A mid bump to cut through",
   "group": "EQ",
   "sample": "guitar",
   "settings": {
@@ -1252,7 +1252,7 @@
  {
   "id": "air",
   "name": "Air",
-  "tag": "A lift at the top and a little less weight",
+  "tag": "A lift at the top",
   "group": "EQ",
   "sample": "vocals",
   "settings": {
@@ -1306,7 +1306,7 @@
  {
   "id": "parametric",
   "name": "Parametric Sculpt",
-  "tag": "Four bands you place yourself: weight, less mud, presence, air",
+  "tag": "Four bands you place yourself",
   "group": "EQ",
   "sample": "guitar",
   "settings": {
@@ -1339,7 +1339,7 @@
  {
   "id": "mudcut",
   "name": "Mud Cut",
-  "tag": "One narrow cut where a mix gets boxy",
+  "tag": "One narrow cut for boxiness",
   "group": "EQ",
   "sample": "piano",
   "settings": {
@@ -1372,7 +1372,7 @@
  {
   "id": "presence",
   "name": "Vocal Presence",
-  "tag": "Rumble down, a bell at 3 kHz and a little air",
+  "tag": "Less rumble, a 3 kHz lift",
   "group": "EQ",
   "sample": "vocals",
   "settings": {
@@ -1405,7 +1405,7 @@
  {
   "id": "graphic",
   "name": "Graphic Curve",
-  "tag": "Six sliders in the classic rock shape",
+  "tag": "The classic rock shape",
   "group": "EQ",
   "sample": "drums",
   "settings": {
@@ -1434,7 +1434,7 @@
  {
   "id": "midscoop",
   "name": "Mid Scoop",
-  "tag": "The middle sliders pulled down: big and hollow",
+  "tag": "Middle down: big and hollow",
   "group": "EQ",
   "sample": "guitar",
   "settings": {
@@ -1463,7 +1463,7 @@
  {
   "id": "tiltbright",
   "name": "Tilt Bright",
-  "tag": "One knob: the whole sound leans toward the top",
+  "tag": "Leans toward the top",
   "group": "EQ",
   "sample": "piano",
   "settings": {
@@ -1488,7 +1488,7 @@
  {
   "id": "tiltdark",
   "name": "Tilt Dark",
-  "tag": "One knob the other way: rounder and heavier",
+  "tag": "Rounder and heavier",
   "group": "EQ",
   "sample": "drums",
   "settings": {
@@ -1513,7 +1513,7 @@
  {
   "id": "busglue",
   "name": "Bus Glue",
-  "tag": "A gentle 2:1 on everything: the parts sit together",
+  "tag": "Gentle 2:1 to glue a mix",
   "group": "Dynamics",
   "sample": "drums",
   "settings": {
@@ -1542,7 +1542,7 @@
  {
   "id": "vocalleveler",
   "name": "Vocal Leveler",
-  "tag": "Quiet words come up, loud ones come down",
+  "tag": "Evens out a vocal",
   "group": "Dynamics",
   "sample": "vocals",
   "settings": {
@@ -1571,7 +1571,7 @@
  {
   "id": "parallelpunch",
   "name": "Parallel Punch",
-  "tag": "Crushed drums under the dry ones: the hits keep their snap",
+  "tag": "Crushed under dry: punch",
   "group": "Dynamics",
   "sample": "drums",
   "settings": {
@@ -1600,7 +1600,7 @@
  {
   "id": "brickwall",
   "name": "Brickwall",
-  "tag": "Fast and hard at the top: the peaks stop there and go no further",
+  "tag": "Peaks stop here",
   "group": "Dynamics",
   "sample": "piano",
   "settings": {
@@ -1629,7 +1629,7 @@
  {
   "id": "pump",
   "name": "Pump",
-  "tag": "A slow release you can hear breathe after every hit",
+  "tag": "Breathes after every hit",
   "group": "Dynamics",
   "sample": "drums",
   "settings": {
@@ -1658,7 +1658,7 @@
  {
   "id": "sustainer",
   "name": "Guitar Sustain",
-  "tag": "Notes hold on longer before they fade",
+  "tag": "Notes hold on longer",
   "group": "Dynamics",
   "sample": "guitar",
   "settings": {
@@ -1687,7 +1687,7 @@
  {
   "id": "wide",
   "name": "Wide Chorus",
-  "tag": "Doubles the sound and spreads it out",
+  "tag": "Doubled and spread out",
   "group": "Chorus",
   "sample": "piano",
   "settings": {
@@ -1753,7 +1753,7 @@
  {
   "id": "vibrato",
   "name": "Vibrato",
-  "tag": "All wet: the pitch wobbles, nothing is doubled",
+  "tag": "All wet: wobbling pitch",
   "group": "Chorus",
   "sample": "vocals",
   "settings": {
@@ -1781,7 +1781,7 @@
  {
   "id": "jet",
   "name": "Jet Flanger",
-  "tag": "A short swept comb with feedback",
+  "tag": "A short swept comb",
   "group": "Chorus",
   "sample": "drums",
   "settings": {
@@ -1837,7 +1837,7 @@
  {
   "id": "detunedouble",
   "name": "Detune Double",
-  "tag": "A second take, slightly out of tune",
+  "tag": "A second take, out of tune",
   "group": "Chorus",
   "sample": "vocals",
   "settings": {
@@ -1865,7 +1865,7 @@
  {
   "id": "slowflangesweep",
   "name": "Slow Flange Sweep",
-  "tag": "A long comb sweep with a little room",
+  "tag": "A long comb sweep, small room",
   "group": "Chorus",
   "sample": "guitar",
   "settings": {
@@ -1903,7 +1903,7 @@
  {
   "id": "metaltube",
   "name": "Metal Tube",
-  "tag": "A fast, short flanger: ringing and metallic",
+  "tag": "Fast, ringing, metallic",
   "group": "Chorus",
   "sample": "drums",
   "settings": {
@@ -1931,7 +1931,7 @@
  {
   "id": "seasick",
   "name": "Seasick",
-  "tag": "All wet and deep: the pitch rolls like a boat",
+  "tag": "Deep, rolling pitch",
   "group": "Chorus",
   "sample": "piano",
   "settings": {
@@ -1959,7 +1959,7 @@
  {
   "id": "surf",
   "name": "Surf Tremolo",
-  "tag": "Fast tremolo into a splashy room",
+  "tag": "Fast tremolo, splashy room",
   "group": "Tremolo",
   "sample": "guitar",
   "settings": {
@@ -2023,7 +2023,7 @@
  {
   "id": "chopper",
   "name": "Helicopter",
-  "tag": "Full depth, twelve times a second",
+  "tag": "Full depth, twelve per second",
   "group": "Tremolo",
   "sample": "vocals",
   "settings": {
@@ -2050,7 +2050,7 @@
  {
   "id": "drift",
   "name": "Auto-Pan Drift",
-  "tag": "Slow side-to-side movement with a faint echo",
+  "tag": "Slow side to side, faint echo",
   "group": "Tremolo",
   "sample": "piano",
   "settings": {
@@ -2089,7 +2089,7 @@
  {
   "id": "gentlesway",
   "name": "Gentle Sway",
-  "tag": "A shallow tremolo you feel more than hear",
+  "tag": "Felt more than heard",
   "group": "Tremolo",
   "sample": "guitar",
   "settings": {
@@ -2116,7 +2116,7 @@
  {
   "id": "stutter",
   "name": "Stutter",
-  "tag": "Chopped sixteen times a second, with a short echo",
+  "tag": "Chopped, with a short echo",
   "group": "Tremolo",
   "sample": "drums",
   "settings": {
@@ -2182,7 +2182,7 @@
  {
   "id": "rotary",
   "name": "Rotary",
-  "tag": "A spinning speaker: pan, fast pitch wobble and a warm cabinet",
+  "tag": "A spinning speaker cabinet",
   "group": "Tremolo",
   "sample": "piano",
   "settings": {
@@ -2232,7 +2232,7 @@
  {
   "id": "slapback",
   "name": "Slapback",
-  "tag": "One quick repeat, rockabilly style",
+  "tag": "One quick rockabilly repeat",
   "group": "Delay",
   "sample": "vocals",
   "settings": {
@@ -2260,7 +2260,7 @@
  {
   "id": "quarter",
   "name": "Quarter Echo",
-  "tag": "Half-second repeats that fade away",
+  "tag": "Half-second fading repeats",
   "group": "Delay",
   "sample": "guitar",
   "settings": {
@@ -2288,7 +2288,7 @@
  {
   "id": "pingpong",
   "name": "Ping-Pong",
-  "tag": "Repeats bouncing left and right",
+  "tag": "Repeats bouncing left, right",
   "group": "Delay",
   "sample": "drums",
   "settings": {
@@ -2316,7 +2316,7 @@
  {
   "id": "dub",
   "name": "Dub Echo",
-  "tag": "Dark ping-pong repeats that keep on going",
+  "tag": "Dark repeats that keep going",
   "group": "Delay",
   "sample": "drums",
   "settings": {
@@ -2365,7 +2365,7 @@
  {
   "id": "doubler",
   "name": "Doubler",
-  "tag": "One copy 28 ms later: thicker, not an echo",
+  "tag": "One copy 28 ms later",
   "group": "Delay",
   "sample": "vocals",
   "settings": {
@@ -2421,7 +2421,7 @@
  {
   "id": "longcanyon",
   "name": "Long Canyon",
-  "tag": "Slow repeats bouncing side to side into the distance",
+  "tag": "Slow repeats into the distance",
   "group": "Delay",
   "sample": "vocals",
   "settings": {
@@ -2459,7 +2459,7 @@
  {
   "id": "dirtyrepeats",
   "name": "Dirty Repeats",
-  "tag": "Thin, driven echoes that get grittier as they pile up",
+  "tag": "Echoes that get grittier",
   "group": "Delay",
   "sample": "guitar",
   "settings": {
@@ -2509,7 +2509,7 @@
  {
   "id": "rhythmmachine",
   "name": "Rhythm Machine",
-  "tag": "Fast ping-pong with lots of feedback: one hit becomes a groove",
+  "tag": "One hit becomes a groove",
   "group": "Delay",
   "sample": "drums",
   "settings": {
@@ -2537,7 +2537,7 @@
  {
   "id": "endlessloop",
   "name": "Endless Loop",
-  "tag": "Repeats that take a very long time to die",
+  "tag": "Repeats that barely die",
   "group": "Delay",
   "sample": "piano",
   "settings": {
@@ -2603,7 +2603,7 @@
  {
   "id": "hall",
   "name": "Concert Hall",
-  "tag": "Big and smooth, two seconds of tail",
+  "tag": "Big, smooth, two seconds",
   "group": "Reverb",
   "sample": "piano",
   "settings": {
@@ -2666,7 +2666,7 @@
  {
   "id": "station",
   "name": "Space Station",
-  "tag": "Wide echoes dissolving into reverb",
+  "tag": "Echoes dissolving into reverb",
   "group": "Reverb",
   "sample": "piano",
   "settings": {
@@ -2732,7 +2732,7 @@
  {
   "id": "brightplate",
   "name": "Bright Plate",
-  "tag": "Dense and shiny, with the lows kept out of it",
+  "tag": "Dense and shiny, no lows",
   "group": "Reverb",
   "sample": "guitar",
   "settings": {
@@ -2771,7 +2771,7 @@
  {
   "id": "darkcave",
   "name": "Dark Cave",
-  "tag": "Huge and dull: the highs die straight away",
+  "tag": "Huge and dull",
   "group": "Reverb",
   "sample": "drums",
   "settings": {
@@ -2797,7 +2797,7 @@
  {
   "id": "crushedroom",
   "name": "Crushed Room",
-  "tag": "A room mic through a clipper: explosive drums",
+  "tag": "A clipped room: explosive",
   "group": "Reverb",
   "sample": "drums",
   "settings": {
@@ -2836,7 +2836,7 @@
  {
   "id": "ambientwash",
   "name": "Ambient Wash",
-  "tag": "Chorus, long echoes and a hall: notes turn into clouds",
+  "tag": "Notes turn into clouds",
   "group": "Reverb",
   "sample": "piano",
   "settings": {
@@ -2886,7 +2886,7 @@
  {
   "id": "vocalplate",
   "name": "Vocal Plate",
-  "tag": "The studio plate: dense and smooth, no echoes in it",
+  "tag": "The studio plate",
   "group": "Reverb",
   "sample": "vocals",
   "settings": {
@@ -2914,7 +2914,7 @@
  {
   "id": "drumroom",
   "name": "Drum Room",
-  "tag": "A live room around the kit, gone in half a second",
+  "tag": "A live room around the kit",
   "group": "Reverb",
   "sample": "drums",
   "settings": {
@@ -2942,7 +2942,7 @@
  {
   "id": "autowah",
   "name": "Auto Wah",
-  "tag": "A resonant filter that opens the harder you play",
+  "tag": "Opens the harder you play",
   "group": "Motion",
   "sample": "guitar",
   "settings": {
@@ -2983,7 +2983,7 @@
  {
   "id": "wobble",
   "name": "Wobble",
-  "tag": "An LFO sweeping a low-pass, with a knob for how far",
+  "tag": "An LFO sweeping a low-pass",
   "group": "Motion",
   "sample": "drums",
   "settings": {
@@ -3052,7 +3052,7 @@
  {
   "id": "tapedrift",
   "name": "Tape Drift",
-  "tag": "Two slow LFOs nudging the delay and the tone",
+  "tag": "Delay and tone, nudged slowly",
   "group": "Motion",
   "sample": "piano",
   "settings": {
@@ -3121,7 +3121,7 @@
  {
   "id": "chop",
   "name": "Chop",
-  "tag": "A square LFO switching the level, with a knob for the speed of the echo",
+  "tag": "A square LFO on the level",
   "group": "Motion",
   "sample": "vocals",
   "settings": {
@@ -3180,7 +3180,7 @@
  {
   "id": "slowphase",
   "name": "Slow Phase",
-  "tag": "A notch drifting up and down by itself",
+  "tag": "A notch drifting by itself",
   "group": "Motion",
   "sample": "guitar",
   "settings": {
@@ -3224,7 +3224,7 @@
  {
   "id": "duckingreverb",
   "name": "Ducking Reverb",
-  "tag": "A big hall that steps back while you sing and blooms when you stop",
+  "tag": "Steps back while you sing",
   "group": "Motion",
   "sample": "vocals",
   "settings": {
@@ -3264,7 +3264,7 @@
  {
   "id": "touchdrive",
   "name": "Touch Drive",
-  "tag": "Clean when you play softly, driven when you dig in",
+  "tag": "Driven when you dig in",
   "group": "Motion",
   "sample": "guitar",
   "settings": {
@@ -3305,7 +3305,7 @@
  {
   "id": "rhythmicfilter",
   "name": "Rhythmic Filter",
-  "tag": "A square wave opens and shuts a resonant low-pass four times a second",
+  "tag": "A filter gating in rhythm",
   "group": "Motion",
   "sample": "drums",
   "settings": {
@@ -3349,7 +3349,7 @@
  {
   "id": "oneknobspace",
   "name": "One Knob Space",
-  "tag": "One knob called Space: more echo, more hall, bigger hall",
+  "tag": "One knob: echo and hall",
   "group": "Motion",
   "sample": "vocals",
   "settings": {
@@ -3415,7 +3415,7 @@
  {
   "id": "oneknobdestroy",
   "name": "One Knob Destroy",
-  "tag": "One knob called Destroy: more drive, fewer samples, less top",
+  "tag": "One knob: drive and crush",
   "group": "Motion",
   "sample": "drums",
   "settings": {
@@ -3490,7 +3490,7 @@
  {
   "id": "init",
   "name": "Clean Slate",
-  "tag": "Nothing switched on. Build your own from here.",
+  "tag": "Nothing on: build your own",
   "group": "Start",
   "sample": null,
   "settings": {

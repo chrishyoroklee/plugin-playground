@@ -3,6 +3,8 @@
 // The page and the plugin talk in the few messages listed at the top of face.html. The
 // page asks for the face when it has loaded; after that a timer tells it where the dials
 // are whenever the host has moved one, and it tells the plugin when a dial is dragged.
+// A plugin with presets has a menu of them along the top; choosing one can change the
+// program, and then the page is given that program's face.
 //
 // One Objective-C object is needed, to receive the page's messages and the timer. Its
 // class is made when the plugin is loaded and named after where this binary sits in
@@ -30,6 +32,8 @@ namespace fxgui {
 // which is small for a window of its own. A device with many dials is wide, though, and
 // is drawn less large so that it still fits across a laptop's screen.
 static const double kZoom = 1.5, kWidest = 1240;
+// The preset menu's strip above the device, in the face's units (face.html, BAR).
+static const double kBar = 26;
 
 struct Window {
     Model* model = nullptr;
@@ -37,6 +41,7 @@ struct Window {
     id handler = nil;
     NSTimer* timer = nil;
     std::vector<double> shown;  // the values the page was last told
+    int shownProgram = -1, shownChosen = -2;
     bool ready = false;
     double width = 0, height = 0;
 
@@ -85,13 +90,28 @@ static Class linkClass() {
 
 namespace fxgui {
 
+// The size a program's face is drawn at, with the preset strip if there is one. False if
+// the face cannot be read.
+static bool sizeOf(Model* model, int program, double* width, double* height) {
+    NSData* packed = [[NSData alloc] initWithBase64EncodedString:@(model->face(program)) options:0];
+    NSDictionary* face = packed ? [NSJSONSerialization JSONObjectWithData:packed options:0 error:nil] : nil;
+    if (![face isKindOfClass:[NSDictionary class]]) return false;
+    const double w = [face[@"width"] doubleValue], h = [face[@"height"] doubleValue] + (model->presets() > 0 ? kBar : 0);
+    if (!(w > 0) || !(h > 0)) return false;
+    const double zoom = std::max(1.0, std::min(kZoom, kWidest / w));
+    *width = std::ceil(w * zoom);
+    *height = std::ceil(h * zoom);
+    return true;
+}
+
 void Window::message(NSDictionary* body) {
     NSString* type = body[@"type"];
     if (![type isKindOfClass:[NSString class]] || !model) return;
     if ([type isEqualToString:@"ready"]) {
-        // The face went into the file as base64 and the page takes it apart again.
-        NSString* script = [NSString stringWithFormat:@"ppFace(JSON.parse(atob('%s')))", model->face()];
-        [web evaluateJavaScript:script completionHandler:nil];
+        if (model->presets() > 0) {
+            NSString* list = [NSString stringWithUTF8String:model->presetList().c_str()];
+            [web evaluateJavaScript:[NSString stringWithFormat:@"ppPresets(%@)", list] completionHandler:nil];
+        }
         ready = true;
         tick(true);
         return;
@@ -99,6 +119,11 @@ void Window::message(NSDictionary* body) {
     NSNumber* index = body[@"index"];
     if (![index isKindOfClass:[NSNumber class]]) return;
     const int i = index.intValue;
+    if ([type isEqualToString:@"preset"]) {
+        model->choose(i);
+        tick(false);
+        return;
+    }
     if (i < 0 || i >= model->count()) return;
     if ([type isEqualToString:@"begin"]) model->grab(i);
     else if ([type isEqualToString:@"end"]) model->release(i);
@@ -113,6 +138,31 @@ void Window::message(NSDictionary* body) {
 // Tell the page where the dials are, if any has moved since it was last told.
 void Window::tick(bool all) {
     if (!ready || !model) return;
+    if (model->current() != shownProgram) {
+        // Another program: its face, and its size if the host lets the window change it
+        // (a synth preset with more effects after it is wider). If it does not, the page
+        // fits the face into the window as it is. The face went into the file as base64
+        // and the page takes it apart again.
+        const bool first = shownProgram < 0;
+        shownProgram = model->current();
+        double w = 0, h = 0;
+        if (!first && sizeOf(model, shownProgram, &w, &h) && (w != width || h != height) &&
+            model->resize(static_cast<uint32_t>(w), static_cast<uint32_t>(h))) {
+            width = w;
+            height = h;
+            NSRect frame = web.frame;
+            frame.size = NSMakeSize(w, h);
+            web.frame = frame;
+        }
+        NSString* script = [NSString stringWithFormat:@"ppFace(JSON.parse(atob('%s')), %s)", model->face(shownProgram),
+                                                     model->dialsOf(shownProgram).c_str()];
+        [web evaluateJavaScript:script completionHandler:nil];
+        all = true;
+    }
+    if (model->chosen() != shownChosen) {
+        shownChosen = model->chosen();
+        [web evaluateJavaScript:[NSString stringWithFormat:@"ppChosen(%d)", shownChosen] completionHandler:nil];
+    }
     const int n = model->count();
     bool changed = all || static_cast<int>(shown.size()) != n;
     shown.resize(n, 0.0);
@@ -132,18 +182,17 @@ bool supported() { return true; }
 
 Window* create(Model* model) {
     @autoreleasepool {
-        // The window's size is the face's, which only the face knows.
-        NSData* packed = [[NSData alloc] initWithBase64EncodedString:@(model->face()) options:0];
-        NSDictionary* face = packed ? [NSJSONSerialization JSONObjectWithData:packed options:0 error:nil] : nil;
-        if (![face isKindOfClass:[NSDictionary class]]) return nullptr;
-        const double width = [face[@"width"] doubleValue], height = [face[@"height"] doubleValue];
-        if (!(width > 0) || !(height > 0)) return nullptr;
+        // The window's size is the face's, which only the face knows: the face of the
+        // program playing. Every program's has to be readable.
+        double width = 0, height = 0;
+        for (int k = 0; k < model->programs(); k++)
+            if (!sizeOf(model, k, &width, &height)) return nullptr;
+        sizeOf(model, model->current(), &width, &height);
 
         Window* window = new Window();
         window->model = model;
-        const double zoom = std::max(1.0, std::min(kZoom, kWidest / width));
-        window->width = std::ceil(width * zoom);
-        window->height = std::ceil(height * zoom);
+        window->width = width;
+        window->height = height;
 
         id link = [[linkClass() alloc] init];
         setWindow(link, window);

@@ -73,9 +73,10 @@ jobs:
 
       # The runtime and the helper, in this system's installer: a .pkg, a setup .exe, or
       # a .tar.gz with an install script. Then every preset as the helper makes it,
-      # each loaded and held to its device.
-      - name: Build the runtime and make every preset from it
-        run: python scripts/plugin.py --runtime --all --package downloads
+      # each loaded and held to its device, and every plugin of the page with its presets
+      # in one file, each preset loaded in turn.
+      - name: Build the runtime and make every preset and plugin from it
+        run: python scripts/plugin.py --runtime --all --plugins --package downloads
 
       - uses: actions/upload-artifact@v4
         with:

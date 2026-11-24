@@ -238,11 +238,28 @@ function drawGraphs(running: ReadonlyMap<string, MaxNode>, theme: { bg: string; 
       { ink: theme.ink, track: theme.track, accent: settings.accent, card: theme.card, well: theme.bg },
       () => document.body.classList.contains('is-editing')));
   }
+  // A module with a type and no picture (a distortion, a reverb) has the same buttons in
+  // the place fxgen keeps for them under its title.
+  for (const slot of $('device').querySelectorAll<HTMLElement>('.dv-typeslot')) {
+    const id = slot.dataset.kind ?? '';
+    const spec = moduleSpec(id) ?? SCHEMA.instrument.modules.find((m) => m.id === id);
+    const kinds = spec?.options[0];
+    const options = settings.instrument?.[id]?.options ?? settings.chain.find((e) => e.module === id)?.options;
+    if (!spec || !kinds || !options) continue;
+    slot.style.background = theme.bg;
+    slot.replaceChildren(typeButtons(`${spec.label} ${kinds.label}`, kinds.choices, options[kinds.id], (choice) => {
+      options[kinds.id] = choice;
+      markCustom();
+      renderSide();
+      renderHead();
+      scheduleBuild();
+    }));
+  }
   watchSound();
 }
 
 // What is sounding, for the pictures that show it: the spectrum behind an EQ's or a
-// filter's curve, a dot going along a tremolo's wave, a dot going round an envelope.
+// filter's curve, a dot going round an envelope.
 // The spectrum is the device's output, which is what the stage's own scope shows too.
 const SPECTRUM_POINTS = 48;
 let lastNote: { on: number; off: number | null } | undefined;   // performance.now() of each
@@ -275,7 +292,6 @@ function watchSound(): void {
     const at = performance.now();
     const live: Live = {
       spectrum,
-      time: engine.ctx.currentTime,
       note: lastNote ? { on: (at - lastNote.on) / 1000, off: lastNote.off === null ? null : (at - lastNote.off) / 1000 } : null,
     };
     for (const picture of pictures) picture.tick(live);
@@ -1348,13 +1364,26 @@ function renderDownloads(): void {
   $('dl-opens').textContent = info.opens.replace('{name}', settings.name).replace('{where}', where);
 }
 
+/** A plugin's presets as its menu lists them: how it comes, for a plugin that is one effect, then the rest. */
+function menuOf(plugin: Plugin): { name: string; settings: Settings }[] {
+  const fresh = defaultsOf(plugin, kind());
+  return [
+    ...(fresh ? [{ name: 'Default', settings: fresh }] : []),
+    ...plugin.presets.map((p) => ({ name: p.name, settings: normalize(p.settings) })),
+  ];
+}
+
 /** Step 2: the device as a file, written here from the settings as they are this instant. */
 async function downloadDevice(): Promise<void> {
   const btn = $<HTMLButtonElement>('dl-device');
   btn.disabled = true;
   btn.classList.add('is-busy');
   try {
-    const text = await python.device(settings);
+    // The plugin's presets go in with it, for the menu in its window. A device that is no
+    // plugin of the page's (a chain built in Edit) goes alone.
+    const plugin = currentPlugin();
+    const presets = plugin ? menuOf(plugin) : [];
+    const text = presets.length ? await python.pluginDevice(settings, presets) : await python.device(settings);
     const name = deviceFileName(settings.name);
     save(text, name, 'application/octet-stream');
     toast(`Saved ${name}. Open it to install the plugin.`);

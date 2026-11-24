@@ -179,7 +179,34 @@ control side. patchc compiles it as a countdown in the sample loop that runs, wh
 reaches zero, the statements a number leaving the box would run. In a device file that
 is the instruction `every`, with a section of its own. It is what runtime 2 added; a
 device that uses none of it still asks for runtime 1. Runtime 3 added the function
-`atodb` and the kernel `Slide` (`atodb~` and `slide~`, for the compressor).
+`atodb` and the kernel `Slide` (`atodb~` and `slide~`, for the compressor). Runtime 4
+added presets (below).
+
+## Presets
+
+A plugin on the page (a Distortion, a Reverb, the Synth) has presets inside it, and its
+download carries them: the page's Download writes the plugin's file with
+`patchc.plugin_device()`, and the plugin's window has a menu of them along its top, with
+arrows, that says "edited" once a dial has moved away from where the preset put it.
+
+Most presets of a plugin differ only in where the dials stand. Some differ in a type
+(Tube or Fuzz, Room or Hall), and a type is code, not a dial. So the file holds a
+program for each set of types its presets use, one after the other, and after them a
+line per preset naming its program and every dial's value (`mxvm::Book`). The plugin's
+dials are every program's together, by id, so the host sees one list whichever runs; a
+Synth preset with no delay leaves the delay's dials doing nothing.
+
+Choosing a preset sets the dials and tells the host to read them again. If it needs
+another program, the shell makes an Effect for it on the main thread, ready to play, and
+the audio thread takes it at the top of its next block; nothing is made or freed on the
+audio thread. The program and the preset are saved with the dials, so a session reopens
+on the same one. A host can load one too, through CLAP's preset-load extension (the
+preset's number as the key); hostcheck loads every preset that way and holds each one
+that changes program to a fresh Effect of that program, sample for sample.
+
+```sh
+npm run plugin -- --runtime --plugins      # every plugin of the page, with its presets, made and checked
+```
 
 ## Adding an object
 
@@ -247,7 +274,12 @@ not directly with Max recordings.
 - The runtime costs more than compiled code: about 1 to 2 % of one core for the heaviest
   presets, against about 1 % compiled. Its sound is the same, to within rounding.
 - The plugin's own window exists on macOS only. On Windows and Linux the host shows its
-  generic controls. No RNBO export.
+  generic controls, and so has no preset menu: the presets are there, but only a host
+  that loads CLAP presets by their place in the plugin can reach them. They are not yet
+  offered to hosts' own preset browsers (CLAP preset discovery, VST3 programs, Audio Unit
+  factory presets). No RNBO export.
+- The Synth's file holds a program for each of its 41 presets, because each uses its own
+  waves and effects: about 700 KB, written in a few seconds on the page.
 
 ## Licences
 

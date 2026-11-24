@@ -29,8 +29,8 @@ static void check(bool ok, const char* what) {
     }
 }
 
-static int flushesAsked = 0;
-static void hostRescan(const clap_host_t*, clap_param_rescan_flags) {}
+static int flushesAsked = 0, rescans = 0;
+static void hostRescan(const clap_host_t*, clap_param_rescan_flags) { rescans++; }
 static void hostClear(const clap_host_t*, clap_id, clap_param_clear_flags) {}
 static void hostFlush(const clap_host_t*) { flushesAsked++; }
 static const clap_host_params_t kHostParams = {hostRescan, hostClear, hostFlush};
@@ -145,7 +145,11 @@ int main(int argc, char** argv) {
             dials = ask(web, @"document.querySelectorAll('.dial').length");
         }
         const uint32_t count = params->count(plugin);
-        check(static_cast<uint32_t>([dials intValue]) == count && count > 0, "the window shows one dial for each parameter");
+        // A plugin with presets has a menu, and its dials are every program's: the window
+        // shows the ones the program playing has.
+        const bool menu = [ask(web, @"document.getElementById('bar').hidden ? 0 : 1") intValue] == 1;
+        const uint32_t shown = static_cast<uint32_t>([dials intValue]);
+        check(count > 0 && (menu ? shown > 0 && shown <= count : shown == count), "the window shows a dial for each parameter it has");
         check(picture(web, [out stringByAppendingPathComponent:@"window.png"]), "a picture of the window can be taken");
 
         // 1. It follows: the host sets the first parameter to the top of its range.
@@ -195,6 +199,38 @@ int main(int argc, char** argv) {
             if (t.type == CLAP_EVENT_PARAM_GESTURE_END) ended = true;
         }
         check(began && valued && ended && ordered, "the host is told: grabbed, the new value, let go");
+
+        // 3. Presets: the arrow picks the next one, the host is told the values changed, and
+        // the menu says which it is on.
+        if (menu) {
+            NSString* was = ask(web, @"document.getElementById('pick').value");
+            rescans = 0;
+            ask(web, @"document.getElementById('next').click(); 1");
+            spin(0.5);
+            NSString* now = ask(web, @"document.getElementById('pick').value");
+            check(rescans > 0, "choosing a preset tells the host the values changed");
+            check(![now isEqualToString:was] && ![now isEqualToString:@"none"], "the menu shows the preset chosen");
+            const int options = [ask(web, @"document.getElementById('pick').options.length") intValue];
+            check(options > 2, "the menu lists the presets");
+            // Every dial in the window reads what the host reads for its parameter, the
+            // preset's program having its own dials, numbered its own way.
+            NSString* shownText = ask(web, @"Array.from(document.querySelectorAll('.dial')).map(function (d) { "
+                                           @"return d.dataset.index + '=' + d.querySelector('.readout').textContent; }).join('|')");
+            bool same = shownText.length > 0;
+            for (NSString* pair in [shownText componentsSeparatedByString:@"|"]) {
+                NSArray* parts = [pair componentsSeparatedByString:@"="];
+                if (parts.count != 2) { same = false; break; }
+                clap_param_info_t dialInfo;
+                double v = 0;
+                char hostText[64] = "";
+                const uint32_t at = static_cast<uint32_t>([parts[0] intValue]);
+                same = same && params->get_info(plugin, at, &dialInfo) && params->get_value(plugin, dialInfo.id, &v) &&
+                       params->value_to_text(plugin, dialInfo.id, v, hostText, sizeof hostText) && [parts[1] isEqualToString:@(hostText)];
+                if (!same) { fprintf(stderr, "guicheck: dial %u shows %s, the host %s\n", at, [parts[1] UTF8String], hostText); break; }
+            }
+            check(same, "after a preset, each dial shows its own parameter's value");
+            picture(web, [out stringByAppendingPathComponent:@"preset.png"]);
+        }
 
         gui->hide(plugin);
         gui->destroy(plugin);

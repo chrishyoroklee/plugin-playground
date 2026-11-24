@@ -22,10 +22,18 @@
 // plugin's window is a third way in: it sets `values` like the others, and is queued so
 // that the next process() or flush() can tell the host, which is how the move gets
 // recorded as automation.
+//
+// Presets. A runtime plugin's file can hold its presets and the programs they run
+// (runtime/Effect.h). Choosing one in the window sets every dial and, when the preset
+// runs another program than the one playing, makes an Effect for it on the main thread,
+// ready to play, and hands it to the audio thread, which takes it at the start of its
+// next block and hands the old one back to be deleted on the main thread. Nothing is
+// made or freed on the audio thread.
 
 #include <atomic>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <memory>
 #include <string>
@@ -42,11 +50,29 @@
 
 namespace {
 
+// A plugin's presets and programs. Only a runtime plugin has them; a compiled one is one
+// program with none.
+namespace book {
+#ifdef FX_RUNTIME
+int programs() { return Effect::programs(); }
+const char* face(int program) { return Effect::faceOf(program); }
+int presets() { return Effect::presets(); }
+int first() { return Effect::firstPreset(); }
+Effect* make(int program) { return new Effect(program); }
+#else
+int programs() { return 1; }
+const char* face(int) { return Effect::kFace; }
+int presets() { return 0; }
+int first() { return -1; }
+Effect* make(int) { return new Effect(); }
+#endif
+}  // namespace book
+
 // The number of dials. Written as a call because the runtime only knows once it has read
 // its device; for a generated Effect.h it is a constant.
 int N() { return Effect::kNumParams; }
 constexpr char kStateMagic[4] = {'P', 'P', 'F', 'X'};
-constexpr uint32_t kStateVersion = 1;
+constexpr uint32_t kStateVersion = 2;  // 2: the program and the preset, before the dials
 
 bool curved(int i) { return Effect::kParams[i].exponent != 1.0 && !Effect::kParams[i].integer; }
 double toHost(int i, double value) { return curved(i) ? mxrt::valueToPosition(Effect::kParams[i], value) : value; }
@@ -70,13 +96,22 @@ struct Plugin : fxgui::Model {
     clap_plugin_t plugin;
     const clap_host_t* host = nullptr;
     const clap_host_params_t* hostParams = nullptr;
+    const clap_host_gui_t* hostGui = nullptr;
     fxgui::Window* window = nullptr;
     // Written by the window on the main thread, read by whichever thread next talks to
     // the host. One writer, one reader, no lock: a slot is filled before `written` moves.
     static constexpr uint32_t kMoves = 512;
     UiMove moves[kMoves];
     std::atomic<uint32_t> written{0}, told{0};
-    Effect effect;
+    // The Effect playing. The audio thread's while the plugin is active, the main thread's
+    // otherwise. A new one on its way to the audio thread waits in `incoming`; the one it
+    // replaced waits in `retired` for the main thread to delete it.
+    Effect* effect = nullptr;
+    std::atomic<Effect*> incoming{nullptr}, retired{nullptr};
+    int program = 0;                 // the program the plugin is, or is about to be (main thread)
+    std::atomic<int> picked{-1};     // the preset last chosen, -1 for none
+    bool active = false;
+    double rate = 44100.0;
     std::unique_ptr<std::atomic<double>[]> values;  // in the dial's units
     std::unique_ptr<std::atomic<bool>[]> dirty;     // changed off the audio thread; process() applies it
     std::vector<float> spare32;          // somewhere to render a channel the host did not give us
@@ -84,17 +119,101 @@ struct Plugin : fxgui::Model {
 
     explicit Plugin(const clap_host_t* h)
         : host(h), values(new std::atomic<double>[N() > 0 ? N() : 1]), dirty(new std::atomic<bool>[N() > 0 ? N() : 1]) {
+        effect = book::make(0);
         for (int i = 0; i < N(); i++) {
-            values[i].store(Effect::kParams[i].initial);
+            values[i].store(effect->getParam(i));
             dirty[i].store(false);
         }
+        picked.store(book::first());
+    }
+
+    ~Plugin() {
+        delete effect;
+        delete incoming.exchange(nullptr);
+        delete retired.exchange(nullptr);
+    }
+
+    // ── presets, on the main thread ──
+
+    // Delete the Effect the audio thread has finished with.
+    void reclaim() { delete retired.exchange(nullptr, std::memory_order_acq_rel); }
+
+    // Run `next` from now on, with the dials where they are.
+    void become(int next) {
+        reclaim();
+        if (next == program || next < 0 || next >= book::programs()) return;
+        program = next;
+        Effect* made = book::make(next);
+        for (int i = 0; i < N(); i++) made->setParam(i, values[i].load());
+        if (!active) {
+            delete effect;
+            effect = made;
+            for (int i = 0; i < N(); i++) dirty[i].store(false);
+            return;
+        }
+        made->prepare(rate);
+        // One made before that the audio thread has not taken yet is never played.
+        delete incoming.exchange(made, std::memory_order_acq_rel);
+        if (host->request_callback) host->request_callback(host);
+    }
+
+    // On the audio thread, at the top of a block: take a new Effect if one is waiting.
+    void takeIncoming() {
+        Effect* next = incoming.exchange(nullptr, std::memory_order_acq_rel);
+        if (!next) return;
+        Effect* old = effect;
+        effect = next;
+        // A dial the host moved while it was being made.
+        for (int i = 0; i < N(); i++) effect->setParam(i, values[i].load());
+        delete retired.exchange(old, std::memory_order_acq_rel);  // empty: become() reclaims before it hands one over
+    }
+
+    // A preset: every dial to its value (one it does not name, to its default), and its program.
+    void choose(int index) override {
+        if (index < 0 || index >= book::presets()) return;
+#ifdef FX_RUNTIME
+        const mxvm::Book::Preset& preset = Effect::preset(index);
+        std::vector<double> next(N());
+        for (int i = 0; i < N(); i++) next[i] = Effect::kParams[i].initial;
+        for (const auto& [id, value] : preset.values) {
+            const int i = Effect::indexOf(id);
+            if (i >= 0) next[i] = mxrt::clampValue(Effect::kParams[i], value);
+        }
+        for (int i = 0; i < N(); i++) {
+            values[i].store(next[i]);
+            dirty[i].store(true);
+        }
+        picked.store(index);
+        become(preset.program);
+        // The host reads them again: they changed without it moving them.
+        if (hostParams && hostParams->rescan) hostParams->rescan(host, CLAP_PARAM_RESCAN_VALUES);
+#endif
     }
 
     // ── the window's side (fxgui::Model), on the main thread ──
 
     int count() override { return N(); }
     double value(int index) override { return index >= 0 && index < N() ? values[index].load() : 0.0; }
-    const char* face() override { return Effect::kFace; }
+    const char* face(int which) override { return book::face(which); }
+    std::string dialsOf(int which) override {
+#ifdef FX_RUNTIME
+        if (which < 0 || which >= Effect::programs()) return "null";
+        std::string out = "[";
+        for (int at : Effect::dialsOf(which)) out += (out.size() > 1 ? "," : "") + std::to_string(at);
+        return out + "]";
+#else
+        (void)which;
+        return "null";
+#endif
+    }
+    int programs() override { return book::programs(); }
+    int current() override { return program; }
+    int presets() override { return book::presets(); }
+    int chosen() override { return picked.load(); }
+    std::string presetList() override;
+    bool resize(uint32_t width, uint32_t height) override {
+        return hostGui && hostGui->request_resize && hostGui->request_resize(host, width, height);
+    }
     void grab(int index) override { queue({UiMove::kGrab, index, 0.0}); }
     void release(int index) override { queue({UiMove::kRelease, index, 0.0}); }
     void set(int index, double v) override {
@@ -151,13 +270,13 @@ struct Plugin : fxgui::Model {
             header->type == CLAP_EVENT_NOTE_CHOKE) {
             const auto* ev = reinterpret_cast<const clap_event_note_t*>(header);
             if (ev->key < 0 || ev->key > 127) return;
-            if (header->type == CLAP_EVENT_NOTE_ON) effect.noteOn(ev->key, ev->velocity * 127.0);
-            else effect.noteOff(ev->key);
+            if (header->type == CLAP_EVENT_NOTE_ON) effect->noteOn(ev->key, ev->velocity * 127.0);
+            else effect->noteOff(ev->key);
         } else if (header->type == CLAP_EVENT_MIDI) {
             const auto* ev = reinterpret_cast<const clap_event_midi_t*>(header);
             const int status = ev->data[0] & 0xF0, key = ev->data[1] & 0x7F, velocity = ev->data[2] & 0x7F;
-            if (status == 0x90 && velocity > 0) effect.noteOn(key, velocity);
-            else if (status == 0x80 || status == 0x90) effect.noteOff(key);
+            if (status == 0x90 && velocity > 0) effect->noteOn(key, velocity);
+            else if (status == 0x80 || status == 0x90) effect->noteOff(key);
         }
     }
 
@@ -173,13 +292,13 @@ struct Plugin : fxgui::Model {
         if (i < 0) return;
         const double value = fromHost(i, ev->value);
         values[i].store(value);
-        if (live) effect.setParam(i, value);
+        if (live) effect->setParam(i, value);
         else dirty[i].store(true);
     }
 
     void applyDirty() {
         for (int i = 0; i < N(); i++)
-            if (dirty[i].exchange(false)) effect.setParam(i, values[i].load());
+            if (dirty[i].exchange(false)) effect->setParam(i, values[i].load());
     }
 
     template <typename Sample>
@@ -192,21 +311,58 @@ struct Plugin : fxgui::Model {
         Sample* outs[2] = {out[0] + from, outChannels > 1 ? out[1] + from : spare.data()};
         if (outChannels < 2 && !room) return;  // more frames than the host said it would send
         if (Effect::kIsInstrument) {
-            effect.process(static_cast<const Sample* const*>(nullptr), outs, static_cast<int>(frames));
+            effect->process(static_cast<const Sample* const*>(nullptr), outs, static_cast<int>(frames));
             return;
         }
         const Sample* ins[2] = {in[0] + from, (inChannels > 1 ? in[1] : in[0]) + from};
-        effect.process(ins, outs, static_cast<int>(frames));
+        effect->process(ins, outs, static_cast<int>(frames));
     }
 };
 
 Plugin* self(const clap_plugin_t* plugin) { return static_cast<Plugin*>(plugin->plugin_data); }
+
+// For the window's menu: each preset's name and where it puts every dial, as JSON.
+void quote(std::string& out, const std::string& text) {
+    out += '"';
+    for (unsigned char c : text) {
+        if (c == '"' || c == '\\') { out += '\\'; out += static_cast<char>(c); }
+        else if (c < 0x20) { char hex[8]; std::snprintf(hex, sizeof hex, "\\u%04x", c); out += hex; }
+        else out += static_cast<char>(c);
+    }
+    out += '"';
+}
+
+std::string Plugin::presetList() {
+    std::string out = "[";
+#ifdef FX_RUNTIME
+    for (int k = 0; k < Effect::presets(); k++) {
+        const mxvm::Book::Preset& preset = Effect::preset(k);
+        std::vector<double> at(N());
+        for (int i = 0; i < N(); i++) at[i] = Effect::kParams[i].initial;
+        for (const auto& [id, value] : preset.values) {
+            const int i = Effect::indexOf(id);
+            if (i >= 0) at[i] = mxrt::clampValue(Effect::kParams[i], value);
+        }
+        out += k ? ",{\"name\":" : "{\"name\":";
+        quote(out, preset.name);
+        out += ",\"values\":[";
+        for (int i = 0; i < N(); i++) {
+            char number[32];
+            std::snprintf(number, sizeof number, "%s%.17g", i ? "," : "", at[i]);
+            out += number;
+        }
+        out += "]}";
+    }
+#endif
+    return out + "]";
+}
 
 // ── the plugin ──────────────────────────────────────────────────────────────────
 
 bool pluginInit(const clap_plugin_t* plugin) {
     Plugin* p = self(plugin);
     p->hostParams = static_cast<const clap_host_params_t*>(p->host->get_extension(p->host, CLAP_EXT_PARAMS));
+    p->hostGui = static_cast<const clap_host_gui_t*>(p->host->get_extension(p->host, CLAP_EXT_GUI));
     return true;
 }
 
@@ -218,25 +374,42 @@ void pluginDestroy(const clap_plugin_t* plugin) {
 
 bool pluginActivate(const clap_plugin_t* plugin, double sampleRate, uint32_t, uint32_t maxFrames) {
     Plugin* p = self(plugin);
+    // A program chosen while the plugin was not running goes in now.
+    if (Effect* next = p->incoming.exchange(nullptr)) {
+        delete p->effect;
+        p->effect = next;
+    }
+    p->reclaim();
     for (int i = 0; i < N(); i++) {
         p->dirty[i].store(false);
-        p->effect.setParam(i, p->values[i].load());
+        p->effect->setParam(i, p->values[i].load());
     }
-    p->effect.prepare(sampleRate);
+    p->effect->prepare(sampleRate);
+    p->rate = sampleRate;
+    p->active = true;
     p->spare32.assign(maxFrames, 0.0f);
     p->spare64.assign(maxFrames, 0.0);
     return true;
 }
 
-void pluginDeactivate(const clap_plugin_t*) {}
+void pluginDeactivate(const clap_plugin_t* plugin) {
+    Plugin* p = self(plugin);
+    p->active = false;
+    if (Effect* next = p->incoming.exchange(nullptr)) {
+        delete p->effect;
+        p->effect = next;
+    }
+    p->reclaim();
+}
 bool pluginStartProcessing(const clap_plugin_t*) { return true; }
 void pluginStopProcessing(const clap_plugin_t*) {}
-void pluginReset(const clap_plugin_t* plugin) { self(plugin)->effect.reset(); }
-void pluginOnMainThread(const clap_plugin_t*) {}
+void pluginReset(const clap_plugin_t* plugin) { self(plugin)->effect->reset(); }
+void pluginOnMainThread(const clap_plugin_t* plugin) { self(plugin)->reclaim(); }
 
 clap_process_status pluginProcess(const clap_plugin_t* plugin, const clap_process_t* process) {
     Plugin* p = self(plugin);
     mxrt::ScopedNoDenormals quiet;
+    p->takeIncoming();
     p->applyDirty();
     p->tell(process->out_events);
 
@@ -363,7 +536,7 @@ void paramsFlush(const clap_plugin_t* plugin, const clap_input_events_t* in, con
 
 const clap_plugin_params_t kParams = {paramsCount, paramsInfo, paramsValue, paramsToText, paramsFromText, paramsFlush};
 
-// ── state: "PPFX", a version, a count, then (parameter id, value) pairs ─────────
+// ── state: "PPFX", a version, the program and the preset, a count, then (parameter id, value) pairs ──
 
 bool writeAll(const clap_ostream_t* stream, const void* data, size_t size) {
     const char* at = static_cast<const char*>(data);
@@ -390,7 +563,10 @@ bool readAll(const clap_istream_t* stream, void* data, size_t size) {
 bool stateSave(const clap_plugin_t* plugin, const clap_ostream_t* stream) {
     Plugin* p = self(plugin);
     const uint32_t count = N();
-    if (!writeAll(stream, kStateMagic, 4) || !writeAll(stream, &kStateVersion, 4) || !writeAll(stream, &count, 4))
+    const uint32_t program = static_cast<uint32_t>(p->program);
+    const int32_t preset = p->picked.load();
+    if (!writeAll(stream, kStateMagic, 4) || !writeAll(stream, &kStateVersion, 4) || !writeAll(stream, &program, 4) ||
+        !writeAll(stream, &preset, 4) || !writeAll(stream, &count, 4))
         return false;
     for (int i = 0; i < N(); i++) {
         const uint32_t id = Effect::kParams[i].id;
@@ -406,9 +582,12 @@ bool stateSave(const clap_plugin_t* plugin, const clap_ostream_t* stream) {
 bool stateLoad(const clap_plugin_t* plugin, const clap_istream_t* stream) {
     Plugin* p = self(plugin);
     char magic[4];
-    uint32_t version = 0, count = 0;
+    uint32_t version = 0, count = 0, program = 0;
+    int32_t preset = -1;
     if (!readAll(stream, magic, 4) || std::memcmp(magic, kStateMagic, 4) != 0) return false;
-    if (!readAll(stream, &version, 4) || version != kStateVersion) return false;
+    if (!readAll(stream, &version, 4) || version < 1 || version > kStateVersion) return false;
+    // Version 1, from before there were presets, is the first program with none chosen.
+    if (version >= 2 && (!readAll(stream, &program, 4) || !readAll(stream, &preset, 4))) return false;
     if (!readAll(stream, &count, 4) || count > 4096) return false;
     bool changed = false;
     for (uint32_t k = 0; k < count; k++) {
@@ -421,6 +600,8 @@ bool stateLoad(const clap_plugin_t* plugin, const clap_istream_t* stream) {
         if (p->values[i].exchange(value) != value) changed = true;
         p->dirty[i].store(true);
     }
+    p->picked.store(preset >= -1 && preset < book::presets() ? preset : -1);
+    p->become(static_cast<int>(program) < book::programs() ? static_cast<int>(program) : 0);
     if (changed && p->hostParams && p->hostParams->rescan) p->hostParams->rescan(p->host, CLAP_PARAM_RESCAN_VALUES);
     return true;
 }
@@ -439,7 +620,7 @@ const clap_plugin_tail_t kTail = {tailGet};
 
 // A window only where one is written (gui.h) and only for a device that says what it
 // looks like. Otherwise the host shows its own controls.
-bool hasWindow() { return fxgui::supported() && Effect::kFace && Effect::kFace[0] != 0; }
+bool hasWindow() { return fxgui::supported() && book::face(0)[0] != 0; }
 
 bool guiIsApiSupported(const clap_plugin_t*, const char* api, bool floating) {
     return hasWindow() && !floating && std::strcmp(api, CLAP_WINDOW_API_COCOA) == 0;
@@ -505,6 +686,21 @@ const clap_plugin_gui_t kGui = {guiIsApiSupported, guiGetPreferredApi, guiCreate
                                 guiGetSize, guiCanResize, guiGetResizeHints, guiAdjustSize, guiSetSize,
                                 guiSetParent, guiSetTransient, guiSuggestTitle, guiShow, guiHide};
 
+// ── presets, for a host that asks for one by its place in the plugin ─────────────
+// The plugin's own window is where they are chosen; this is the same choice made by a
+// host (and by hostcheck): location kind PLUGIN, no location, the preset's number as the key.
+
+bool presetFromLocation(const clap_plugin_t* plugin, uint32_t kind, const char*, const char* key) {
+    if (kind != CLAP_PRESET_DISCOVERY_LOCATION_PLUGIN || !key || !*key) return false;
+    char* end = nullptr;
+    const long index = std::strtol(key, &end, 10);
+    if (*end != 0 || index < 0 || index >= book::presets()) return false;
+    self(plugin)->choose(static_cast<int>(index));
+    return true;
+}
+
+const clap_plugin_preset_load_t kPresetLoad = {presetFromLocation};
+
 const void* pluginExtension(const clap_plugin_t*, const char* id) {
     if (std::strcmp(id, CLAP_EXT_GUI) == 0 && hasWindow()) return &kGui;
     if (std::strcmp(id, CLAP_EXT_AUDIO_PORTS) == 0) return &kAudioPorts;
@@ -512,6 +708,7 @@ const void* pluginExtension(const clap_plugin_t*, const char* id) {
     if (std::strcmp(id, CLAP_EXT_PARAMS) == 0) return &kParams;
     if (std::strcmp(id, CLAP_EXT_STATE) == 0) return &kState;
     if (std::strcmp(id, CLAP_EXT_TAIL) == 0) return &kTail;
+    if (std::strcmp(id, CLAP_EXT_PRESET_LOAD) == 0 && book::presets() > 0) return &kPresetLoad;
     return nullptr;
 }
 

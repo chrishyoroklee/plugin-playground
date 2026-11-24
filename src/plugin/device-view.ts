@@ -96,6 +96,12 @@ export function renderDevice(host: HTMLElement, json: unknown, built: ReadonlyMa
         el.style.color = rgba(box.textcolor, '#d5d9e0');
         el.style.textAlign = Number(box.textjustification ?? 0) === 1 ? 'center' : 'left';
         el.style.lineHeight = `${h}px`;
+        // The type of a module with no picture (fxgen's types()): the page puts its
+        // buttons here, as it does along the top of a picture.
+        if (String(box.varname ?? '').endsWith('_types')) {
+          el.classList.add('dv-typeslot');
+          el.dataset.kind = String(box.varname).replace(/_types$/, '');
+        }
         break;
       }
       case 'v8ui':

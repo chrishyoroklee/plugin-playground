@@ -21,8 +21,8 @@ interface Drawing {
 interface Core {
   has(kind: string): boolean;
   render(kind: string, g: Drawing, v: Values, w: number, h: number, c: Record<string, Colour>, m: Ranges, hot: string | null, live?: Live | null): void;
-  /** What a kind shows while sound is running: 'spectrum', 'time', 'note', or nothing. */
-  moves(kind: string): 'spectrum' | 'time' | 'note' | null;
+  /** What a kind shows while sound is running: 'spectrum', 'note', or nothing. */
+  moves(kind: string): 'spectrum' | 'note' | null;
   pick(kind: string, x: number, y: number, v: Values, w: number, h: number, m: Ranges): string | null;
   drag(kind: string, id: string, x: number, y: number, v: Values, w: number, h: number, m: Ranges): Record<string, number>;
 }
@@ -30,7 +30,6 @@ interface Core {
 /** What is sounding now, for the pictures that show it (graphs.js, `live`). */
 export interface Live {
   spectrum?: number[];
-  time?: number;
   note?: { on: number; off: number | null } | null;
 }
 

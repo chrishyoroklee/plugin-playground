@@ -10,6 +10,7 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
 
 namespace fxgui {
 
@@ -21,7 +22,15 @@ struct Model {
     virtual void grab(int index) = 0;               // the dial was taken hold of
     virtual void set(int index, double value) = 0;  // ...moved
     virtual void release(int index) = 0;            // ...and let go
-    virtual const char* face() = 0;                 // patchc's face(): JSON in base64
+    virtual const char* face(int program) = 0;      // patchc's face(): JSON in base64
+    virtual std::string dialsOf(int program) = 0;   // JSON: the plugin's number for each dial of the face, or "null" for the same
+    virtual int programs() = 0;                     // how many faces there are: one per program
+    virtual int current() = 0;                      // the program playing, whose face is shown
+    virtual int presets() = 0;                      // how many presets the menu has; 0 for no menu
+    virtual int chosen() = 0;                       // the one last chosen, or -1
+    virtual void choose(int index) = 0;             // a preset was picked in the menu
+    virtual std::string presetList() = 0;           // [{name, values: [by dial]}], as JSON
+    virtual bool resize(uint32_t width, uint32_t height) = 0;  // ask the host for a new size; false if it says no
 };
 
 struct Window;

@@ -264,13 +264,14 @@ inline Result install(const fs::path& deviceFile, const fs::path& runtime, const
 
     // Read all of it, as the plugin will: a device this runtime cannot run is refused
     // here, with the reason, and not later by a host that says nothing.
-    mxvm::Device parsed;
+    mxvm::Book book;
     std::string why;
-    if (!parsed.parse(device, &why)) {
+    if (!book.parse(device, &why)) {
         if (!why.empty()) why[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(why[0])));
         result.message = why + ".";
         return result;
     }
+    const mxvm::Device& parsed = *book.programs[0];
     result.name = parsed.name;
     const std::string name = detail::fileName(parsed.name);
     std::string slug;

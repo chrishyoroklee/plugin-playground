@@ -13,7 +13,11 @@ const graphs = new Function(`${source}\nreturn PPGraphs;`)();
 
 type Param = { id: string; min: number; max: number; default: number; exponent?: number };
 type Module = { id: string; params: Param[]; options?: { id: string; choices: { id: string }[] }[] };
-const modules = [...(schema.modules as Module[]), ...(schema.instrument.modules as Module[])];
+// The modules that have a picture: fxgen.py's GRAPHS. The rest (distortion, crush,
+// chorus, tremolo, delay, reverb) are knobs, as most plugins of their kind are.
+const PICTURED = ['filter', 'eq', 'peq', 'geq', 'tilt', 'comp', 'osc', 'tone', 'env'];
+const everyModule = [...(schema.modules as Module[]), ...(schema.instrument.modules as Module[])];
+const modules = everyModule.filter((m) => PICTURED.includes(m.id));
 const W = 140, H = 70;
 const colours = { ink: [0.2, 0.1, 0.1], track: [0.9, 0.7, 0.7], accent: [0.2, 0.5, 0.7], card: [1, 1, 1] };
 
@@ -40,8 +44,8 @@ function recorder() {
 }
 
 describe('the pictures', () => {
-  it('there is one for every module, effect and instrument', () => {
-    for (const mod of modules) expect(graphs.has(mod.id), mod.id).toBe(true);
+  it('there is one for each module that is drawn, and none for the rest', () => {
+    for (const mod of everyModule) expect(graphs.has(mod.id), mod.id).toBe(PICTURED.includes(mod.id));
     expect(graphs.has('output')).toBe(false);
   });
 
@@ -171,13 +175,12 @@ describe('the compressor', () => {
 });
 
 describe('what is sounding, on the pictures', () => {
-  const live = { spectrum: Array.from({ length: 48 }, (_, i) => (i % 7) / 7), time: 12.34, note: { on: 0.05, off: null } };
+  const live = { spectrum: Array.from({ length: 48 }, (_, i) => (i % 7) / 7), note: { on: 0.05, off: null } };
 
   it('each kind says what it shows, and draws finitely with all of it, part of it, or none', () => {
     expect(['eq', 'filter', 'tone'].map((k) => graphs.moves(k))).toEqual(['spectrum', 'spectrum', 'spectrum']);
-    expect(['chorus', 'tremolo'].map((k) => graphs.moves(k))).toEqual(['time', 'time']);
     expect(graphs.moves('env')).toBe('note');
-    expect(['drive', 'crush', 'delay', 'reverb', 'osc'].map((k) => graphs.moves(k))).toEqual([null, null, null, null, null]);
+    expect(['comp', 'osc'].map((k) => graphs.moves(k))).toEqual([null, null]);
     for (const mod of modules) {
       const { v, m } = setup(mod, (p) => p.default);
       const quiet = recorder();

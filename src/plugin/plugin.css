@@ -360,6 +360,10 @@ code { font-family: var(--mono); font-size: 0.92em; }
 .dv-types button { flex: 1; min-width: 0; height: 12px; padding: 0 1px; border: 0; border-radius: 4px; background: transparent; color: var(--dv-ink, #2f1007); opacity: 0.55; font: 500 6.6px/12px var(--label); letter-spacing: 0.04em; text-transform: uppercase; white-space: nowrap; overflow: hidden; cursor: pointer; }
 .dv-types button:hover { opacity: 0.9; }
 .dv-types button[aria-checked='true'] { opacity: 1; background: var(--dv-card, #fdf2eb); }
+/* ...and on a card with no picture, in a well of their own under the title. */
+.dv-typeslot { display: flex; align-items: center; border-radius: 6px; text-overflow: clip; }
+.dv-typeslot .dv-types { flex: 1; padding: 2px; }
+.dv-typeslot .dv-types button { height: 14px; line-height: 14px; font-size: 7px; }
 .dv-graph:active { cursor: grabbing; }
 .is-editing .dv-graph { pointer-events: none; opacity: 0.55; }
 .dv-widget { --ld-ink: #2f1007; --ld-dim: #8f6f65; --ld-track: #e6bdb3; --ld-cap: #fff9f5; --ld-cap-edge: #e6bdb3; --ld-needle: #2f1007; }

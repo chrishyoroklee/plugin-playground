@@ -282,11 +282,19 @@ CARD_Y, CARD_H = 6, 157
 TITLE_Y = 14
 NAME_Y = 75       # the device's name, alone at the left, level with the middle of the cards
 DIAL_Y = 72
-# A card with a picture: the picture under the title, the dials along the bottom.
-GRAPHS = ("filter", "eq", "peq", "geq", "tilt", "comp", "drive", "crush", "chorus", "tremolo", "delay", "reverb", "osc", "tone", "env")
+# A card with a picture: the picture under the title, the dials along the bottom. Only
+# where plugins of that kind usually have one, because the picture tells you something
+# the knobs cannot: an EQ's or a filter's curve, a compressor's transfer curve, and a
+# synth's wave, filter and envelope. Distortion, crush, chorus, tremolo, delay and reverb
+# are knobs, as they are on most plugins of their kind, with their type named on the card.
+GRAPHS = ("filter", "eq", "peq", "geq", "tilt", "comp", "osc", "tone", "env")
 GRAPH_Y, GRAPH_H = 34, 70
 GRAPH_MIN_W = 136
 GRAPH_DIAL_Y = 109
+# A card with a type and no picture: the type's name under the title, where the page puts
+# its buttons (one TYPE_W wide for each choice).
+TYPES_Y = 38
+TYPE_W = 34
 
 UNITSTYLE = {"": "FLOAT", "x": "FLOAT", "Hz": "HERTZ", "ms": "MS", "%": "PERCENT", "dB": "DB", "bit": "INT"}
 
@@ -358,6 +366,13 @@ def label(text, at, slot, size=10.0, bold=False, color=None):
     if color:
         box(c)["textcolor"] = color
     show(c, slot[0], slot[1], slot[2] if len(slot) > 2 else 90, 18)
+    return c
+
+
+def types(module, text, at, slot):
+    """The type a module is (Hall, Tube), under its title on a card with no picture."""
+    c = label(text, at, slot, size=9.0, color=ACCENT)
+    box(c)["varname"] = "%s_types" % module
     return c
 
 
@@ -521,15 +536,24 @@ class Device:
         w = max(w, 2 * CARD_PAD + 60)
         self.graph = None
         self.dial_y = DIAL_Y
+        kinds = mod["options"][0] if mod.get("options") else None
         if self.pictured and mod["id"] in GRAPHS:
             w = max(w, 2 * CARD_PAD + GRAPH_MIN_W)
             self.dial_y = GRAPH_DIAL_Y
             self.graph = (self.card_x + CARD_PAD, GRAPH_Y, w - 2 * CARD_PAD, GRAPH_H)
+        elif kinds:
+            w = max(w, 2 * CARD_PAD + TYPE_W * len(kinds["choices"]))
         x = self.card_x
         self.s.emit("card((%d, %d), x=%d, w=%d, color=CARD)" % (XP, self.park_y, x, w))
         self.s.emit('label("%s", (%d, %d), (%d, %d, %d, 18), size=10.0, bold=True, color=INK)'
                     % (mod["label"].upper(), XP + 60, self.park_y, x, TITLE_Y, w))
         self.park_y += 30
+        if kinds and not self.graph:
+            chosen = self.options_of(mod["id"]).get(kinds["id"], kinds["default"])
+            text = next((c["label"] for c in kinds["choices"] if c["id"] == chosen), chosen)
+            self.s.emit('types("%s", "%s", (%d, %d), (%d, %d, %d, 18))'
+                        % (mod["id"], text.upper(), XP + 60, self.park_y, x + CARD_PAD, TYPES_Y, w - 2 * CARD_PAD))
+            self.park_y += 30
         self.card_x = x + w + CARD_GAP
         inner = n * DIAL_STEP - (DIAL_STEP - DIAL_W)
         return x + (w - inner) // 2

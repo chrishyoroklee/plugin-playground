@@ -34,6 +34,17 @@ const NAMES: Record<string, string> = {
   tremolo: 'Tremolo & Pan', delay: 'Delay', reverb: 'Reverb',
 };
 
+// One line under each plugin's name, short enough to fit its card. (The schema's blurb
+// says how each is built; that is for Edit, not for picking a plugin.)
+const ABOUT: Record<string, string> = {
+  filter: 'Low-pass, high-pass, band, notch', eq: 'Low, mid and high: quick tone',
+  peq: 'Four bands you place yourself', geq: 'Six fixed bands, slider style',
+  tilt: 'One knob: darker or brighter', comp: 'Evens out the level',
+  drive: 'From warm tube to fuzz', crush: 'Fewer bits, fewer samples',
+  chorus: 'Doubling, chorus and flange', tremolo: 'Level or pan that pulses',
+  delay: 'Echoes, stereo or ping-pong', reverb: 'A room, a hall or a plate',
+};
+
 // Racks that hold more than one preset, by category and shape. A rack with one preset is
 // called what that preset is called.
 const RACKS: Record<string, string> = {
@@ -67,7 +78,7 @@ function build(presets: Preset[], kind: Kind): Plugin[] {
   if (kind === 'instrument') {
     return [{
       id: 'synth', name: 'Synth', category: 'Synth', rack: false, shape: 'synth', presets,
-      blurb: 'Two oscillators, a filter and an envelope on every voice',
+      blurb: 'Two oscillators, filter, envelope',
     }];
   }
   const out: Plugin[] = [];
@@ -90,7 +101,8 @@ function build(presets: Preset[], kind: Kind): Plugin[] {
         rack: modules.length > 1,
         shape,
         presets: [],
-        blurb: spec?.blurb ?? (modules.length ? modules.map(label).join(ARROW) : 'Nothing on it yet: add effects in Edit'),
+        blurb: (one ? ABOUT[modules[0]] ?? spec?.blurb : undefined)
+          ?? (modules.length ? modules.map(label).join(ARROW) : 'Nothing on it yet: add effects in Edit'),
       };
       byKey.set(key, plugin);
       out.push(plugin);

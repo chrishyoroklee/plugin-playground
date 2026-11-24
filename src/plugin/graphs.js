@@ -1,5 +1,5 @@
-// The pictures on a device: an EQ's curve, a filter's slope, a delay's echoes, an
-// envelope's shape. Each one is drawn from the dials under it and can be dragged, which
+// The pictures on a device: an EQ's curve, a filter's slope, a compressor's transfer
+// curve, a synth's wave and envelope. Each one is drawn from the dials under it and can be dragged, which
 // turns those dials. The dials stay: they are the parameters, and the exact numbers.
 //
 // This one file is used in three places, as it stands:
@@ -22,7 +22,6 @@
 //                              nothing. All of it is optional:
 //                                spectrum  levels 0 to 1, spread evenly across the
 //                                          picture's frequency axis (20 Hz to 20 kHz)
-//                                time      seconds the sound has been running
 //                                note      {on: seconds since the last note began,
 //                                           off: seconds since it was let go, or null}
 //   handles(v, w, h, m)        the dots that can be dragged: [{id, x, y}]
@@ -276,144 +275,6 @@ var PPGraphs = (function () {
     };
   }
 
-  // ── distortion: what goes in against what comes out ─────────────────────────────
-  function shape(kind, x, amount) {
-    var y = x * amount;
-    if (kind === 'hard') return clamp(y, -1, 1);
-    if (kind === 'fold') { y = ((y + 1) % 4 + 4) % 4; return y < 2 ? y - 1 : 3 - y; }
-    if (kind === 'fuzz') return clamp(y * 4 + 0.2, -0.35, 1);
-    if (kind === 'soft') return y / (1 + Math.abs(y)) * 1.5 > 1 ? 1 : Math.max(-1, y / (1 + Math.abs(y)) * 1.5);
-    var e = Math.exp(2 * clamp(y, -20, 20)); return (e - 1) / (e + 1);   // tube: tanh
-  }
-  var drive = {
-    draw: function (g, v, w, h, c) {
-      grid(g, w, h, c, [w / 2]);
-      g.line(0, h - 2, w, 2, a(c.ink, 0.18), 1);   // what comes out with no distortion at all
-      var kind = v.character || 'soft';
-      g.path(curve(w, function (x) { return h / 2 - shape(kind, x / w * 2 - 1, v.amount) * (h / 2 - 3); }), c.accent, 1.6, null);
-    },
-    handles: function (v, w, h, m) {
-      return [{ id: 'amount', x: w * 0.5 + pos(m.amount, v.amount) * w * 0.42, y: 6 + (1 - pos(m.amount, v.amount)) * (h - 12) }];
-    },
-    drag: function (id, x, y, v, w, h, m) { return { amount: val(m.amount, 1 - (y - 6) / (h - 12)) }; },
-  };
-
-  // ── crush: a wave cut into steps ────────────────────────────────────────────────
-  var crush = {
-    draw: function (g, v, w, h, c) {
-      grid(g, w, h, c, []);
-      var across = 96, hold = Math.max(1, Math.round(100 / v.rate)), levels = Math.pow(2, Math.min(v.bits, 12)) / 2;
-      var pts = [], held = 0;
-      for (var i = 0; i <= across; i++) {
-        if (i % hold === 0) held = Math.floor(Math.sin(i / across * 4 * PI) * levels) / levels;
-        var y = h / 2 - clamp(held, -1, 1) * (h / 2 - 4);
-        pts.push(w * i / across, y, w * Math.min(across, i + 1) / across, y);
-      }
-      g.path(curve(w, function (x) { return h / 2 - Math.sin(x / w * 4 * PI) * (h / 2 - 4); }), a(c.ink, 0.2), 1, null);
-      g.path(pts, c.accent, 1.6, null);
-    },
-    handles: function (v, w, h, m) {
-      return [{ id: 'rate', x: 6 + pos(m.rate, v.rate) * (w - 12), y: 6 + (1 - pos(m.bits, v.bits)) * (h - 12) }];
-    },
-    drag: function (id, x, y, v, w, h, m) {
-      return { rate: val(m.rate, (x - 6) / (w - 12)), bits: Math.round(val(m.bits, 1 - (y - 6) / (h - 12))) };
-    },
-  };
-
-  // ── chorus and tremolo: the wave that does the moving ───────────────────────────
-  // Across is how fast, up is how far.
-  function cycles(m, v) { return 1 + pos(m.rate, v.rate) * 7; }
-  function waveKind(isTremolo) {
-    return {
-      draw: function (g, v, w, h, c, m, live) {
-        grid(g, w, h, c, []);
-        var n = cycles(m, v), depth = pos(m.depth, v.depth), mid = h / 2, reach = h / 2 - 5;
-        // Where the sweep is: a dot going along the wave at the wave's real speed.
-        var at = live && typeof live.time === 'number' ? ((live.time * v.rate) % n) / n * w : null;
-        if (isTremolo) {
-          // The loudness itself: full at the top, dipping by the depth. Auto-pan is the
-          // same dip on each side in turn.
-          var level = function (phase) { return function (x) { return 4 + (h - 8) * depth * (0.5 - 0.5 * Math.cos(x / w * n * 2 * PI + phase)); }; };
-          var left = curve(w, level(0));
-          g.path(under(left, w, h), null, 0, a(c.accent, 0.2));
-          g.path(left, c.accent, 1.6, null);
-          if (v.mode === 'autopan') g.path(curve(w, level(PI)), a(c.ink, 0.55), 1.2, null);
-          if (at !== null) now(g, at, level(0)(at), c);
-        } else {
-          // Two voices a quarter turn apart, as the chorus's two sides are.
-          g.path(curve(w, function (x) { return mid - Math.cos(x / w * n * 2 * PI) * reach * depth; }), a(c.ink, 0.35), 1.2, null);
-          g.path(curve(w, function (x) { return mid - Math.sin(x / w * n * 2 * PI) * reach * depth; }), c.accent, 1.6, null);
-          if (at !== null) now(g, at, mid - Math.sin(at / w * n * 2 * PI) * reach * depth, c);
-        }
-      },
-      handles: function (v, w, h, m) {
-        return [{ id: 'rate', x: 6 + pos(m.rate, v.rate) * (w - 12), y: 6 + (1 - pos(m.depth, v.depth)) * (h - 12) }];
-      },
-      drag: function (id, x, y, v, w, h, m) {
-        return { rate: val(m.rate, (x - 6) / (w - 12)), depth: val(m.depth, 1 - (y - 6) / (h - 12)) };
-      },
-    };
-  }
-
-  // ── delay: the sound, then each echo ────────────────────────────────────────────
-  // Time runs to three seconds across the picture, stretched at the short end. The dot
-  // is the top of the second echo: how far along is the time, how tall is the feedback.
-  var DELAY_MS = 3000;
-  function tx(ms, w) { return 5 + (w - 10) * Math.sqrt(clamp(ms / DELAY_MS, 0, 1)); }
-  function xt(x, w) { var k = clamp((x - 5) / (w - 10), 0, 1); return k * k * DELAY_MS; }
-  var delay = {
-    draw: function (g, v, w, h, c) {
-      var ping = v.style === 'pingpong', base = ping ? h / 2 : h - 3, reach = ping ? h / 2 - 4 : h - 8;
-      g.line(0, base, w, base, a(c.ink, 0.12), 1);
-      var bar = function (ms, level, up, colour) {
-        var x = tx(ms, w), y = up ? base - level * reach : base + level * reach;
-        g.line(x, base, x, y, colour, 3);
-      };
-      bar(0, 1, true, a(c.ink, 0.55));
-      if (ping) bar(0, 1, false, a(c.ink, 0.55));
-      var wet = 0.35 + 0.65 * (v.mix / 100), fb = v.feedback / 100;
-      for (var n = 1; n <= 24; n++) {
-        var ms = v.time * n, level = Math.pow(fb, n - 1);
-        if (ms > DELAY_MS || level < 0.02) break;
-        // A ping-pong echo lands on one side, then the other; a plain one on both at once.
-        bar(ms, level, !ping || n % 2 === 1, a(c.accent, wet));
-      }
-    },
-    handles: function (v, w, h) {
-      var ping = v.style === 'pingpong', base = ping ? h / 2 : h - 3, reach = ping ? h / 2 - 4 : h - 8;
-      var level = v.feedback / 100;
-      return [{ id: 'time', x: tx(v.time * 2, w), y: ping ? base + level * reach : base - level * reach }];
-    },
-    drag: function (id, x, y, v, w, h, m) {
-      var ping = v.style === 'pingpong', base = ping ? h / 2 : h - 3, reach = ping ? h / 2 - 4 : h - 8;
-      var level = ping ? (y - base) / reach : (base - y) / reach;
-      return { time: clamp(xt(x, w) / 2, m.time.min, m.time.max), feedback: clamp(level * 100, m.feedback.min, m.feedback.max) };
-    },
-  };
-
-  // ── reverb: the tail ────────────────────────────────────────────────────────────
-  // How long it rings (Size) is how far the tail reaches; Damp is how soon its top end
-  // goes, drawn as the brighter part inside it.
-  var reverb = {
-    draw: function (g, v, w, h, c, m) {
-      var size = pos(m.size, v.size), bright = pos(m.damp, v.damp), tall = (h - 8) * (0.45 + 0.55 * v.mix / 100);
-      var reach = v.space === 'room' ? 0.4 : v.space === 'plate' ? 0.75 : 1;   // how long each space can ring
-      var tau = w * (0.05 + 0.45 * size * size) * reach;
-      var tail = function (t) { return function (x) { return h - 3 - tall * Math.exp(-x / t); }; };
-      g.line(0, h - 3, w, h - 3, a(c.ink, 0.12), 1);
-      var whole = curve(w, tail(tau));
-      g.path(under(whole, w, h - 3), null, 0, a(c.accent, 0.18));
-      g.path(under(curve(w, tail(tau * (0.2 + 0.8 * bright))), w, h - 3), null, 0, a(c.accent, 0.3));
-      g.path(whole, c.accent, 1.6, null);
-    },
-    handles: function (v, w, h, m) {
-      return [{ id: 'size', x: 6 + pos(m.size, v.size) * (w - 12), y: 6 + (1 - pos(m.damp, v.damp)) * (h - 12) }];
-    },
-    drag: function (id, x, y, v, w, h, m) {
-      return { size: val(m.size, (x - 6) / (w - 12)), damp: val(m.damp, 1 - (y - 6) / (h - 12)) };
-    },
-  };
-
   // ── oscillators: the wave the two of them make together ─────────────────────────
   function wave(kind, phase) {
     var p = phase - Math.floor(phase);
@@ -496,8 +357,7 @@ var PPGraphs = (function () {
   };
 
   var kinds = {
-    eq: eq, peq: peq, geq: geq, tilt: tilt, comp: comp, filter: filterKind(false), tone: filterKind(true), drive: drive, crush: crush,
-    chorus: waveKind(false), tremolo: waveKind(true), delay: delay, reverb: reverb, osc: osc, env: env,
+    eq: eq, peq: peq, geq: geq, tilt: tilt, comp: comp, filter: filterKind(false), tone: filterKind(true), osc: osc, env: env,
   };
 
   /** Everything a host draws for one picture: the kind's own drawing, then its dots. */
@@ -529,7 +389,7 @@ var PPGraphs = (function () {
   }
 
   // Which kinds have something to show while sound is running, and what they need for it.
-  var moving = { eq: 'spectrum', peq: 'spectrum', geq: 'spectrum', tilt: 'spectrum', filter: 'spectrum', tone: 'spectrum', chorus: 'time', tremolo: 'time', env: 'note' };
+  var moving = { eq: 'spectrum', peq: 'spectrum', geq: 'spectrum', tilt: 'spectrum', filter: 'spectrum', tone: 'spectrum', env: 'note' };
 
   return { kinds: kinds, render: render, pick: pick, drag: drag, has: function (kind) { return !!kinds[kind]; },
            moves: function (kind) { return moving[kind] || null; } };

@@ -95,7 +95,11 @@ const MEASURE = (selectors) => {
   for (const [kind, selector] of Object.entries(selectors)) {
     for (const el of device.querySelectorAll(selector)) {
       const r = el.getBoundingClientRect();
-      out.push([kind, (r.left - box.left) / k, (r.top - box.top) / k, r.width / k, r.height / k, kind === 'label' ? el.textContent : '']);
+      // A module's type, on a card with no picture, is a row of buttons on the page and its
+      // name in the window: compare the one chosen with the name.
+      const chosen = el.querySelector('.dv-types button[aria-checked="true"]');
+      const text = chosen ? chosen.title.toUpperCase() : el.textContent;
+      out.push([kind, (r.left - box.left) / k, (r.top - box.top) / k, r.width / k, r.height / k, kind === 'label' ? text : '']);
     }
   }
   return { width: device.offsetWidth, height: device.offsetHeight, items: out.sort((a, b) => a[0].localeCompare(b[0]) || a[1] - b[1] || a[2] - b[2]) };

@@ -97,6 +97,18 @@ export class PyRuntime {
     await this.ready;
     return this.send({ type: 'call', module: 'patchc', fn: 'device_for', args: [JSON.stringify(toWire(settings))] });
   }
+  /**
+   * The device file for a plugin with presets: the settings as they are (where the plugin
+   * starts), and the plugin's presets, with the programs they need. The plugin shows them
+   * in a menu in its window (patchc.py, plugin_device).
+   */
+  async pluginDevice(settings: Settings, presets: { name: string; settings: Settings }[]): Promise<string> {
+    await this.ready;
+    const menu = presets.map((p) => ({ name: p.name, settings: toWire(p.settings) }));
+    return this.send({
+      type: 'call', module: 'patchc', fn: 'plugin_device_for', args: [JSON.stringify(toWire(settings)), JSON.stringify(menu)],
+    });
+  }
 }
 
 export function base64ToBytes(b64: string): Uint8Array<ArrayBuffer> {

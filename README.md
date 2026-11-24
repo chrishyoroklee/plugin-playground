@@ -23,16 +23,17 @@ Try it at <https://chrishyoroklee.github.io/plugin-playground/>.
 - **Presets / Customize** (left panel) picks a starting point, then changes it: the
   name, the accent colour, the synth's sections, and which effects are on and in what
   order.
-- **The device** in the middle is what you get. Each effect has a picture of what it
-  does above its dials: an EQ's curve, a filter's slope, a distortion's bend, a delay's
-  echoes, a reverb's tail, an envelope's shape. Drag the dot on a picture and its dials
-  turn; turn a dial and the picture follows. The dials are the plugin's parameters, and
-  the exact numbers. **Edit**, **Look** has "Dials only" for a device without pictures.
-  A module that comes in kinds (a filter's four, a distortion's five) has them as buttons
-  along the top of its picture. While sound is running, the page draws it on the
-  pictures: the device's output spectrum behind an EQ's or a filter's curve, a dot going
-  along a tremolo's or a chorus's wave at its real speed, and a dot going round the
-  envelope with the latest note. Double-click its name to rename it. The corner of the stage has a zoom
+- **The device** in the middle is what you get. Where plugins of its kind usually have
+  one, a module has a picture above its dials: an EQ's or a filter's curve, a
+  compressor's transfer curve, and the synth's wave, filter and envelope. Drag the dot on
+  a picture and its dials turn; turn a dial and the picture follows. Distortion, crush,
+  chorus, tremolo, delay and reverb are knobs, as most plugins of their kind are. The
+  dials are the plugin's parameters, and the exact numbers. **Edit**, **Look** has "Dials
+  only" for a device without pictures. A module that comes in kinds (a filter's four, a
+  distortion's five, a reverb's three) has them as buttons on its card, along the top of
+  its picture if it has one. While sound is running, the page draws it on the pictures:
+  the device's output spectrum behind an EQ's or a filter's curve, and a dot going round
+  the envelope with the latest note. Double-click its name to rename it. The corner of the stage has a zoom
   control (pinch or Ctrl-scroll works too), and **Patch** shows the Max patch behind it.
 - **Play.** For an effect, the play button runs a sound through the device: choose one
   from the library (recordings, synth loops, a drum machine, test signals) or use your
@@ -42,9 +43,10 @@ Try it at <https://chrishyoroklee.github.io/plugin-playground/>.
   Once, you install Plugin Playground for your system (macOS, Windows or Linux: you pick
   it and its version, and the page checks it). After that every device, a preset or a
   chain of your own, is one small file: open it and it is a plugin in every DAW on the
-  machine, under the name you gave it, with every dial where it stood. On macOS the plugin
-  opens with the same face it has on the page; on Windows and Linux the DAW shows its
-  own sliders for now.
+  machine, under the name you gave it, with every dial where it stood. A plugin's file
+  holds its presets too: on macOS the plugin opens with the same face it has on the page
+  and a preset menu along its top; on Windows and Linux the DAW shows its own sliders
+  for now, and no menu.
 - **Edit**, above the device, unlocks it. Drag an effect's card to move it, press its x to
   take it out, pick its type on the card, and add another with **+ Effect**. **+ Knob**
   adds a knob of your own: click the dials it should turn, and one knob moves them all.
@@ -174,8 +176,8 @@ saved for Live, and the plugin is that patch compiled.
   page and in the plugin window's own page (`native/ui/face.html`) side by side and
   measures them: the same cards, labels, dials and pictures in the same places, and
   pictures that are the same drawing. The one thing the page has that the window does
-  not is the row of type buttons on a picture (a filter's four, a reverb's three): a
-  type is part of the device, chosen on the page before it is downloaded. It says
+  not is the row of type buttons (a filter's four, a reverb's three): in the window a
+  type changes with the preset menu, which carries one program per type its presets use. It says
   nothing about the Max for Live device, which Live draws with its own dials.
 - `.github/workflows/native.yml` runs the Python tests and builds every preset as a
   plugin on Linux, macOS and Windows. Each build loads its own plugin and compares it

@@ -2,13 +2,22 @@
 <!--
   The plugin's window: the device as the page shows it, drawn from the face a device
   file carries (patchc.py, face()). The plugin loads this page in a web view and the two
-  talk in four messages:
+  talk in these messages:
 
     page -> plugin   {type: "ready"}                       ask for the face and the values
                      {type: "begin" | "end", index}        a dial was grabbed, or let go
                      {type: "set", index, value}           a dial moved; value in its own units
-    plugin -> page   ppFace(face)                          once
+                     {type: "preset", index}               a preset was picked in the menu
+    plugin -> page   ppPresets([{name, values}, ...])      a plugin with presets: before the face
+                     ppFace(face, dials)                   at first, and when a preset changes the program;
+                                                           dials[i] is the plugin's number for the face's dial i
+                                                           (a program's own count differs from the plugin's)
                      ppValues([v0, v1, ...])               whenever the host moved something
+                     ppChosen(index)                       the preset last chosen, -1 for none
+
+  The preset menu is a strip above the device (BAR high; gui_mac.mm makes the window
+  that much taller). A preset with another program can have another size: the plugin
+  asks the host for it, and if the host says no, the face is fitted into the window. It says "edited" once a dial is away from where the preset put it.
 
   The pictures above the dials are drawn by src/plugin/graphs.js, the same file the page
   and the Max for Live device use. It is pasted into the first script below when the
@@ -24,7 +33,14 @@
 __FONTS__
 html, body { margin: 0; height: 100%; overflow: hidden; background: #feddd4; }
 body { font-family: 'DM Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; -webkit-user-select: none; user-select: none; cursor: default; }
-#device { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+#root { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+#device { position: absolute; left: 0; top: 0; }
+#bar { position: absolute; left: 0; top: 0; right: 0; height: 26px; display: flex; align-items: center; gap: 4px; padding: 0 8px; box-sizing: border-box; background: rgba(127, 127, 127, 0.10); }
+#bar[hidden] { display: none; }
+#bar button, #bar select { font: inherit; font-size: 9px; letter-spacing: 0.04em; color: inherit; background: rgba(127, 127, 127, 0.16); border: 0; border-radius: 4px; height: 18px; }
+#bar button { width: 18px; padding: 0; cursor: pointer; }
+#bar select { min-width: 150px; max-width: 260px; padding: 0 4px; cursor: pointer; }
+#bar .what { font-size: 8px; letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.6; margin-right: 4px; }
 .panel { position: absolute; box-shadow: 0 0 0 1px rgba(47, 16, 7, 0.07) inset; }
 .label { position: absolute; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: 0.08em; font-weight: 500; }
 .graph { position: absolute; border-radius: 8px; overflow: hidden; cursor: grab; }
@@ -37,7 +53,15 @@ body { font-family: 'DM Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospa
 </style>
 </head>
 <body>
-<div id="device"></div>
+<div id="root">
+  <div id="bar" hidden>
+    <span class="what">Preset</span>
+    <button type="button" id="prev" title="Previous preset">&#8249;</button>
+    <select id="pick" title="Presets"></select>
+    <button type="button" id="next" title="Next preset">&#8250;</button>
+  </div>
+  <div id="device"></div>
+</div>
 <script>
 __GRAPHS__
 </script>
@@ -121,6 +145,7 @@ __GRAPHS__
 
     var root = document.createElement('div');
     root.className = 'dial';
+    root.dataset.index = index;
     root.tabIndex = 0;
     root.setAttribute('role', 'slider');
     root.setAttribute('aria-label', p.name);
@@ -160,6 +185,8 @@ __GRAPHS__
       if (next === state.value) return;
       state.value = next;
       state.redraw();
+      latest[index] = next;
+      showChosen();
       send({ type: 'set', index: index, value: next });
     };
     // One gesture for the host to record: grabbed, moved any number of times, let go.
@@ -289,19 +316,81 @@ __GRAPHS__
     return root;
   }
 
+  // The preset menu. `latest` is where every dial is, so the menu can tell whether the
+  // chosen preset has been changed since.
+  var BAR = 26;
+  var presets = [], chosen = -1, latest = [];
+  var bar = document.getElementById('bar'), pick = document.getElementById('pick');
+  function near(a, b) { return Math.abs(a - b) <= 1e-6 * Math.max(1, Math.abs(b)); }
+  function edited() {
+    var p = presets[chosen];
+    if (!p) return true;
+    for (var i = 0; i < p.values.length && i < latest.length; i++) if (!near(latest[i], p.values[i])) return true;
+    return false;
+  }
+  function showChosen() {
+    if (!presets.length) return;
+    var first = pick.options[0];
+    var changed = edited();
+    first.hidden = !changed;
+    first.textContent = chosen >= 0 ? presets[chosen].name + ' (edited)' : 'No preset';
+    pick.value = changed ? 'none' : String(chosen);
+  }
+  function step(by) {
+    if (!presets.length) return;
+    var at = chosen < 0 ? (by > 0 ? -1 : 0) : chosen;
+    send({ type: 'preset', index: ((at + by) % presets.length + presets.length) % presets.length });
+  }
+  window.ppPresets = function (list) {
+    presets = list || [];
+    pick.replaceChildren();
+    var none = document.createElement('option');
+    none.value = 'none';
+    none.disabled = true;
+    pick.appendChild(none);
+    presets.forEach(function (p, i) {
+      var o = document.createElement('option');
+      o.value = String(i);
+      o.textContent = p.name;
+      pick.appendChild(o);
+    });
+    bar.hidden = !presets.length;
+    showChosen();
+  };
+  window.ppChosen = function (index) { chosen = index; showChosen(); };
+  pick.addEventListener('change', function () { if (pick.value !== 'none') send({ type: 'preset', index: Number(pick.value) }); });
+  document.getElementById('prev').addEventListener('click', function () { step(-1); });
+  document.getElementById('next').addEventListener('click', function () { step(1); });
+
   var zoom = 1;
   function fit(face) {
-    zoom = Math.min(window.innerWidth / face.width, window.innerHeight / face.height) || 1;
-    document.getElementById('device').style.transform = 'scale(' + zoom + ')';
+    var top = presets.length ? BAR : 0;
+    zoom = Math.min(window.innerWidth / face.width, window.innerHeight / (face.height + top)) || 1;
+    var root = document.getElementById('root');
+    root.style.width = face.width + 'px';
+    root.style.height = (face.height + top) + 'px';
+    root.style.transform = 'scale(' + zoom + ')';
+    // A window the host would not resize for a narrower program: the device in its middle.
+    root.style.left = Math.max(0, (window.innerWidth - face.width * zoom) / 2) + 'px';
+    document.getElementById('device').style.top = top + 'px';
   }
 
   // The face, from the plugin. Everything is placed where the patch put it.
-  window.ppFace = function (face) {
+  window.ppFace = function (face, map) {
+    if (map) {
+      face = JSON.parse(JSON.stringify(face));
+      face.items.forEach(function (item) {
+        if (item.type === 'dial') item.index = map[item.index];
+        if (item.type === 'graph') item.dials.forEach(function (d) { d.index = map[d.index]; });
+      });
+    }
     var host = document.getElementById('device');
     host.replaceChildren();
     dials = [];
     pictures = [];
     document.body.style.background = face.background || '#feddd4';
+    var ink = face.items.filter(function (i) { return i.type === 'label'; })[0];
+    bar.style.color = ink ? ink.color : '#2f1007';
     host.style.width = face.width + 'px';
     host.style.height = face.height + 'px';
     face.items.forEach(function (item) {
@@ -338,6 +427,8 @@ __GRAPHS__
 
   // Where the host has the dials now. A dial being dragged here is left alone.
   window.ppValues = function (values) {
+    latest = values.slice();
+    showChosen();
     for (var i = 0; i < values.length; i++) {
       var d = dials[i];
       if (!d || d.held || d.value === values[i]) continue;

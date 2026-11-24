@@ -11,6 +11,7 @@
 // clap-validator covers the CLAP rules far more widely. This covers the one thing it
 // cannot know: that the plugin is this effect.
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -372,6 +373,92 @@ int main(int argc, char** argv) {
         check(!state2->load(second, &bad), "state that is not ours is refused");
         second->destroy(second);
     }
+
+#ifdef FX_RUNTIME
+    // Presets: each one sets the dials it names (and the rest to their defaults) and tells
+    // the host. One that runs another program swaps it in, playing, on the next block;
+    // the plugin is then a fresh Effect of that program, so it sounds like one.
+    const auto* presets = static_cast<const clap_plugin_preset_load_t*>(plugin->get_extension(plugin, CLAP_EXT_PRESET_LOAD));
+    check((presets != nullptr) == (Effect::presets() > 0), "presets can be loaded exactly when the plugin has them");
+    check(!presets || !presets->from_location(plugin, CLAP_PRESET_DISCOVERY_LOCATION_PLUGIN, nullptr, "999999"),
+          "a preset that is not there is refused");
+    int program = 0;
+    for (int k = 0; presets && k < Effect::presets(); k++) {
+        const mxvm::Book::Preset& preset = Effect::preset(k);
+        rescans = 0;
+        const std::string key = std::to_string(k);
+        check(presets->from_location(plugin, CLAP_PRESET_DISCOVERY_LOCATION_PLUGIN, nullptr, key.c_str()), "a preset loads");
+        check(n == 0 || rescans > 0, "loading a preset tells the host the values changed");
+        Effect fresh(preset.program);
+        for (int i = 0; i < n; i++) fresh.setParam(i, Effect::kParams[i].initial);
+        for (const auto& [id, value] : preset.values) fresh.setParam(Effect::indexOf(id), value);
+        bool where = true;
+        for (int i = 0; i < n; i++) {
+            double v = 0;
+            params->get_value(plugin, infos[i].id, &v);
+            const mxrt::ParamInfo& p = Effect::kParams[i];
+            const double want = p.exponent != 1.0 && !p.integer ? mxrt::valueToPosition(p, fresh.getParam(i)) : fresh.getParam(i);
+            where = where && std::fabs(v - want) <= 1e-9 * (1 + std::fabs(want));
+        }
+        check(where, "a preset puts every dial where it says");
+        const bool swapped = preset.program != program;
+        program = preset.program;
+        if (!swapped) continue;
+        fresh.prepare(sampleRate);
+        double off = 0;
+        bool sounds = true;
+        for (uint32_t b = 0; b < 40; b++) {
+            for (uint32_t i = 0; i < block; i++) { inL[i] = noise.next(); inR[i] = noise.next(); }
+            Events events;
+            if (Effect::kIsInstrument && b == 0) {
+                events.note(0, true, 60, 0.8);
+                fresh.noteOn(60, 0.8 * 127.0);
+            }
+            const float* directIn[2] = {inL.data(), inR.data()};
+            float* directOut[2] = {wantL.data(), wantR.data()};
+            fresh.process(directIn, directOut, static_cast<int>(block));
+            float* in32[2] = {inL.data(), inR.data()};
+            float* out32[2] = {outL.data(), outR.data()};
+            clap_audio_buffer_t in, out;
+            std::memset(&in, 0, sizeof in);
+            std::memset(&out, 0, sizeof out);
+            in.channel_count = out.channel_count = 2;
+            in.data32 = in32;
+            out.data32 = out32;
+            clap_process_t process;
+            std::memset(&process, 0, sizeof process);
+            process.steady_time = -1;
+            process.frames_count = block;
+            process.audio_inputs = Effect::kIsInstrument ? nullptr : &in;
+            process.audio_outputs = &out;
+            process.audio_inputs_count = Effect::kIsInstrument ? 0 : 1;
+            process.audio_outputs_count = 1;
+            process.in_events = &events.in;
+            process.out_events = &kOutEvents;
+            sounds = sounds && plugin->process(plugin, &process) != CLAP_PROCESS_ERROR;
+            for (uint32_t i = 0; i < block; i++)
+                off = std::max(off, std::max(std::fabs(double(outL[i]) - wantL[i]), std::fabs(double(outR[i]) - wantR[i])));
+        }
+        if (off != 0) std::fprintf(stderr, "hostcheck: preset %s differs from its program by up to %g\n", preset.name.c_str(), off);
+        check(sounds && off == 0, "a preset with another program plays as that program, from the next block");
+    }
+    if (presets) {
+        // The program and the preset are saved with the dials, and come back.
+        Bytes again;
+        clap_ostream_t ostream2 = {&again, streamWrite};
+        check(state->save(plugin, &ostream2), "state with a preset saves");
+        const clap_plugin_t* third = factory->create_plugin(factory, &kHost, desc->id);
+        if (third && third->init(third)) {
+            const auto* state3 = static_cast<const clap_plugin_state_t*>(third->get_extension(third, CLAP_EXT_STATE));
+            clap_istream_t istream = {&again, streamRead};
+            check(state3->load(third, &istream), "state with a preset loads");
+            Bytes back;
+            clap_ostream_t ostream3 = {&back, streamWrite};
+            check(state3->save(third, &ostream3) && back.data == again.data, "...as the same program, preset and dials");
+            third->destroy(third);
+        }
+    }
+#endif
 
     plugin->stop_processing(plugin);
     plugin->deactivate(plugin);

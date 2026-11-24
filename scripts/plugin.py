@@ -428,6 +428,57 @@ def install_device(home, device, to=None):
     return [Path(line.strip()) for line in done.stdout.splitlines()[1:] if line.strip()]
 
 
+def page_plugins():
+    """
+    The page's plugins (src/plugin/plugins.ts, worked out the same way): the presets of one
+    category that are made of the same effects in the same order, with the same things
+    turning their dials. The synth is one plugin. Each is {"name", "presets"}, the presets
+    as [{"name", "settings"}] in the order of its menu, with "Default" first for a plugin
+    that is one effect and nothing else.
+    """
+    def shape(s):
+        if s.get("kind") == "instrument":
+            return "synth"
+        chain = ">".join(e["module"] for e in s.get("chain", []) if e.get("on", True))
+        m = s.get("motion")
+        if not m:
+            return chain
+        routes = ",".join(sorted("%s:%s" % (r["source"], r["target"]) for r in m.get("routes", [])))
+        return "%s|%s|%s" % (chain, routes, ",".join(k["name"] for k in m.get("knobs", [])))
+
+    out = []
+    for presets in (PRESETS, INSTRUMENTS):
+        by = {}
+        for p in presets:
+            key = "synth" if p["settings"].get("kind") == "instrument" else "%s|%s" % (p["group"], shape(p["settings"]))
+            by.setdefault(key, []).append(p)
+        for key, group in by.items():
+            first = group[0]["settings"]
+            modules = [e["module"] for e in first.get("chain", []) if e.get("on", True)]
+            menu = [{"name": p["name"], "settings": p["settings"]} for p in group]
+            if key == "synth":
+                name = "Synth"
+                menu.insert(0, {"name": "Default", "settings": {"kind": "instrument", "name": name}})
+            elif len(modules) == 1 and not first.get("motion"):
+                name = "%s %s" % (group[0]["group"], modules[0])
+                menu.insert(0, {"name": "Default", "settings": {"name": name, "chain": [{"module": modules[0], "on": True}]}})
+            else:
+                name = "%s %s" % (group[0]["group"], group[0]["name"])
+            out.append({"name": name, "presets": menu})
+    return out
+
+
+def plugin_file(entry, folder):
+    """A plugin's device file, with its presets, starting on the first: what the page's Download writes."""
+    settings = dict(entry["presets"][0]["settings"], name=entry["name"])
+    name = fxgen.normalize(settings)["name"]
+    folder = Path(folder)
+    folder.mkdir(parents=True, exist_ok=True)
+    device = folder / ("%s.ppdevice" % patchc.slug(name))
+    device.write_text(patchc.plugin_device(settings, entry["presets"]), encoding="utf-8")
+    return {"device": device, "name": name, "slug": patchc.slug(name)}
+
+
 def check_runtime(home, made, work, log=print, window=True):
     """
     The plugin the helper makes for a device, loaded as a host would and held to the
@@ -1055,6 +1106,8 @@ def main(argv=None):
     ap.add_argument("--runtime", action="store_true",
                     help="build the runtime plugin and the helper, not one device's plugin. With --preset or "
                          "--settings, also make that device from it, check it, and with --install put it in your plugin folders")
+    ap.add_argument("--plugins", action="store_true",
+                    help="with --runtime: make every plugin of the page, with its presets, from the runtime and check each")
     ap.add_argument("--check-installer", metavar="DIR",
                     help="run the installer --package wrote into DIR, silently, and check what it installed (needs admin rights)")
     ap.add_argument("--render", nargs=2, metavar=("IN.wav", "OUT.wav"),
@@ -1082,6 +1135,13 @@ def main(argv=None):
                 [p["settings"] for p in PRESETS + INSTRUMENTS] if args.all else []
             if args.package:
                 print("  packed %s" % package_runtime(home, Path(args.package)))
+            if args.plugins:
+                # Each plugin with its presets in one file, as the page downloads it: every
+                # preset is loaded in turn and one that changes program is held to that program.
+                for entry in page_plugins():
+                    made = plugin_file(entry, out / "_plugins")
+                    print("%s (%d presets)" % (made["name"], len(entry["presets"])))
+                    check_runtime(home, made, out / "_runtime_check", window=entry["name"] in ("Synth", "Distortion drive"))
             for settings in chosen:
                 made = generate(settings, out / patchc.slug(fxgen.normalize(settings)["name"]))
                 print(made["name"])

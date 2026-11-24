@@ -259,6 +259,11 @@ async function check(name, url) {
       const text = (await readFile(await dev.path())).toString('utf8');
       const ok = text.startsWith('ppdevice 1\n') && text.includes(`\nkind ${tab}\n`) && text.includes('\n@end\n') && /\nface \S+/.test(text) && /\nsettings \S+/.test(text);
       note(ok && dev.suggestedFilename().endsWith('.ppdevice'), `${tab}: the plugin's device file downloads`, `${dev.suggestedFilename()}, ${text.length} bytes`);
+      // ...with the plugin's presets in it, for the menu in its window, and the programs they need
+      const presets = (text.match(/\npreset \d+ /g) ?? []).length;
+      const programs = (text.match(/(^|\n)ppdevice 1\n/g) ?? []).length;
+      note(presets >= 1 && /\ncurrent -?\d+\n$/.test(text) && /^ppdevice 1\nruntime 4\n/.test(text), `${tab}: the file holds the plugin's presets`,
+        `${presets} presets, ${programs} programs`);
       const href = await page.locator('#dl-installer').getAttribute('href');
       note(!!href && /plugin-playground-(macos|windows|linux)/.test(href), `${tab}: the installer is offered`, href ?? 'no link');
       await page.keyboard.press('Escape');
@@ -366,12 +371,14 @@ async function check(name, url) {
     }
     await choose('Vocal Plate');
     await settle();
-    const spaces = page.locator('#device .dv-types button');
+    const spaces = page.locator('#device .dv-typeslot[data-kind="reverb"] .dv-types button');
+    const reverbPicture = await page.locator('#device .dv-graph[data-kind="reverb"]').count();
     const spaceNames = await spaces.allTextContents();
     await spaces.filter({ hasText: 'Room' }).click();
     await settle();
     const nowRoom = await page.evaluate(() => JSON.parse(decodeURIComponent(escape(atob(location.hash.slice(3).replace(/-/g, '+').replace(/_/g, '/'))))).chain.find((e) => e.module === 'reverb').options.space);
-    note(spaceNames.join(',') === 'Room,Hall,Plate' && nowRoom === 'room', 'the reverb has three spaces, picked on its picture', `${spaceNames.join(', ')}; now ${nowRoom}`);
+    note(spaceNames.join(',') === 'Room,Hall,Plate' && nowRoom === 'room' && reverbPicture === 0,
+      'the reverb is knobs, with its three spaces picked on its card', `${spaceNames.join(', ')}; now ${nowRoom}; ${reverbPicture} pictures`);
 
     // 5b. pictures: an EQ's curve is there, dragging it turns the dial, and Look can take them away
     await choose('Mid Push');

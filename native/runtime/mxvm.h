@@ -25,6 +25,12 @@
 //   face ...                          what the plugin's window draws: JSON in base64
 //   settings ...                      for the page; not read here
 //
+// A plugin's file (a Book, below) can hold more than one program, one after the other,
+// each from its own `ppdevice` line to its `@end`, and after them the plugin's presets:
+//
+//   preset PROGRAM NAME N ID VALUE ...   a preset: the program it runs and N dial values by id
+//   current K                         the preset the plugin starts on; -1 for none
+//
 // Instructions, with registers as numbers:
 //
 //   = D A                             D = A
@@ -54,7 +60,9 @@ namespace mxvm {
 
 // The newest device a build of this file understands. patchc's PROGRAM_RUNTIME is what
 // a device asks for.
-constexpr int kRuntimeVersion = 3;  // 2: `every`, and the functions abs, max and floor. 3: atodb and Slide
+// 2: `every`, and the functions abs, max and floor. 3: atodb and Slide. 4: a file with
+// several programs and presets (Book).
+constexpr int kRuntimeVersion = 4;
 constexpr int kFormat = 1;
 
 enum Register { kSampleRate, kValue, kPitch, kVelocity, kInL, kInR, kOutL, kOutR, kFixedRegisters };
@@ -547,6 +555,126 @@ private:
     std::vector<mxrt::Line> line_;
     std::vector<mxrt::TapLine> tap_;
     std::vector<mxrt::Slide> slide_;
+};
+
+// A plugin: its programs and its presets. A program is one device; the presets of a
+// plugin can need more than one (a Tube preset and a Fuzz preset of the same distortion
+// are different code), and choosing a preset runs its program with its dial values.
+//
+// The plugin's dials are every program's, by id, in the order they first appear: one
+// list the host sees whichever program runs. A program without one of them (a synth
+// preset with no delay after it, beside one with a delay) leaves that dial doing nothing.
+// A dial that two programs both have has to be the same dial in both.
+struct Book {
+    struct Preset {
+        int program = 0;
+        std::string name;
+        std::vector<std::pair<uint32_t, double>> values;  // by dial id
+    };
+    std::vector<std::unique_ptr<Device>> programs;
+    std::vector<Preset> presets;
+    int current = -1;                       // the preset the plugin starts on
+    std::vector<mxrt::ParamInfo> params;    // the plugin's dials; names point into the programs
+    std::vector<std::vector<int>> local;    // [program][dial] -> that program's own index, or -1
+    std::vector<std::vector<int>> global;   // [program][its own index] -> the plugin's dial
+    bool instrument = false, tail = false;
+
+    bool parse(const std::string& text, std::string* error) {
+        *this = Book();
+        const auto fail = [&](const std::string& why) {
+            if (error) *error = why;
+            return false;
+        };
+        // Cut the file at each program's first line; what follows a program's @end is
+        // read here (the presets), and the program reads its own.
+        std::vector<std::string> pieces;
+        std::vector<std::string> after;
+        std::istringstream lines(text);
+        std::string line;
+        bool inside = false;
+        while (std::getline(lines, line)) {
+            std::string bare = line;
+            if (!bare.empty() && bare.back() == '\r') bare.pop_back();
+            if (bare.rfind("ppdevice", 0) == 0) {
+                pieces.emplace_back();
+                inside = true;
+            }
+            if (pieces.empty()) {
+                // Nothing but blank lines may come before the first program.
+                if (bare.find_first_not_of(" \t") != std::string::npos) return fail("this is not a Plugin Playground device file");
+                continue;
+            }
+            pieces.back() += line;
+            pieces.back() += '\n';
+            if (bare == "@end") inside = false;
+            else if (!inside) after.push_back(bare);
+        }
+        if (pieces.empty()) return fail("this is not a Plugin Playground device file");
+        for (const std::string& piece : pieces) {
+            auto program = std::make_unique<Device>();
+            if (!program->parse(piece, error)) return false;
+            programs.push_back(std::move(program));
+        }
+        instrument = programs[0]->instrument;
+        for (const auto& program : programs) {
+            if (program->instrument != instrument) return fail("the device file mixes an effect and an instrument");
+            tail = tail || program->tail;
+        }
+        // The plugin's dials.
+        for (const auto& program : programs) {
+            for (const mxrt::ParamInfo& p : program->params) {
+                const mxrt::ParamInfo* seen = find(p.id);
+                if (!seen) params.push_back(p);
+                else if (seen->min != p.min || seen->max != p.max || seen->exponent != p.exponent ||
+                         seen->unit != p.unit || seen->integer != p.integer)
+                    return fail("two programs in the device file disagree about the dial " + std::string(p.name));
+            }
+        }
+        local.assign(programs.size(), std::vector<int>(params.size(), -1));
+        global.resize(programs.size());
+        for (size_t k = 0; k < programs.size(); k++)
+            for (size_t i = 0; i < programs[k]->params.size(); i++) {
+                const int at = indexOf(programs[k]->params[i].id);
+                local[k][at] = static_cast<int>(i);
+                global[k].push_back(at);
+            }
+        // The presets.
+        for (const std::string& rest : after) {
+            std::istringstream in(rest);
+            std::vector<std::string> w;
+            for (std::string word; in >> word;) w.push_back(word);
+            if (w.empty()) continue;
+            if (w[0] == "current" && w.size() == 2) {
+                current = static_cast<int>(std::strtol(w[1].c_str(), nullptr, 10));
+            } else if (w[0] == "preset" && w.size() >= 4) {
+                Preset p;
+                p.program = static_cast<int>(std::strtol(w[1].c_str(), nullptr, 10));
+                p.name = detail::unquote(w[2]);
+                const long n = std::strtol(w[3].c_str(), nullptr, 10);
+                if (p.program < 0 || p.program >= static_cast<int>(programs.size()) || n < 0 ||
+                    w.size() != 4 + 2 * static_cast<size_t>(n))
+                    return fail("a preset in the device file cannot be read: " + rest);
+                for (long v = 0; v < n; v++)
+                    p.values.emplace_back(static_cast<uint32_t>(std::strtoul(w[4 + 2 * v].c_str(), nullptr, 10)),
+                                          std::strtod(w[5 + 2 * v].c_str(), nullptr));
+                presets.push_back(std::move(p));
+            }
+        }
+        if (current < -1 || current >= static_cast<int>(presets.size())) current = -1;
+        return true;
+    }
+
+    int indexOf(uint32_t id) const {
+        for (size_t i = 0; i < params.size(); i++)
+            if (params[i].id == id) return static_cast<int>(i);
+        return -1;
+    }
+
+private:
+    const mxrt::ParamInfo* find(uint32_t id) const {
+        const int i = indexOf(id);
+        return i < 0 ? nullptr : &params[i];
+    }
 };
 
 }  // namespace mxvm

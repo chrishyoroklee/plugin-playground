@@ -2,7 +2,7 @@
  {
   "id": "saw-lead",
   "name": "Saw Lead",
-  "tag": "Two detuned saws with a short echo",
+  "tag": "Two detuned saws, short echo",
   "group": "Leads",
   "sample": null,
   "settings": {
@@ -61,7 +61,7 @@
  {
   "id": "square-lead",
   "name": "Hollow Lead",
-  "tag": "A square wave with its octave on top",
+  "tag": "Square with its octave on top",
   "group": "Leads",
   "sample": null,
   "settings": {
@@ -130,7 +130,7 @@
  {
   "id": "pluck",
   "name": "Pluck",
-  "tag": "A filter that snaps shut, bouncing left and right",
+  "tag": "Snaps shut, bounces around",
   "group": "Leads",
   "sample": null,
   "settings": {
@@ -189,7 +189,7 @@
  {
   "id": "squarelead",
   "name": "Square Lead",
-  "tag": "Two square waves, a little apart",
+  "tag": "Two squares, a little apart",
   "group": "Leads",
   "sample": null,
   "settings": {
@@ -248,7 +248,7 @@
  {
   "id": "octavelead",
   "name": "Octave Lead",
-  "tag": "A saw with its octave on top, pushed through a tube",
+  "tag": "Saw and octave through a tube",
   "group": "Leads",
   "sample": null,
   "settings": {
@@ -318,7 +318,7 @@
  {
   "id": "softwhistle",
   "name": "Soft Whistle",
-  "tag": "A single sine with a slow start and a touch of vibrato",
+  "tag": "A sine with slow vibrato",
   "group": "Leads",
   "sample": null,
   "settings": {
@@ -387,7 +387,7 @@
  {
   "id": "supersaw",
   "name": "Super Saw",
-  "tag": "Eight voices of detuned saws: the big trance lead",
+  "tag": "The big trance lead",
   "group": "Leads",
   "sample": null,
   "settings": {
@@ -456,7 +456,7 @@
  {
   "id": "wobblelead",
   "name": "Wobble Lead",
-  "tag": "A resonant saw whose filter wobbles six times a second",
+  "tag": "A saw that wobbles",
   "group": "Leads",
   "sample": null,
   "settings": {
@@ -519,7 +519,7 @@
  {
   "id": "soft-pad",
   "name": "Soft Pad",
-  "tag": "Slow to arrive, slow to leave, wide",
+  "tag": "Slow in, slow out, wide",
   "group": "Pads",
   "sample": null,
   "settings": {
@@ -588,7 +588,7 @@
  {
   "id": "strings",
   "name": "Strings",
-  "tag": "Eight voices of detuned saws in a hall",
+  "tag": "Detuned saws in a hall",
   "group": "Pads",
   "sample": null,
   "settings": {
@@ -657,7 +657,7 @@
  {
   "id": "glass-bells",
   "name": "Glass Bells",
-  "tag": "Sines an octave apart, ringing into a long room",
+  "tag": "Ringing sines, long room",
   "group": "Pads",
   "sample": null,
   "settings": {
@@ -714,7 +714,7 @@
  {
   "id": "warmanalog",
   "name": "Warm Analog",
-  "tag": "Dark, slow and wide, with a sub octave underneath",
+  "tag": "Dark and slow, sub below",
   "group": "Pads",
   "sample": null,
   "settings": {
@@ -783,7 +783,7 @@
  {
   "id": "choir",
   "name": "Choir",
-  "tag": "Triangles with a vowel-like peak, in a big room",
+  "tag": "Vowel-like, in a big room",
   "group": "Pads",
   "sample": null,
   "settings": {
@@ -852,7 +852,7 @@
  {
   "id": "sweeppad",
   "name": "Sweep Pad",
-  "tag": "A filter that opens and closes by itself, very slowly",
+  "tag": "A filter that moves itself",
   "group": "Pads",
   "sample": null,
   "settings": {
@@ -995,7 +995,7 @@
  {
   "id": "shimmerair",
   "name": "Shimmer Air",
-  "tag": "Sines an octave apart dissolving into echoes and a bright hall",
+  "tag": "Sines into a bright hall",
   "group": "Pads",
   "sample": null,
   "settings": {
@@ -1122,7 +1122,7 @@
  {
   "id": "acid-bass",
   "name": "Acid Bass",
-  "tag": "One saw, a squelching filter and some drive",
+  "tag": "Squelching filter, some drive",
   "group": "Bass",
   "sample": null,
   "settings": {
@@ -1180,7 +1180,7 @@
  {
   "id": "reese",
   "name": "Reese",
-  "tag": "Two saws beating against each other",
+  "tag": "Two saws beating",
   "group": "Bass",
   "sample": null,
   "settings": {
@@ -1239,7 +1239,7 @@
  {
   "id": "wobblebass",
   "name": "Wobble Bass",
-  "tag": "The filter swings three times a second",
+  "tag": "Swings three times a second",
   "group": "Bass",
   "sample": null,
   "settings": {
@@ -1314,7 +1314,7 @@
  {
   "id": "pluckbass",
   "name": "Pluck Bass",
-  "tag": "A short, hollow thump with a sub octave",
+  "tag": "Short hollow thump, sub",
   "group": "Bass",
   "sample": null,
   "settings": {
@@ -1360,7 +1360,7 @@
  {
   "id": "rubberbass",
   "name": "Rubber Bass",
-  "tag": "Round and bouncy, with a filter that snaps shut",
+  "tag": "Round and bouncy",
   "group": "Bass",
   "sample": null,
   "settings": {
@@ -1418,7 +1418,7 @@
  {
   "id": "octavegrowl",
   "name": "Octave Growl",
-  "tag": "A saw and its sub octave, driven hard",
+  "tag": "Saw and sub, driven hard",
   "group": "Bass",
   "sample": null,
   "settings": {
@@ -1487,7 +1487,7 @@
  {
   "id": "electric-keys",
   "name": "Electric Keys",
-  "tag": "Triangle chords with a slow wobble",
+  "tag": "Triangle chords, slow wobble",
   "group": "Keys",
   "sample": null,
   "settings": {
@@ -1555,7 +1555,7 @@
  {
   "id": "organ",
   "name": "Organ",
-  "tag": "Sines, on the instant they are played",
+  "tag": "Sines, instantly",
   "group": "Keys",
   "sample": null,
   "settings": {
@@ -1614,7 +1614,7 @@
  {
   "id": "lofi-keys",
   "name": "Lo-Fi Keys",
-  "tag": "Soft keys through a worn sampler",
+  "tag": "Keys through a worn sampler",
   "group": "Keys",
   "sample": null,
   "settings": {
@@ -1806,7 +1806,7 @@
  {
   "id": "reedpiano",
   "name": "Reed Piano",
-  "tag": "An electric piano with bark and a tremolo",
+  "tag": "Electric piano with tremolo",
   "group": "Keys",
   "sample": null,
   "settings": {
@@ -1954,7 +1954,7 @@
  {
   "id": "dirtyorgan",
   "name": "Dirty Organ",
-  "tag": "Drawbars with the sub octave, overdriven, through a spinning speaker",
+  "tag": "Driven organ, spinning speaker",
   "group": "Keys",
   "sample": null,
   "settings": {
@@ -2033,7 +2033,7 @@
  {
   "id": "harp",
   "name": "Harp",
-  "tag": "Soft plucked triangles in a hall",
+  "tag": "Plucked triangles in a hall",
   "group": "Plucks",
   "sample": null,
   "settings": {
@@ -2090,7 +2090,7 @@
  {
   "id": "brightpluck",
   "name": "Bright Pluck",
-  "tag": "A resonant snap, like a plucked string",
+  "tag": "A resonant string snap",
   "group": "Plucks",
   "sample": null,
   "settings": {
@@ -2216,7 +2216,7 @@
  {
   "id": "stab",
   "name": "Stab",
-  "tag": "A short chord hit, wide and bright",
+  "tag": "A short wide chord hit",
   "group": "Plucks",
   "sample": null,
   "settings": {
@@ -2285,7 +2285,7 @@
  {
   "id": "echopluck",
   "name": "Echo Pluck",
-  "tag": "A hollow pluck that bounces from side to side",
+  "tag": "A hollow pluck that bounces",
   "group": "Plucks",
   "sample": null,
   "settings": {
@@ -2344,7 +2344,7 @@
  {
   "id": "drone",
   "name": "Drone",
-  "tag": "Hold one note: it drifts and breathes by itself",
+  "tag": "Hold one note: it breathes",
   "group": "Textures",
   "sample": null,
   "settings": {
@@ -2443,7 +2443,7 @@
  {
   "id": "brokenradio",
   "name": "Broken Radio",
-  "tag": "Crushed, fluttering keys with a short echo",
+  "tag": "Crushed, fluttering keys",
   "group": "Textures",
   "sample": null,
   "settings": {
@@ -2522,7 +2522,7 @@
  {
   "id": "pulsingpad",
   "name": "Pulsing Pad",
-  "tag": "A pad chopped into a rhythm, in a big room",
+  "tag": "A pad chopped into rhythm",
   "group": "Textures",
   "sample": null,
   "settings": {
@@ -2590,7 +2590,7 @@
  {
   "id": "brightknob",
   "name": "Bright Knob",
-  "tag": "One knob called Bright: opens the filter, adds bite, dries it up",
+  "tag": "One knob: filter and bite",
   "group": "Textures",
   "sample": null,
   "settings": {
@@ -2675,7 +2675,7 @@
  {
   "id": "plain-synth",
   "name": "Plain Synth",
-  "tag": "One of everything. Build your own from here.",
+  "tag": "One of everything",
   "group": "Start",
   "sample": null,
   "settings": {

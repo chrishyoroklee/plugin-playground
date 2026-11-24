@@ -1410,9 +1410,11 @@ PROGRAM_FORMAT = 1
 # run it, which is 1 unless it uses something a later one added (NEEDS, below), so a
 # device with none of that still loads in a runtime installed before it existed. When an
 # instruction, a kernel or a function is added: raise this, and list what was added.
-PROGRAM_RUNTIME = 3
+PROGRAM_RUNTIME = 4
 # Runtime 2: `every` (snapshot~), and the functions abs, max and floor.
 # Runtime 3: the function atodb and the kernel Slide (atodb~ and slide~, for the compressor).
+# Runtime 4: a file with several programs and the plugin's presets (plugin_device_for).
+PRESETS_RUNTIME = 4
 NEEDS = {"every": 2, "f abs": 2, "f max": 2, "f floor": 2, "f atodb": 3}
 KERNEL_NEEDS = {"Slide": 3}
 
@@ -1723,6 +1725,132 @@ def device_for(settings_json):
     import fxgen
     result = fxgen.run(json.loads(settings_json), want_amxd=False)
     return compile_program(result["json"], result["settings"]["name"], result["settings"])
+
+
+# A plugin's file: its programs and presets ------------------------------------------
+#
+# A plugin (src/plugin/plugins.ts) is one kind of device, and its presets are settings of
+# it. Most presets of a plugin differ only in where the dials stand, but some differ in a
+# type (a Tube preset and a Fuzz preset of the same distortion), and a type is code, not a
+# dial. So the file holds one program for each different set of types the presets use,
+# and each preset names its program and its dial values. The runtime plugin (mxvm::Book)
+# shows them in a menu and changes program when a preset needs another.
+
+def _program_key(settings):
+    """
+    What makes two settings need different code: everything but the dial values, and but
+    the name and the colours, which a plugin's programs all take from the device downloaded.
+    """
+    s = json.loads(json.dumps(settings))
+    for key in ("name", "accent", "theme", "look", "output"):
+        s.pop(key, None)
+    s["chain"] = [{k: v for k, v in e.items() if k != "values"} for e in s.get("chain", []) if e.get("on")]
+    for section in (s.get("instrument") or {}).values():
+        section.pop("values", None)
+    motion = s.get("motion")
+    if motion:
+        # The sources (lfo1, lfo2, follow) are keys of their own, as fxgen.normalize writes them.
+        motion.pop("knobValues", None)
+        for source in motion.values():
+            if isinstance(source, dict):
+                source.pop("values", None)
+    return json.dumps(s, sort_keys=True)
+
+
+def dial_values(settings):
+    """
+    Settings (normalized) to {dial id: value} for every dial fxgen makes of them. A dial is
+    named "<module label> <dial label>" (fxgen's dial(), model.ts dialIndex()), and its id
+    is that name's hash (Param above).
+    """
+    import fxgen
+    sch = fxgen.schema()
+    out = {}
+
+    def add(label, name, value):
+        out[fnv1a(("%s %s" % (label, name)).lower().replace(" ", "_"))] = float(value)
+
+    def section(spec, values):
+        for p in spec["params"]:
+            if p["id"] in values:
+                add(spec["label"], p["label"], values[p["id"]])
+
+    modules = {m["id"]: m for m in sch["modules"]}
+    for entry in settings.get("chain", []):
+        if entry.get("on") and entry["module"] in modules:
+            section(modules[entry["module"]], entry.get("values") or {})
+    section(sch["output"], settings.get("output") or {})
+    for spec in sch["instrument"]["modules"]:
+        if spec["id"] in (settings.get("instrument") or {}):
+            section(spec, settings["instrument"][spec["id"]].get("values") or {})
+    motion = settings.get("motion")
+    if motion:
+        for spec in sch["motion"]["sources"]:
+            if isinstance(motion.get(spec["id"]), dict):
+                section(spec, motion[spec["id"]].get("values") or {})
+        for knob in motion.get("knobs") or []:
+            add(sch["motion"]["knobs"]["label"] + "s", knob["name"], (motion.get("knobValues") or {}).get(knob["id"], 0))
+    return out
+
+
+def plugin_device(settings, presets):
+    """
+    The device file for a plugin with presets. `settings` is what is being downloaded: the
+    first program, where the plugin starts, and the name and colours of every program.
+    `presets` is [{"name", "settings"}] in the order of the menu. Raises CompileError.
+    """
+    import fxgen
+    base = fxgen.normalize(settings)
+    looks = {k: base[k] for k in ("name", "accent", "theme", "look") if k in base}
+    programs, texts, dials = [], [], []   # by program: its key, its text, its dial ids
+
+    def program_of(s):
+        key = _program_key(s)
+        if key in programs:
+            return programs.index(key)
+        result = fxgen.run(s, want_amxd=False)
+        text = compile_program(result["json"], base["name"], base if not programs else None)
+        programs.append(key)
+        texts.append(text)
+        dials.append({int(line.split()[1]): line for line in text.splitlines() if line.startswith("param ")})
+        return len(programs) - 1
+
+    program_of(base)
+    menu, current = [], -1
+    start = dial_values(base)
+    for preset in presets:
+        s = fxgen.normalize(dict(preset["settings"], **looks))
+        k = program_of(s)
+        values = {i: v for i, v in dial_values(s).items() if i in dials[k]}
+        if k == 0 and current < 0 and all(abs(values[i] - start.get(i, values[i])) < 1e-9 for i in values):
+            current = len(menu)
+        menu.append((k, preset["name"], values))
+    # A dial two programs share has to be the same dial (mxvm::Book).
+    seen = {}
+    for lines in dials:
+        for i, line in lines.items():
+            shape = line.split()[2:4] + line.split()[5:8]   # min, max; exponent, unit, integer
+            if seen.setdefault(i, shape) != shape:
+                raise CompileError("two presets of this plugin disagree about a dial (%s)" % line.split()[8])
+
+    out = []
+    for k, text in enumerate(texts):
+        lines = text.splitlines()
+        if k == 0 and menu:
+            # Presets need a runtime that knows them; an older one refuses the file with the reason.
+            lines = ["runtime %d" % max(PRESETS_RUNTIME, int(l.split()[1])) if l.startswith("runtime ") else l for l in lines]
+        out += lines
+    for k, name, values in menu:
+        out.append("preset %d %s %d%s" % (k, _quote(name), len(values),
+                                          "".join(" %d %s" % (i, lit(v)) for i, v in sorted(values.items()))))
+    if menu:
+        out.append("current %d" % current)
+    return "\n".join(out) + "\n"
+
+
+def plugin_device_for(settings_json, presets_json):
+    """plugin_device() for the page, which runs this under Pyodide: both as JSON."""
+    return plugin_device(json.loads(settings_json), json.loads(presets_json))
 
 
 def objects(patch):

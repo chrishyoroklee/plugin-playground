@@ -1,5 +1,9 @@
 """
-The pictures above the dials: an EQ's curve, a delay's echoes, an envelope's shape.
+The pictures above the dials: an EQ's curve, a filter's slope, an envelope's shape.
+
+Only some modules have one (fxgen.GRAPHS): the ones whose plugins usually do, because
+the picture shows what the knobs cannot. The rest are knobs, with their type named on
+the card where the page puts its type buttons.
 
 fxgen puts one in each module's card as a v8ui that carries its own drawing code
 (src/plugin/graphs.js, and graph-max.js for Max), joined to the module's dials both ways.
@@ -50,7 +54,7 @@ def plain():
 
 def test_each_module_has_a_picture_in_its_card_above_its_dials(effect):
     pictures = {b["varname"]: b for b in boxes(effect) if b.get("maxclass") == "v8ui"}
-    assert set(pictures) == {"filter_graph", "eq_graph", "delay_graph"}   # the output has none
+    assert set(pictures) == {"filter_graph", "eq_graph"}   # the delay and the output have none
     dials = [b for b in boxes(effect) if b.get("maxclass") == "live.dial"]
     for name, picture in pictures.items():
         module = name[:-len("_graph")]
@@ -64,6 +68,28 @@ def test_each_module_has_a_picture_in_its_card_above_its_dials(effect):
         assert all(x <= d["presentation_rect"][0] and d["presentation_rect"][0] + 44 <= x + w for d in mine)
     rects = sorted(b["presentation_rect"] for b in boxes(effect) if b.get("maxclass") == "panel" and b["presentation_rect"][3] == 157 and b["presentation_rect"][0] > 0)
     assert all(a[0] + a[2] <= b[0] for a, b in zip(rects, rects[1:]))
+
+
+def test_only_the_kinds_that_usually_have_a_picture_get_one():
+    assert set(fxgen.GRAPHS) == {"filter", "eq", "peq", "geq", "tilt", "comp", "osc", "tone", "env"}
+
+
+def test_a_module_with_a_type_and_no_picture_names_its_type_on_its_card(effect, plain):
+    for result, kinds in ((effect, ["delay"]), (plain, ["filter", "delay"])):
+        named = {b["varname"][:-len("_types")]: b for b in boxes(result) if str(b.get("varname", "")).endswith("_types")}
+        assert sorted(named) == sorted(kinds)
+        for module, b in named.items():
+            assert b["maxclass"] == "live.comment" and b["presentation_rect"][1] == fxgen.TYPES_Y
+            card = next(p for p in boxes(result) if p.get("maxclass") == "panel" and p["presentation_rect"][0] < b["presentation_rect"][0]
+                        and b["presentation_rect"][0] + b["presentation_rect"][2] <= p["presentation_rect"][0] + p["presentation_rect"][2]
+                        and p["presentation_rect"][3] == 157 and p["presentation_rect"][0] > 0)
+            assert card["presentation_rect"][2] >= 2 * fxgen.CARD_PAD + fxgen.TYPE_W * 2
+    assert next(b for b in boxes(effect) if b.get("varname") == "delay_types")["text"] == "PING-PONG"
+    assert next(b for b in boxes(plain) if b.get("varname") == "filter_types")["text"] == "HIGH-PASS"
+    # a distortion with five types has room for five buttons
+    drive = fxgen.run({"name": "D", "chain": [{"module": "drive", "on": True, "options": {"character": "fuzz"}}]}, want_amxd=False)
+    slot = next(b for b in boxes(drive) if b.get("varname") == "drive_types")
+    assert slot["text"] == "FUZZ" and slot["presentation_rect"][2] >= 5 * fxgen.TYPE_W
 
 
 def test_a_picture_carries_its_drawing_code_and_what_it_is_a_picture_of(effect):
@@ -103,7 +129,8 @@ def test_a_device_can_do_without_pictures(effect, plain):
     assert not [b for b in boxes(plain) if str(b.get("text", "")).startswith("prepend ")]
     assert all(b["presentation_rect"][1] == fxgen.DIAL_Y for b in boxes(plain) if b.get("maxclass") == "live.dial")
     assert plain["coverage"]["cords"]["not_checked"] == 0
-    assert plain["json"]["patcher"]["devicewidth"] < effect["json"]["patcher"]["devicewidth"]
+    # a card with a type keeps room for its buttons, so it is no wider, and not always narrower
+    assert plain["json"]["patcher"]["devicewidth"] <= effect["json"]["patcher"]["devicewidth"]
 
 
 def test_pictures_change_nothing_about_the_sound_or_the_parameters(effect, plain):
@@ -122,8 +149,10 @@ def test_the_plugins_window_is_told_about_each_picture_and_its_dials(effect):
     compiler = patchc.Compiler(effect["json"], "Pictured")
     face = compiler.face()
     graphs = [i for i in face["items"] if i["type"] == "graph"]
-    assert [g["kind"] for g in graphs] == ["filter", "eq", "delay"]
-    assert graphs[0]["options"] == {"mode": "highpass"} and graphs[2]["options"] == {"style": "pingpong"}
+    assert [g["kind"] for g in graphs] == ["filter", "eq"]
+    assert graphs[0]["options"] == {"mode": "highpass"}
+    # the delay has none, and its type is a label on its card
+    assert any(i["type"] == "label" and i["text"] == "PING-PONG" for i in face["items"])
     params = {p.index: p for p in compiler.params}
     for g in graphs:
         assert g["dials"] and all(params[d["index"]].key.startswith(g["kind"] + "_") for d in g["dials"])

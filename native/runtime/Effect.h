@@ -3,6 +3,11 @@
 // compiled into it. The shell, the renderer and hostcheck are written against that class
 // and are built unchanged against this one.
 //
+// A device file can hold a plugin's presets, and the programs they run (mxvm::Book). An
+// Effect runs one program, the first unless it is made with another; the dials it takes
+// are the plugin's, which are the same whichever program runs. The shell changes program
+// by making an Effect for the new one.
+//
 // Effect::load() has to be called once, before anything else here is used. Until then
 // (and if the file cannot be read) there is no device and nothing to make.
 
@@ -26,16 +31,17 @@ public:
     // Read a device file's text and become that device. False, with a reason, if it
     // cannot be run; the process then has no device.
     static bool load(const std::string& text, std::string* error = nullptr) {
-        auto next = std::make_unique<mxvm::Device>();
+        auto next = std::make_unique<mxvm::Book>();
         if (!next->parse(text, error)) return false;
-        device() = std::move(next);
-        const mxvm::Device& d = *device();
+        book() = std::move(next);
+        const mxvm::Book& b = *book();
+        const mxvm::Device& d = *b.programs[0];
         kName = d.name.c_str();
         kSlug = d.slug.c_str();
-        kNumParams = static_cast<int>(d.params.size());
-        kHasTail = d.tail;
-        kIsInstrument = d.instrument;
-        kParams = d.params.data();
+        kNumParams = static_cast<int>(b.params.size());
+        kHasTail = b.tail;
+        kIsInstrument = b.instrument;
+        kParams = b.params.data();
         kFace = d.face.c_str();
         return true;
     }
@@ -51,15 +57,34 @@ public:
         return load(text.str(), error);
     }
 
-    static bool loaded() { return device() != nullptr; }
+    static bool loaded() { return book() != nullptr; }
 
-    Effect() {
-        if (!loaded()) return;
-        d_ = device().get();
+    // The plugin's programs and presets.
+    static int programs() { return loaded() ? static_cast<int>(book()->programs.size()) : 0; }
+    static const char* faceOf(int program) {
+        return program >= 0 && program < programs() ? book()->programs[program]->face.c_str() : "";
+    }
+    static int presets() { return loaded() ? static_cast<int>(book()->presets.size()) : 0; }
+    static const mxvm::Book::Preset& preset(int index) { return book()->presets[index]; }
+    static int firstPreset() { return loaded() ? book()->current : -1; }
+    // A program's own dial numbers (what its face says) as the plugin's.
+    static const std::vector<int>& dialsOf(int program) { return book()->global[program]; }
+    static int indexOf(uint32_t id) { return loaded() ? book()->indexOf(id) : -1; }
+
+    explicit Effect(int program = 0) {
+        if (!loaded() || program < 0 || program >= programs()) return;
+        program_ = program;
+        d_ = book()->programs[program].get();
+        local_ = &book()->local[program];
         vm_.bind(d_);
         value_.resize(kNumParams);
-        for (int i = 0; i < kNumParams; i++) value_[i] = d_->params[i].initial;
+        for (int i = 0; i < kNumParams; i++) value_[i] = kParams[i].initial;
+        // The program's own starting values, where it has the dial.
+        for (int i = 0; i < kNumParams; i++)
+            if ((*local_)[i] >= 0) value_[i] = d_->params[(*local_)[i]].initial;
     }
+
+    int program() const { return program_; }
 
     void prepare(double sampleRate) {
         if (!d_) return;
@@ -78,7 +103,7 @@ public:
 
     void setParam(int index, double value) {
         if (!d_ || index < 0 || index >= kNumParams) return;
-        value_[index] = mxrt::clampValue(d_->params[index], value);
+        value_[index] = mxrt::clampValue(kParams[index], value);
         update(index);
     }
 
@@ -106,14 +131,17 @@ public:
     }
 
 private:
-    static std::unique_ptr<mxvm::Device>& device() {
-        static std::unique_ptr<mxvm::Device> held;
+    static std::unique_ptr<mxvm::Book>& book() {
+        static std::unique_ptr<mxvm::Book> held;
         return held;
     }
 
+    // A dial this program does not have does nothing.
     void update(int index) {
+        const int own = (*local_)[index];
+        if (own < 0) return;
         vm_.reg(mxvm::kValue) = value_[index];
-        vm_.run(d_->update[index]);
+        vm_.run(d_->update[own]);
     }
 
     void note(int key, double velocity) {
@@ -129,7 +157,9 @@ private:
         }
     }
 
+    int program_ = 0;
     const mxvm::Device* d_ = nullptr;
+    const std::vector<int>* local_ = nullptr;
     mxvm::Vm vm_;
     mxrt::Poly poly_;
     std::vector<double> value_;
