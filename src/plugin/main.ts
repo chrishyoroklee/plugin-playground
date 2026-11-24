@@ -687,8 +687,9 @@ function pluginCard(plugin: Plugin, onScreen: boolean): HTMLElement {
     b.className = `preset${p.id === activePreset && onScreen ? ' is-active' : ''}`;
     b.title = p.tag;
     b.append(Object.assign(document.createElement('b'), { textContent: p.name }));
+    // ...unless its name already says it (Fuzz Box, Concert Hall).
     const type = typeOf(p);
-    if (type) b.append(Object.assign(document.createElement('em'), { textContent: type }));
+    if (type && !p.name.toLowerCase().includes(type.toLowerCase())) b.append(Object.assign(document.createElement('em'), { textContent: type }));
     b.append(Object.assign(document.createElement('span'), { textContent: p.tag }));
     b.addEventListener('click', () => loadPreset(p, plugin));
     rows.append(b);
