@@ -58,6 +58,7 @@
                 <li>Every dial here is a Live parameter: automate it, map it, save it with your set.</li>
               </ol>
               <p class="muted small">For Logic, FL Studio, Reaper and other DAWs, Download also gives it as a plugin: VST3, CLAP or Audio Unit.</p>
+              <button id="btn-tour" class="btn tour-again" type="button">Show the quick tour</button>
               <p class="muted small">What you hear is checked against Max itself: the filter, the distortions, the delay, the flanger and the reverb match a Max 9 render to the last bit. The chorus and tremolo differ only in where their sweep starts, and the crusher at low rates in which samples it holds.</p>
               <h3>Privacy</h3>
               <p class="muted small">There is no account, no tracking and no cookie. Everything you make stays in this browser. To run, the page fetches Python from jsDelivr and one package from PyPI. Describe it, with your own key, sends what you type to Anthropic; nothing else you do leaves your computer.</p>
@@ -327,6 +328,39 @@
       <div id="scrim" class="scrim" hidden></div>
       <div id="toast" class="toast" role="status" aria-live="polite"></div>
     </div>
+    <!-- The quick tour, on a first visit (src/plugin/tour.ts). Each card's picture is CSS. -->
+    <dialog id="tour" class="tour" aria-label="Quick tour">
+      <div class="tour-card">
+        <section class="tour-step">
+          <div class="tour-art art-pick" aria-hidden="true"><i></i><i></i><i></i><b></b></div>
+          <h2>Pick a sound</h2>
+          <p>Choose a plugin on the left, then one of its presets. Effect or Instrument, at the top, switches what you make.</p>
+        </section>
+        <section class="tour-step" hidden>
+          <div class="tour-art art-hear" aria-hidden="true"><b></b><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+          <h2>Hear it</h2>
+          <p>Press Play, or the space bar. An effect plays a sound from the library or your own audio; an instrument plays from your keyboard.</p>
+        </section>
+        <section class="tour-step" hidden>
+          <div class="tour-art art-shape" aria-hidden="true"><span><i></i></span><span><i></i></span><span><i></i></span></div>
+          <h2>Make it yours</h2>
+          <p>Turn any dial. Customize makes a sound from a sentence; Edit adds effects, knobs of your own and dials that move by themselves.</p>
+        </section>
+        <section class="tour-step" hidden>
+          <div class="tour-art art-take" aria-hidden="true"><b></b><i></i><span>VST3</span><span>AU</span><span>CLAP</span><span>Live</span></div>
+          <h2>Take it with you</h2>
+          <p>Download makes it a plugin for your DAW, named after your device, or a Max for Live device for Ableton.</p>
+        </section>
+        <div class="tour-dots"></div>
+        <div class="tour-actions">
+          <button id="tour-skip" class="btn ghost" type="button">Skip</button>
+          <span class="tour-go">
+            <button id="tour-back" class="btn" type="button">Back</button>
+            <button id="tour-next" class="btn primary" type="button">Next</button>
+          </span>
+        </div>
+      </div>
+    </dialog>
     <script type="module" src="/src/plugin/main.ts"></script>
   </body>
 </html>

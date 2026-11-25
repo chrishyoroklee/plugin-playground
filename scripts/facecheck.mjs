@@ -120,6 +120,8 @@ const site = await serve();
 const browser = await chromium.launch({ args: ['--mute-audio'] });
 const context = await browser.newContext({ viewport: { width: 1500, height: 900 }, deviceScaleFactor: 2 });
 await context.addInitScript(MUTE);
+// Not a first visit: the quick tour would sit over the presets.
+await context.addInitScript(() => { try { localStorage.setItem('plugin-playground-tour', 'seen'); } catch {} });
 const page = await context.newPage();
 await page.goto(site.url);
 await page.waitForFunction(() => document.querySelectorAll('#presets .preset').length > 20 && !document.querySelector('#presets .preset[disabled]'), null, { timeout: 180000 });

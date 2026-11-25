@@ -172,6 +172,33 @@ async function check(name, url) {
     });
     if (gain !== 0) throw new Error(`this run would be audible (${gain}); stopping before it plays anything`);
 
+    // 1b. the quick tour: it greets a first visit, steps forward and back, closes, is
+    // remembered, and Help opens it again. This context is new, so this is a first visit.
+    const tourOpen = () => page.evaluate(() => document.getElementById('tour').open);
+    const card = () => page.locator('#tour .tour-step:not([hidden]) h2').textContent();
+    const greeted = await tourOpen();
+    const titles = [];
+    const backFirst = await page.locator('#tour-back').isVisible();
+    if (greeted) {
+      await page.screenshot({ path: path.join(shots, 'tour.png') });
+      for (let i = 0; i < 4; i++) {
+        titles.push(await card());
+        if (i < 3) await page.locator('#tour-next').click();
+      }
+    }
+    const lastButton = greeted ? await page.locator('#tour-next').textContent() : '';
+    if (greeted) await page.keyboard.press('ArrowLeft');
+    const back = greeted ? await card() : '';
+    if (greeted) await page.locator('#tour-skip').click();
+    const kept = await page.evaluate(() => localStorage.getItem('plugin-playground-tour'));
+    note(greeted && !backFirst && titles.length === 4 && new Set(titles).size === 4 && lastButton === 'Start making' && back === titles[2]
+      && !(await tourOpen()) && kept === 'seen', 'the quick tour greets a first visit, steps through four cards, closes and is remembered', titles.join(', '));
+    await page.locator('#btn-help').click();
+    await page.locator('#btn-tour').click();
+    const reopened = await tourOpen() && await card() === titles[0];
+    await page.keyboard.press('Escape');
+    note(reopened && !(await tourOpen()), 'Help opens the tour again, and Escape closes it');
+
     // 2. every preset builds, on both tabs. Nothing has been played yet, which is how a
     // visitor first meets the tabs (and where Safari once never switched).
     const lists = {};

@@ -21,6 +21,8 @@ The first public beta. Everything below is new.
   fuzz, or on your own audio file. Pictures above the dials show EQ curves, filters, the
   compressor and the synth's waves as they sound.
 - A **link** opens exactly the device you had.
+- A **quick tour** greets a first visit: four short cards, each with a small animation,
+  that can be skipped. Help shows it again.
 
 ### Taking it away
 

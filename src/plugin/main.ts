@@ -23,6 +23,7 @@ import { Track } from './audio';
 import { DEVICE_HEIGHT, highlightPython, renderDevice, renderPatch } from './device-view';
 import { mountGraph, typeButtons, type GraphDial, type Live, type Mounted } from './graph-view';
 import { Keyboard, PHRASES, Sequencer } from './keys';
+import { mountTour } from './tour';
 import { defaultsOf, pluginOfPreset, pluginOfSettings, pluginsOf, type Plugin } from './plugins';
 import {
   SCHEMA, decodeSettings, dialIndex, encodeSettings, kindOf, moduleSpec, normalize, presetsOf, themeOf, valuesOf,
@@ -1647,6 +1648,14 @@ function init(): void {
     popover('library', 'btn-library'), popover('downloads', 'btn-download'),
   ];
 
+  // The quick tour: by itself on a first visit, and again from Help.
+  const tour = mountTour();
+  $('btn-tour').addEventListener('click', () => {
+    popovers[0]();
+    (document.activeElement as HTMLElement | null)?.blur();
+    tour.open();
+  });
+
   const dark = $('dark-mode');
   dark.setAttribute('aria-checked', String(getTheme() === 'dark'));
   dark.addEventListener('click', () => {
@@ -1655,6 +1664,7 @@ function init(): void {
   });
 
   window.addEventListener('keydown', (e) => {
+    if (tour.isOpen()) return; // the tour has the keys while it is open
     if (e.key === 'Escape') {
       for (const close of popovers) close();
       if ($('help').contains(document.activeElement)) (document.activeElement as HTMLElement).blur();
