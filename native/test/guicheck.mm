@@ -184,10 +184,22 @@ int main(int argc, char** argv) {
         ask(web, [NSString stringWithFormat:@"document.querySelectorAll('.dial')[%u].dispatchEvent(new WheelEvent('wheel', "
                                             @"{deltaY: %d, bubbles: true, cancelable: true})); 1", which,
                                             start > (info.min_value + info.max_value) / 2 ? 300 : -300]);
-        spin(0.6);  // the page ends a wheel gesture a moment after the wheel stops
-        check(flushesAsked > 0, "turning a dial asks the host to listen");
+        // The page ends a wheel gesture 300 ms after the wheel stops. On a busy machine that
+        // arrives later than a fixed wait allowed for (it failed CI once at 0.6 s), so the
+        // host listens, as a host does, until the gesture has ended or 3 seconds have passed.
         in = {nullptr, inSize, inGet};
-        params->flush(plugin, &in, &outEvents);
+        const auto endedFor = [&](clap_id id) {
+            for (const Told& t : told)
+                if (t.id == id && t.type == CLAP_EVENT_PARAM_GESTURE_END) return true;
+            return false;
+        };
+        spin(0.4);
+        for (int tries = 0; tries < 30; tries++) {
+            params->flush(plugin, &in, &outEvents);
+            if (endedFor(info.id)) break;
+            spin(0.1);
+        }
+        check(flushesAsked > 0, "turning a dial asks the host to listen");
         double now = start;
         params->get_value(plugin, info.id, &now);
         check(now != start, "turning a dial in the window changes the parameter");
