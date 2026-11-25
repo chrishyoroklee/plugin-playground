@@ -966,7 +966,7 @@ async function aiMake(): Promise<void> {
     aiNote('This needs your own Anthropic key, below. Or press Copy prompt, which is free and works with any chatbot.', true);
     return;
   }
-  saveKey(key);
+  saveKey(key, $<HTMLInputElement>('ai-remember').checked);
   const btn = $<HTMLButtonElement>('ai-make');
   btn.disabled = true;
   btn.classList.add('is-busy');
@@ -1301,7 +1301,7 @@ async function download(): Promise<void> {
     toast(`Saved ${out.filename}. Drag it onto ${kind() === 'instrument' ? 'a MIDI' : 'an audio'} track in Live.`);
   } catch (err) {
     console.error(err);
-    toast('The download failed. The error is under View Python.');
+    toast('The download failed. Settings, View the Python that built it, says why.');
     showCheckError(String((err as Error).message || err));
   } finally {
     btn.disabled = false;
@@ -1309,7 +1309,7 @@ async function download(): Promise<void> {
   }
 }
 
-// ── the plugin: install once, then a file per device ────────────────────────────
+// ── the plugin: one installer with the device inside ────────────────────────────
 
 /** What the browser says this computer is; the menu starts on its system. */
 let machine: Machine = detectSystem(navigator);
@@ -1415,7 +1415,7 @@ function template(of: SystemId): Promise<Uint8Array> {
   return found;
 }
 
-/** Run `work` with `btn` showing it is busy; a failure is said, and shown under View Python. */
+/** Run `work` with `btn` showing it is busy; a failure is said, and shown with the Python. */
 async function busy(btn: HTMLButtonElement, work: () => Promise<void>): Promise<void> {
   btn.disabled = true;
   btn.classList.add('is-busy');
@@ -1423,7 +1423,7 @@ async function busy(btn: HTMLButtonElement, work: () => Promise<void>): Promise<
     await work();
   } catch (err) {
     console.error(err);
-    toast('The download failed. The error is under View Python.');
+    toast('The download failed. Settings, View the Python that built it, says why.');
     showCheckError(String((err as Error).message || err));
   } finally {
     btn.classList.remove('is-busy');
@@ -1497,6 +1497,8 @@ function popover(rootId: string, buttonId: string): () => void {
 }
 
 function init(): void {
+  // "0.1.0-beta.1" as a person says it: Version 0.1.0, beta 1.
+  $('app-version').textContent = `Version ${__APP_VERSION__.replace(/-beta\.(\d+)$/, ', beta $1')}`;
   renderKind();
   renderSide();
   renderLibrary();
@@ -1593,8 +1595,12 @@ function init(): void {
   });
 
   // Describe it.
-  $<HTMLInputElement>('ai-key').value = savedKey();
-  $('ai-key').addEventListener('change', () => saveKey($<HTMLInputElement>('ai-key').value));
+  const kept = savedKey();
+  $<HTMLInputElement>('ai-key').value = kept.key;
+  $<HTMLInputElement>('ai-remember').checked = kept.remembered;
+  const keep = (): void => saveKey($<HTMLInputElement>('ai-key').value, $<HTMLInputElement>('ai-remember').checked);
+  $('ai-key').addEventListener('change', keep);
+  $('ai-remember').addEventListener('change', keep);
   $('ai-make').addEventListener('click', () => void aiMake());
   $('ai-copy').addEventListener('click', () => void aiCopy());
   $('ai-apply').addEventListener('click', aiApply);

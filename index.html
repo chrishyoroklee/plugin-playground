@@ -18,9 +18,6 @@
     <link rel="canonical" href="https://chrishyoroklee.github.io/plugin-playground/" />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M8.2 1.8v4M15.8 1.8v4' fill='none' stroke='%233f78bd' stroke-width='2.4' stroke-linecap='round'/><rect x='3' y='5' width='18' height='16.5' rx='5' fill='%233f78bd'/><path d='M10 9.6v7.3l6-3.65z' fill='%23fff8f4'/></svg>" />
     <title>Plugin Playground</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&display=swap" />
     <style>
       html, body { height: 100%; margin: 0; }
     </style>
@@ -37,6 +34,7 @@
           <button id="mode-instrument" type="button" role="tab" aria-selected="false" title="A MIDI instrument: a synth you play with notes">Instrument</button>
         </div>
         <!-- The mark: a plug with a play button on it. It takes the device's accent colour. -->
+        <div class="brand-wrap">
         <a class="brand" href="./" title="Plugin Playground">
           <svg class="brand-mark" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
             <path d="M8.2 1.8v4M15.8 1.8v4" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" />
@@ -44,11 +42,12 @@
             <path class="brand-play" d="M10 9.6v7.3l6-3.65z" />
           </svg>
           <span class="brand-name">Plugin Playground</span>
-          <span class="brand-beta" title="New, and still changing. Tell us what breaks: the ? button has the link.">Beta</span>
         </a>
+        <a class="brand-beta" href="https://github.com/chrishyoroklee/plugin-playground/issues/new?template=problem.yml" target="_blank" rel="noopener" title="This is a beta. Tell us what breaks or sounds wrong.">Beta</a>
+        </div>
         <div class="topbar-right">
           <div id="help" class="pop help">
-            <button id="btn-help" class="btn ghost icon" type="button" aria-label="How to use it in Ableton Live" aria-expanded="false" aria-controls="help-pop">
+            <button id="btn-help" class="btn ghost icon" type="button" aria-label="Help, privacy and feedback" aria-expanded="false" aria-controls="help-pop">
               <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><circle cx="8" cy="8" r="6.3" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M6.2 6.3a1.9 1.9 0 113 1.5c-.7.5-1.2.9-1.2 1.7" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="8" cy="11.6" r=".9" fill="currentColor"/></svg>
             </button>
             <div id="help-pop" class="popover" role="region" aria-labelledby="use-h">
@@ -58,15 +57,18 @@
                 <li>Drag the file onto a track in Live (Suite, or Standard with Max for Live): an audio track for an effect, a MIDI track for an instrument.</li>
                 <li>Every dial here is a Live parameter: automate it, map it, save it with your set.</li>
               </ol>
-              <p class="muted small">For other hosts, the same device compiles to a VST3, CLAP or Audio Unit plugin: see Download.</p>
-              <p class="muted small">What you hear is checked against Max itself: the filter, distortion, crush, delay and reverb match a Max 9 render sample for sample. Chorus, flanger and tremolo differ only in where their sweep starts.</p>
+              <p class="muted small">For Logic, FL Studio, Reaper and other DAWs, Download also gives it as a plugin: VST3, CLAP or Audio Unit.</p>
+              <p class="muted small">What you hear is checked against Max itself: the filter, the distortions, the delay, the flanger and the reverb match a Max 9 render to the last bit. The chorus and tremolo differ only in where their sweep starts, and the crusher at low rates in which samples it holds.</p>
+              <h3>Privacy</h3>
+              <p class="muted small">There is no account, no tracking and no cookie. Everything you make stays in this browser. To run, the page fetches Python from jsDelivr and one package from PyPI. Describe it, with your own key, sends what you type to Anthropic; nothing else you do leaves your computer.</p>
               <p class="muted small">
                 This is a beta. If something breaks or sounds wrong,
-                <a href="https://github.com/chrishyoroklee/plugin-playground/issues/new" target="_blank" rel="noopener">tell us on GitHub</a>.
+                <a href="https://github.com/chrishyoroklee/plugin-playground/issues/new?template=problem.yml" target="_blank" rel="noopener">tell us on GitHub</a>.
               </p>
               <p class="muted small foot">
-                Open source, built on <a href="https://github.com/Barnard-PL-Labs/MaxPyLang">MaxPyLang</a>.
-                The recordings are CC0 from Freesound (<a href="samples/fx/CREDITS.md">credits</a>); the other sounds are computed in your browser.
+                <span id="app-version"></span>.
+                Open source (<a href="https://github.com/chrishyoroklee/plugin-playground" target="_blank" rel="noopener">code</a>, <a href="https://github.com/chrishyoroklee/plugin-playground/blob/main/THIRD_PARTY_NOTICES.txt" target="_blank" rel="noopener">licences</a>), built on <a href="https://github.com/Barnard-PL-Labs/MaxPyLang" target="_blank" rel="noopener">MaxPyLang</a>.
+                The recordings are CC0 from Freesound (<a href="https://github.com/chrishyoroklee/plugin-playground/blob/main/public/samples/fx/CREDITS.md" target="_blank" rel="noopener">credits</a>); the other sounds are computed in your browser.
               </p>
             </div>
           </div>
@@ -153,7 +155,8 @@
               <details id="ai-key-box" class="ai-more">
                 <summary>Your Anthropic key</summary>
                 <input id="ai-key" class="ai-box" type="password" autocomplete="off" spellcheck="false" placeholder="sk-ant-..." aria-label="Anthropic API key" />
-                <p class="muted small">Kept in this browser and sent only to Anthropic, straight from this page. A request to Claude Haiku costs about a tenth of a cent. <a href="https://platform.claude.com/settings/keys" target="_blank" rel="noopener">Get a key</a></p>
+                <label class="ai-remember small"><input id="ai-remember" type="checkbox" /> Remember it on this browser</label>
+                <p class="muted small">Kept for this tab only unless you tick that, and sent only to Anthropic, straight from this page. A request to Claude Haiku costs about a tenth of a cent. <a href="https://platform.claude.com/settings/keys" target="_blank" rel="noopener">Get a key</a></p>
               </details>
               <details id="ai-paste-box" class="ai-more">
                 <summary>Paste a chatbot's answer</summary>
@@ -302,7 +305,7 @@
         <header>
           <div>
             <h2>The Python that built it</h2>
-            <p>This is the program that ran, not a summary of it. Run it with <code>pip install maxpylang</code>.</p>
+            <p>This is the program that ran, not a summary of it. To run it yourself, <a href="py/maxpylang-0.1.1-py3-none-any.whl" download>download the MaxPyLang this page uses</a> and <code>pip install</code> that file (the one on PyPI is older and cannot build these).</p>
           </div>
           <button id="drawer-close" class="btn ghost icon" type="button" aria-label="Close">
             <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M3.5 3.5l9 9m0-9l-9 9" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>

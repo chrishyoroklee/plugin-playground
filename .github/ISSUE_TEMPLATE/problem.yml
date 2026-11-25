@@ -1,0 +1,38 @@
+name: Something broke or sounds wrong
+description: A problem with the site, a download, or a plugin in your DAW.
+labels: [beta]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead. A screenshot helps.
+    validations:
+      required: true
+  - type: input
+    id: link
+    attributes:
+      label: Link to the device
+      description: In Settings, press "Copy link to this device" and paste it here. It opens exactly what you had.
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where was it?
+      options:
+        - On the website
+        - The Max for Live device in Ableton Live
+        - The plugin installer
+        - The plugin in a DAW
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: Your computer and software
+      description: For example "macOS 15 on Apple silicon, Logic Pro 11" or "Windows 11, Chrome, FL Studio 2025".
+  - type: textarea
+    id: error
+    attributes:
+      label: Any error message
+      description: Paste it as it was written. On the site, Settings, View the Python that built it shows build errors.
+      render: text

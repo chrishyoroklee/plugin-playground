@@ -1555,7 +1555,7 @@
  {
   "id": "organ",
   "name": "Organ",
-  "tag": "Sines, instantly",
+  "tag": "Pure tones, no fade-in",
   "group": "Keys",
   "sample": null,
   "settings": {

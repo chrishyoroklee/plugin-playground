@@ -44,6 +44,9 @@ PRESETS = json.loads((ROOT / "src" / "plugin" / "presets.json").read_text(encodi
 INSTRUMENTS = json.loads((ROOT / "src" / "plugin" / "instruments.json").read_text(encoding="utf-8"))
 FORMATS = {"clap": "CLAP", "vst3": "VST3", "au": "AUV2"}
 VERSION = "0.1.0"
+# The licences of what the plugins are built from (CLAP, clap-wrapper, the VST 3 SDK, the
+# AudioUnitSDK, DM Mono), which every installer of the runtime carries.
+NOTICES = ROOT / "THIRD_PARTY_NOTICES.txt"
 
 
 class BuildError(Exception):
@@ -737,9 +740,10 @@ def package_linux(made, found, target, work):
 
 # ── the one installer of the runtime ────────────────────────────────────────────
 #
-# What the site's Download menu offers first: Plugin Playground itself, once per machine.
-# It holds the runtime plugin and the helper, and sets the helper to open .ppdevice files.
-# Every device after that is a file the page writes.
+# Plugin Playground itself: the runtime plugin and the helper, which it sets to open
+# .ppdevice files. The site's Download is this installer with a device put inside it
+# (src/plugin/stamp.ts), which it makes into plugins as it installs; on its own, it is
+# offered for opening device files with.
 
 RUNTIME_PACKAGES = {"macos": "plugin-playground-macos.pkg", "windows": "plugin-playground-windows-setup.exe",
                     "linux": "plugin-playground-linux.tar.gz"}
@@ -771,6 +775,8 @@ def package_runtime_macos(home, target, work):
     app = work / "root" / "Applications" / (APP_NAME + ".app")
     app.parent.mkdir(parents=True)
     _copy(home / (APP_NAME + ".app"), app)
+    # What the plugins are built from, and its licences, go with them.
+    shutil.copy2(NOTICES, app / "Contents" / "Resources" / NOTICES.name)
     identity = os.environ.get("FX_CODESIGN_IDENTITY") or "-"
     sign = ["codesign", "--force", "--sign", identity] + (["--options", "runtime", "--timestamp"] if identity != "-" else [])
     # inside out: each plugin in the app, then the app round them
@@ -780,8 +786,9 @@ def package_runtime_macos(home, target, work):
     _run(sign + [app], "codesign")
     welcome = ("<p><b>Plugin Playground</b> turns the effects and instruments you make on the site into "
                "plugins for every DAW on this Mac: Audio Unit, VST3 and CLAP.</p>"
-               "<p>You install this once. After that, each <b>Download</b> on the site gives you a small file. "
-               "Open it and the plugin is installed under the name you gave it.</p>")
+               "<p>With this installed, a device file from the site (a .ppdevice) becomes a plugin when you open "
+               "it, under the name you gave it. Most people never need this on its own: each plugin the site's "
+               "<b>Download</b> gives you includes it.</p>")
     _mac_pkg(work, work / "root", "com.plugin-playground.helper", APP_NAME, welcome, target, MAC_POSTINSTALL)
 
 
@@ -832,12 +839,14 @@ def package_runtime_windows(home, target, work):
         "",
         "[Messages]",
         "WelcomeLabel2=Plugin Playground turns the effects and instruments you make on the site into VST3 and CLAP "
-        "plugins for every DAW on this PC.%n%nYou install this once. After that, each Download on the site gives you a "
-        "small file. Open it and the plugin is installed under the name you gave it.",
+        "plugins for every DAW on this PC.%n%nWith this installed, a device file from the site (a .ppdevice) becomes a "
+        "plugin when you open it, under the name you gave it. Most people never need this on its own: each plugin the "
+        "site's Download gives you includes it.",
         "",
         "[Files]",
         'Source: "%s"; DestDir: "{app}"; Flags: ignoreversion' % q(home / (APP_NAME + ".exe")),
         'Source: "%s"; DestDir: "{app}"; Flags: ignoreversion' % q(home / HELPER),
+        'Source: "%s"; DestDir: "{app}"; Flags: ignoreversion' % q(NOTICES),
         'Source: "%s\\*"; DestDir: "{app}\\Runtime"; Flags: ignoreversion recursesubdirs createallsubdirs' % q(home / "Runtime"),
         "",
         "[Dirs]",
@@ -950,7 +959,7 @@ fi
 
 rm -rf "$home"
 mkdir -p "$home" "$bin" "$data/applications" "$data/mime/packages"
-cp -R "$here/Runtime" "$here/plugin-playground-install" "$here/plugin-playground-open" "$home/"
+cp -R "$here/Runtime" "$here/plugin-playground-install" "$here/plugin-playground-open" "$here/THIRD_PARTY_NOTICES.txt" "$home/"
 chmod +x "$home/plugin-playground-install" "$home/plugin-playground-open"
 ln -sf "$home/plugin-playground-install" "$bin/plugin-playground-install"
 
@@ -1012,6 +1021,7 @@ def package_runtime_linux(home, target, work):
     top.mkdir()
     shutil.copytree(home / "Runtime", top / "Runtime", symlinks=True)
     shutil.copy2(home / HELPER, top / HELPER)
+    shutil.copy2(NOTICES, top / NOTICES.name)
     for name, text in (("install.sh", LINUX_INSTALL), ("plugin-playground-open", LINUX_OPEN)):
         (top / name).write_text(text, encoding="utf-8")
         (top / name).chmod(0o755)
@@ -1073,6 +1083,12 @@ def check_runtime_installer(home, made, folder, log=print):
         if not path.exists():
             raise BuildError("the device was opened, but there is no %s" % path)
         log("  %s: %s" % (FORMAT_NAMES[fmt], path))
+    notices = {"macos": Path("/Applications") / (APP_NAME + ".app") / "Contents" / "Resources",
+               "windows": Path(os.environ.get("ProgramW6432") or os.environ.get("ProgramFiles") or r"C:\Program Files") / APP_NAME,
+               "linux": Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share") / "plugin-playground"}[SYSTEM] / NOTICES.name
+    if not notices.exists():
+        raise BuildError("the installer left out the licences of what it installs: there is no %s" % notices)
+    log("  the licences are at %s" % notices)
     done = _run([home / ("hostcheck" + (".exe" if os.name == "nt" else "")), binary, device], "hostcheck")
     log("  %s" % done.stdout.strip())
     if SYSTEM == "macos":

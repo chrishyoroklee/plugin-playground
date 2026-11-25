@@ -91,7 +91,8 @@ export class PyRuntime {
   }
   /**
    * The device as a file for the runtime plugin (a .ppdevice): the same patch, compiled
-   * by patchc.py to a program. Opening it with Plugin Playground installed makes the plugin.
+   * by patchc.py to a program. The Download puts it into Plugin Playground's installer
+   * (stamp.ts); opened on its own, where Plugin Playground is installed, it makes the plugin.
    */
   async device(settings: Settings): Promise<string> {
     await this.ready;

@@ -28,7 +28,8 @@ and each further plugin takes a few seconds.
 ## The runtime: any device, nothing compiled
 
 Compiling is something a web page cannot do, so the site does not hand out compiled
-devices. It hands out one plugin that runs any device, and a file per device:
+devices. It hands out one plugin that runs any device, and the device to run, in one
+installer (see The download, below):
 
 ```
 settings ─▶ fxgen.py ─▶ patch JSON ─▶ patchc.py ─┬─▶ Effect.h ─▶ a compiler ─▶ one device's plugin
@@ -68,7 +69,8 @@ npm run plugin -- --runtime --all --package downloads      # every preset checke
 | Windows | `plugin-playground-windows-setup.exe` | the helper and runtime in Program Files | `Common Files\VST3\Plugin Playground` and the same under `CLAP`, which the installer makes writable by every user |
 | Linux   | `plugin-playground-linux.tar.gz`      | `install.sh` copies it to `~/.local/share/plugin-playground` | `~/.vst3` and `~/.clap` |
 
-Opening a device needs no administrator and no tools, and on macOS the plugins it makes
+Opening a device file needs no administrator and no tools (installing for every user
+on a Mac, or on Windows, does), and on macOS the plugins it makes
 carry no quarantine flag, because a program on the machine wrote them: that flag is what
 makes a host refuse a plugin unzipped from a download.
 
@@ -256,9 +258,10 @@ no preset uses.
   `.github/workflows/native.yml` does this on Linux, macOS and Windows.
 
 Where that stands (November 2026): CI builds the runtime on Linux, macOS and Windows,
-makes every preset from it with the helper (97 effects and 41 instruments) and each
-passes hostcheck. It runs the installer, opens three devices with what was installed
-(Ping-Pong, Tape Lo-Fi and the instrument Soft Pad) and puts them through
+makes every preset from it with the helper (100 effects and 41 instruments) and each
+passes hostcheck. It puts Tape Lo-Fi and the instrument Soft Pad into the installer as
+the page does and runs that, and runs the installer alone and opens Ping-Pong with
+what it installed, and puts all three through
 clap-validator, pluginval at strictness 5 (VST3 everywhere, the Audio Unit on macOS) and
 auval. On a Mac, a chain no preset has, made on the page in a browser, downloaded and
 opened in Finder's way, became a plugin that passes auval. Nobody has yet loaded one in
@@ -294,6 +297,20 @@ not directly with Max recordings.
   factory presets). No RNBO export.
 - The Synth's file holds a program for each of its 41 presets, because each uses its own
   waves and effects: about 700 KB, written in a few seconds on the page.
+- A device's name is the visitor's, and the helper writes plugins under it, so it never
+  replaces a plugin it did not make (one with its device inside, or our bundle
+  identifier): a device called "FabFilter Pro-Q 3" stops the install and asks for
+  another name (`tests/test_helper_install.py`). Names Windows reserves (`CON`, `NUL`,
+  `COM1`...) get a dash.
+- A device file is checked before it runs (`tests/test_hostile_devices.py`): at most 256
+  programs and 4096 objects each, and the delays keep whatever they are given finite
+  and under 20 seconds, so a crafted file can make a dull sound but not read outside a
+  buffer, ask for gigabytes or crash the host. The plugin's window may fetch nothing
+  (a content security policy) and takes only plain colours from a face.
+- On Windows the installer makes the two `Plugin Playground` plugin folders writable by
+  every user, so that opening a device file needs no administrator. On a computer
+  shared with people you do not trust, that lets one of them put a plugin there that
+  another's DAW would load. Installing per user instead is a change for later.
 
 ## Licences
 

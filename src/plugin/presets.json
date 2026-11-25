@@ -29,7 +29,7 @@
  {
   "id": "overdrive",
   "name": "Overdrive",
-  "tag": "Max's overdrive~, halfway",
+  "tag": "Classic amp drive, halfway",
   "group": "Distortion",
   "sample": "electric",
   "settings": {
@@ -494,7 +494,7 @@
  {
   "id": "arcade",
   "name": "8-Bit Arcade",
-  "tag": "Five bits, a tenth the rate",
+  "tag": "Old game-console crunch",
   "group": "Lo-Fi",
   "sample": "drums",
   "settings": {
@@ -544,7 +544,7 @@
  {
   "id": "lowrate",
   "name": "Low Rate",
-  "tag": "Few samples: metallic, aliased",
+  "tag": "Metallic, ringing aliasing",
   "group": "Lo-Fi",
   "sample": "piano",
   "settings": {
@@ -569,7 +569,7 @@
  {
   "id": "brokenconsole",
   "name": "Broken Console",
-  "tag": "Both at once, four bits",
+  "tag": "Crushed bits and sample rate",
   "group": "Lo-Fi",
   "sample": "vocals",
   "settings": {
@@ -2983,7 +2983,7 @@
  {
   "id": "wobble",
   "name": "Wobble",
-  "tag": "An LFO sweeping a low-pass",
+  "tag": "A filter wobbling in time",
   "group": "Motion",
   "sample": "drums",
   "settings": {
@@ -3121,7 +3121,7 @@
  {
   "id": "chop",
   "name": "Chop",
-  "tag": "A square LFO on the level",
+  "tag": "The sound cut on and off",
   "group": "Motion",
   "sample": "vocals",
   "settings": {

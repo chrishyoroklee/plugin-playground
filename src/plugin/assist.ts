@@ -47,15 +47,25 @@ export const MODEL = 'claude-haiku-5-5';
 const KEY = 'pp-anthropic-key';
 
 // ── the key, kept in this browser ───────────────────────────────────────────────
+//
+// For this tab only (sessionStorage), unless the visitor asks for it to be remembered
+// (localStorage). Every page on the site's host can read what the site keeps, so a key
+// is not left there by default.
 
-export function savedKey(): string {
-  try { return localStorage.getItem(KEY) ?? ''; } catch { return ''; }
+/** The key kept, and whether it is remembered beyond this tab. */
+export function savedKey(): { key: string; remembered: boolean } {
+  try {
+    const kept = localStorage.getItem(KEY);
+    if (kept) return { key: kept, remembered: true };
+    return { key: sessionStorage.getItem(KEY) ?? '', remembered: false };
+  } catch { return { key: '', remembered: false }; }
 }
 
-export function saveKey(key: string): void {
+export function saveKey(key: string, remember: boolean): void {
   try {
-    if (key.trim()) localStorage.setItem(KEY, key.trim());
-    else localStorage.removeItem(KEY);
+    localStorage.removeItem(KEY);
+    sessionStorage.removeItem(KEY);
+    if (key.trim()) (remember ? localStorage : sessionStorage).setItem(KEY, key.trim());
   } catch { /* private browsing: the key lasts as long as the page */ }
 }
 

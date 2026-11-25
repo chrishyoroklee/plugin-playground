@@ -10,6 +10,13 @@
  * itself, the same in both.
  */
 
+/* The two faces, served with the site (public/fonts, under the SIL Open Font License),
+ * so that loading the page asks no one else for anything. Latin only, as Google Fonts
+ * cuts them; DM Sans is one file for every weight. */
+@font-face { font-family: 'DM Sans'; font-style: normal; font-weight: 400 700; font-display: swap; src: url('/fonts/DMSans-latin.woff2') format('woff2'); }
+@font-face { font-family: 'DM Mono'; font-style: normal; font-weight: 400; font-display: swap; src: url('/fonts/DMMono-Regular-latin.woff2') format('woff2'); }
+@font-face { font-family: 'DM Mono'; font-style: normal; font-weight: 500; font-display: swap; src: url('/fonts/DMMono-Medium-latin.woff2') format('woff2'); }
+
 :root {
   --accent: #3f78bd;
   --bg: #feddd4;            /* the page */
@@ -134,7 +141,10 @@ code { font-family: var(--mono); font-size: 0.92em; }
 .brand-mark { flex: none; }
 .brand-play { fill: var(--on-accent); }
 .brand-name { color: var(--ink); font-size: 15px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.08em; }
-.brand-beta { font-family: var(--mono, monospace); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); border: 1px solid currentColor; border-radius: 999px; padding: 1px 7px; opacity: 0.85; }
+.brand-wrap { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.brand-beta { font-family: var(--mono, monospace); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); border: 1px solid currentColor; border-radius: 999px; padding: 1px 7px; opacity: 0.85; text-decoration: none; }
+.brand-beta:hover { opacity: 1; }
+.popover h3 { font-size: 12px; font-weight: 650; margin: 12px 0 4px; }
 .topbar-right { justify-self: end; display: flex; align-items: center; gap: 8px; }
 
 /* effect or instrument: the two things the page makes */
@@ -492,6 +502,7 @@ code { font-family: var(--mono); font-size: 0.92em; }
 .help:hover .popover, .help:focus-within .popover { opacity: 1; visibility: visible; transform: none; transition-delay: 0s; }
 .steps { padding-left: 18px; display: grid; gap: 6px; color: var(--ink-2); font-size: 13px; margin-bottom: 10px; }
 .steps b { color: var(--ink); font-weight: 600; }
+.help .popover p + p { margin-top: 7px; }
 
 /* settings */
 .setting { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
@@ -740,6 +751,8 @@ body[data-state='building'] .building { display: flex; }
 .ai-more[open] { display: grid; gap: 6px; }
 .ai-more p { line-height: 1.45; }
 .ai-more .btn { height: 30px; justify-self: start; }
+.ai-remember { display: flex; align-items: center; gap: 6px; color: var(--ink-2); cursor: pointer; }
+.ai-remember input { margin: 0; accent-color: var(--ink); }
 
 /* the Colours menu */
 .edit-looks { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 6px; }

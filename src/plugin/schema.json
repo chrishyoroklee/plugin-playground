@@ -4,7 +4,7 @@
     {
       "id": "filter",
       "label": "Filter",
-      "blurb": "State-variable filter (svf~). Park it to shape the tone, or sweep the cutoff by hand.",
+      "blurb": "A resonant filter. Park it to shape the tone, or sweep the cutoff by hand.",
       "options": [
         {
           "id": "mode",
@@ -299,7 +299,7 @@
     {
       "id": "comp",
       "label": "Compressor",
-      "blurb": "Turns the loud parts down: past the Threshold, every Ratio dB in comes out as one. Attack and Release are how fast it grabs and lets go; Makeup brings the level back, and Mix blends in the sound as it was.",
+      "blurb": "Turns the loud parts down. Past the Threshold, a Ratio of 4 lets through 1 dB for every 4 dB that go in. Attack and Release are how fast it grabs and lets go; Makeup brings the level back, and Mix blends in the sound as it was.",
       "options": [],
       "params": [
         {
@@ -416,7 +416,7 @@
     {
       "id": "crush",
       "label": "Crush",
-      "blurb": "Bit depth and sample rate reduction with degrade~. Lo-fi on demand.",
+      "blurb": "Fewer bits and a lower sample rate: grit and aliasing. Lo-fi on demand.",
       "options": [],
       "params": [
         {
@@ -443,7 +443,7 @@
     {
       "id": "chorus",
       "label": "Chorus",
-      "blurb": "A swept delay line per channel, moving in opposite directions for width. Flanger swaps it for a short comb~ with feedback.",
+      "blurb": "A swept delay line per channel, moving in opposite directions for width. Flanger swaps it for a much shorter delay with feedback.",
       "options": [
         {
           "id": "voice",
@@ -536,7 +536,7 @@
     {
       "id": "delay",
       "label": "Delay",
-      "blurb": "Feedback delay on a tapin~ / tapout~ pair. The time glides when you turn it, like tape. Repeats saturate like tape instead of running away. Ping-pong bounces them left and right.",
+      "blurb": "Echoes that feed back. The time glides when you turn it, like tape, and the repeats saturate like tape instead of running away. Ping-pong bounces them left and right.",
       "options": [
         {
           "id": "style",
@@ -588,7 +588,7 @@
     {
       "id": "reverb",
       "label": "Reverb",
-      "blurb": "Eight comb~ filters into allpass~ stages per channel, tuned three ways: a room, a hall or a plate. Level-matched so a long tail is not a loud one.",
+      "blurb": "A room, a hall or a plate: eight echoes per channel, smeared into a tail. Level-matched so a long tail is not a loud one.",
       "options": [
         {
           "id": "space",
@@ -761,7 +761,7 @@
       {
         "id": "tone",
         "label": "Tone",
-        "blurb": "A low-pass filter on every voice (svf~). Env is how far each note's envelope opens it.",
+        "blurb": "A low-pass filter on every voice. Env is how far each note's envelope opens it.",
         "options": [],
         "params": [
           {
@@ -796,7 +796,7 @@
       {
         "id": "env",
         "label": "Envelope",
-        "blurb": "How a note's level moves (adsr~): the time to rise, the time to fall to the held level, that level, and the time to die away after the key is let go.",
+        "blurb": "How a note's level moves: the time to rise, the time to fall to the held level, that level, and the time to die away after the key is let go.",
         "options": [],
         "params": [
           {

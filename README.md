@@ -16,6 +16,17 @@ Either one downloads as a **Max for Live device** (`.amxd`) for Ableton Live, or
 
 Try it at <https://chrishyoroklee.github.io/plugin-playground/>.
 
+**This is a beta** (0.1.0 beta 1). If something breaks or sounds wrong,
+[tell us](https://github.com/chrishyoroklee/plugin-playground/issues/new?template=problem.yml):
+the form asks for a link to the device, which opens exactly what you had.
+
+**Privacy.** There is no account, no tracking and no cookie, and no server of ours: the
+site is static files on GitHub Pages. What you make stays in your browser. To run, the
+page fetches Pyodide and its packages from jsDelivr and one package (`tabulate`) from
+PyPI. *Describe it* with your own Anthropic key sends what you type, and the device you
+start from, to Anthropic; the key is kept for the tab unless you ask for it to be
+remembered. Nothing else leaves your computer.
+
 ## Using the page
 
 - **Effect / Instrument** (top left) switches what you are making. Each keeps its own
@@ -195,14 +206,18 @@ saved for Live, and the plugin is that patch compiled.
 
 - Nothing has been loaded in Ableton Live or another host by hand. The `.amxd` files
   pass MaxPyLang's checks and the plugins pass the validators above.
+- The installers the page makes have been run by CI on all three systems with no
+  window, and by hand on one Mac (Apple silicon, macOS 26). Nobody has clicked through
+  the Windows setup or run the Linux `install.sh` by hand, or installed on an Intel Mac
+  or a macOS older than CI's.
 - The effects were measured against Max and match it closely
   ([details](scripts/maxcheck/README.md)). The instrument's objects (`adsr~`, `saw~`,
   `rect~`, `tri~`, `poly`) were not: they are right in kind, not confirmed sample for
   sample.
 - What is sounding is drawn on the pictures on the page only. The plugin's window and
   the Max for Live device show the pictures and follow the dials, without the spectrum
-  or the moving dots, and without the type buttons (changing a module's kind builds a
-  different device, which only the page can do). The dot on a tremolo's wave moves at
+  or the moving dots, and without the type buttons (a plugin's presets can be of other
+  types, but a type of your own takes the page). The dot on a tremolo's wave moves at
   the wave's speed but is not locked to where the real sweep is in its cycle.
 - The pictures in a Max for Live device have not been seen in Live. There they are a
   `v8ui` object carrying its own script, which is the documented way to do it and needs
@@ -221,13 +236,10 @@ saved for Live, and the plugin is that patch compiled.
   and 96 kHz alike. It reads a sine a little under its peak, so a tone is turned down by
   up to about a dB less than the curve on its picture. The browser and the C++ agree on
   it sample for sample. It has not been rendered in Max yet: the batch render ran while
-  the machine's output was a headset at 24 kHz and Max recorded nothing. A device with a
-  compressor needs runtime 3, so anyone with the runtime plugin from before has to
-  install it again.
-- The EQ was not measured against Max. Its dials are held to what they say
-  (`tests/test_eq.py`: +12 dB on a band is +12 dB there, a cut mirrors a boost, 0 dB
-  everywhere passes the sound untouched), and the browser and the C++ agree on it to
-  the last bit of a 16-bit file.
+  the machine's output was a headset at 24 kHz and Max recorded nothing.
+- The three-band EQ's dials are held to what they say (`tests/test_eq.py`: +12 dB on a
+  band is +12 dB there, a cut mirrors a boost, 0 dB everywhere passes the sound
+  untouched), and the browser and the C++ agree on it to the last bit of a 16-bit file.
 - Describe it has not made a real request to Anthropic here, for want of a key. The
   request is built the way the SDK documents, and the answer's path (the same one a
   pasted answer takes) is tested.
@@ -249,7 +261,8 @@ repository and moved here to be its own. Two parts still come from there:
 - **The wheel.** `public/py/` holds the maxpylang build the page loads into Pyodide. To
   update it, run `python -m pip wheel . --no-deps -w <this folder>/public/py` in a
   MaxPyLang checkout, and change `WHEEL_PATH` in `src/plugin/python.ts` if the version
-  changed.
+  changed. Check that it holds no `__pycache__` (`unzip -l` it): compiled files carry
+  the paths of the machine that built them.
 
 Where the generated script works around something MaxPyLang cannot say yet, it says
 `gap M4L-NN`; those entries are in MaxPyLang's
@@ -259,8 +272,13 @@ Where the generated script works around something MaxPyLang cannot say yet, it s
 
 The recordings in the sound library are CC0, from Freesound
 ([credits](public/samples/fx/CREDITS.md)); the other sounds are computed. The page sets
-its text in DM Sans and DM Mono, loaded from Google Fonts. The plugin builds use CLAP,
-clap-wrapper and the VST3 SDK (MIT) and, for the Audio Unit, Apple's AudioUnitSDK
-(Apache 2.0); none of their code is in this repository.
+its text in DM Sans and DM Mono (SIL Open Font License), served with the site from
+`public/fonts`. Python runs in the browser on [Pyodide](https://pyodide.org) (MPL 2.0),
+loaded from its CDN. The plugins are built with CLAP, clap-wrapper and the VST 3 SDK
+(MIT) and, for the Audio Unit, Apple's AudioUnitSDK (Apache 2.0); none of their code is
+in this repository, but every installer carries their licences.
+[THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt) has all of them, with MaxPyLang's
+and the Anthropic SDK's. VST is a registered trademark of Steinberg Media Technologies
+GmbH.
 
-MIT licensed.
+MIT licensed. What changed in each release is in [CHANGELOG.md](CHANGELOG.md).
