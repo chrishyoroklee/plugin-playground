@@ -296,6 +296,17 @@ struct Degrade {
 
 // ── delays ──────────────────────────────────────────────────────────────────────
 
+namespace detail {
+// What a delay is given comes from a device file, which anyone can write. Before a value
+// sizes a buffer or indexes one it is made finite and kept in range: NaN goes to the
+// least, a rate to something a host could run at, a length to 20 seconds at most (the
+// longest delay a device here asks for is 2). An out-of-range file then sounds wrong,
+// and nothing reads outside a buffer or asks for gigabytes.
+constexpr double kLongestMs = 20000;
+inline double within(double v, double least, double most) { return v >= least ? (v <= most ? v : most) : least; }
+inline double rateOf(double sr) { return sr >= 1000 && sr <= 768000 ? sr : 44100; }
+}  // namespace detail
+
 // comb~: y[n] = a*x[n] + b*x[n-D] + c*y[n-D], D in milliseconds. As in Max, a delay set
 // by a number is cut down to whole samples, and a delay driven by a signal is read
 // between samples (linear), which is what lets a flanger sweep it without zipper noise.
@@ -305,8 +316,8 @@ struct Comb {
     std::vector<double> xb, yb;
 
     void prepare(double sampleRate, double maxMs, double ms, double a_, double b_, double c_) {
-        sr = sampleRate; delayMs = ms; a = a_; b = b_; c = c_;
-        limit = std::max(1, static_cast<int>(std::floor(maxMs * sr / 1000)));
+        sr = detail::rateOf(sampleRate); delayMs = ms; a = a_; b = b_; c = c_;
+        limit = std::max(1, static_cast<int>(std::floor(detail::within(maxMs, 0, detail::kLongestMs) * sr / 1000)));
         size = limit + 4;
         xb.assign(size, 0.0);
         yb.assign(size, 0.0);
@@ -324,8 +335,7 @@ struct Comb {
 
 private:
     double step(double x, double ms, bool swept) {
-        double D = ms * sr / 1000;
-        D = D < 1 ? 1 : D > limit ? limit : D;
+        const double D = detail::within(ms * sr / 1000, 1, limit);
         const int whole = static_cast<int>(std::floor(D));
         const int r0 = (w - whole + size) % size;
         double xd = xb[r0], yd = yb[r0];
@@ -350,7 +360,7 @@ struct Allpass {
     std::vector<double> xb, yb;
 
     void prepare(double sampleRate, double maxMs, double ms, double gain) {
-        sr = sampleRate; g = gain;
+        sr = detail::rateOf(sampleRate); g = gain;
         maxDelay = toSamples(maxMs);
         xb.assign(maxDelay, 0.0);
         yb.assign(maxDelay, 0.0);
@@ -373,7 +383,9 @@ struct Allpass {
     }
 
 private:
-    int toSamples(double ms) const { return std::max(1, static_cast<int>(std::floor((ms / 1000) * sr))); }
+    int toSamples(double ms) const {
+        return std::max(1, static_cast<int>(std::floor(detail::within(ms, 0, detail::kLongestMs) / 1000 * sr)));
+    }
 };
 
 // tapin~ and the tapout~ objects reading it: one delay line, any number of taps, each
@@ -392,8 +404,8 @@ struct TapLine {
     std::vector<double> buf;
 
     void prepare(double sampleRate, double maxMs) {
-        sr = sampleRate;
-        limit = std::max(1.0, std::floor(maxMs * sr / 1000));
+        sr = detail::rateOf(sampleRate);
+        limit = std::max(1.0, std::floor(detail::within(maxMs, 0, detail::kLongestMs) * sr / 1000));
         size = static_cast<int>(limit) + 4;
         buf.assign(size, 0.0);
         w = 0;
@@ -410,8 +422,7 @@ struct TapLine {
 
 private:
     double at(double ms, double least, int newest) const {
-        double D = ms * sr / 1000;
-        D = D < least ? least : D > limit ? limit : D;
+        const double D = detail::within(ms * sr / 1000, least, limit);
         const int whole = static_cast<int>(std::floor(D));
         const double frac = D - whole;
         const int r0 = ((w - newest - whole) % size + size) % size;

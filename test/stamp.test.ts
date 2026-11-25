@@ -84,6 +84,9 @@ describe('the macOS installer', () => {
     const welcome = files.get('welcome.html')!.toString('utf8');
     expect(welcome).toContain('<b>Fuzz &amp; &lt;Co&gt;</b> is an effect');
     expect(welcome).toContain('Audio FX, Audio Units');
+    // A name is put in as it is: never read as a replacement pattern.
+    const dollars = openXar(await stampInstaller('macos', fixture(TEMPLATES.macos), { ...device, name: "$& $' $1" }));
+    expect(dollars.get('Distribution')!.toString('utf8')).toContain("<title>$&amp; $' $1</title>");
     const synth = openXar(await stampInstaller('macos', fixture(TEMPLATES.macos), { ...device, instrument: true }));
     expect(synth.get('welcome.html')!.toString('utf8')).toContain('AU Instruments');
   });

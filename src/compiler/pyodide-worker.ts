@@ -43,7 +43,8 @@ async function init(pyodideCdn: string, wheelUrl: string): Promise<Pyodide> {
   const micropip = py.pyimport('micropip');
 
   postStatus('installing maxpylang…');
-  await micropip.install('tabulate');
+  // Pinned: what a visitor's browser fetches from PyPI should be what was tested.
+  await micropip.install('tabulate==0.10.0');
   const wheelName = wheelUrl.split('/').pop() || 'maxpylang.whl';
   const bytes = new Uint8Array(await (await fetch(wheelUrl)).arrayBuffer());
   py.FS.writeFile(`/tmp/${wheelName}`, bytes);
@@ -136,7 +137,7 @@ self.onmessage = async (e: MessageEvent) => {
       compile.destroy?.();
       post({ type: 'result', id: msg.id, json });
     } catch (err) {
-      // Python tracebacks arrive as the error message — surface them verbatim.
+      // Python tracebacks arrive as the error message: surface them verbatim.
       post({ type: 'error', id: msg.id, phase: 'compile', message: String((err as Error).message || err) });
     }
   }

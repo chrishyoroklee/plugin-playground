@@ -29,6 +29,8 @@
 <html>
 <head>
 <meta charset="utf-8">
+<!-- The face comes from a device file, which anyone can write: this page may fetch nothing. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; font-src data:; img-src data:">
 <style>
 __FONTS__
 html, body { margin: 0; height: 100%; overflow: hidden; background: #feddd4; }
@@ -122,6 +124,12 @@ __GRAPHS__
     m = /rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)/.exec(colour);
     return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : [0, 0, 0];
   }
+  // A colour from the face, if it is one: #hex, rgb() or rgba(). Anything else (a url(),
+  // say, which would make the window fetch it) is the fallback.
+  function colour(v, fallback) {
+    return typeof v === 'string' && /^(#[0-9a-fA-F]{3,8}|rgba?\([0-9.,%\s]+\))$/.test(v) ? v : fallback;
+  }
+
   function mix(a, b, t) {
     var x = rgb(a), y = rgb(b);
     return 'rgb(' + [0, 1, 2].map(function (i) { return Math.round(x[i] + (y[i] - x[i]) * t); }).join(', ') + ')';
@@ -164,7 +172,7 @@ __GRAPHS__
     name.textContent = p.short;
     name.style.fill = ink;
     mk(svg, 'path', { d: arc(A0, A0 + SWEEP), fill: 'none', stroke: track, 'stroke-width': 1.2, 'stroke-linecap': 'round' });
-    var fill = mk(svg, 'path', { d: '', fill: 'none', stroke: item.accent || '#3f78bd', 'stroke-width': 1.7, 'stroke-linecap': 'round' });
+    var fill = mk(svg, 'path', { d: '', fill: 'none', stroke: colour(item.accent, '#3f78bd'), 'stroke-width': 1.7, 'stroke-linecap': 'round' });
     mk(svg, 'circle', { cx: CX, cy: CY, r: 9.6, fill: cap, stroke: track, 'stroke-width': 0.5 });
     var needle = mk(svg, 'line', { x1: CX, y1: CY, x2: CX, y2: CY, stroke: ink, 'stroke-width': 1.2, 'stroke-linecap': 'round' });
     var readout = mk(svg, 'text', { x: 22, y: 46, 'text-anchor': 'middle', 'class': 'readout' });
@@ -388,9 +396,9 @@ __GRAPHS__
     host.replaceChildren();
     dials = [];
     pictures = [];
-    document.body.style.background = face.background || '#feddd4';
+    document.body.style.background = colour(face.background, '#feddd4');
     var ink = face.items.filter(function (i) { return i.type === 'label'; })[0];
-    bar.style.color = ink ? ink.color : '#2f1007';
+    bar.style.color = colour(ink && ink.color, '#2f1007');
     host.style.width = face.width + 'px';
     host.style.height = face.height + 'px';
     face.items.forEach(function (item) {
@@ -398,14 +406,14 @@ __GRAPHS__
       if (item.type === 'panel') {
         el = document.createElement('div');
         el.className = 'panel';
-        el.style.background = item.color;
+        el.style.background = colour(item.color, 'transparent');
         el.style.borderRadius = (item.radius || 0) + 'px';
       } else if (item.type === 'label') {
         el = document.createElement('div');
         el.className = 'label';
         el.textContent = item.text;
         el.style.fontSize = item.size + 'px';
-        el.style.color = item.color;
+        el.style.color = colour(item.color, '#2f1007');
         el.style.textAlign = item.center ? 'center' : 'left';
         el.style.lineHeight = item.rect[3] + 'px';
       } else if (item.type === 'dial') {

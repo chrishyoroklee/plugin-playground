@@ -142,6 +142,7 @@ struct Plugin : fxgui::Model {
     void become(int next) {
         reclaim();
         if (next == program || next < 0 || next >= book::programs()) return;
+        const int was = program;
         program = next;
         Effect* made = book::make(next);
         for (int i = 0; i < N(); i++) made->setParam(i, values[i].load());
@@ -151,7 +152,14 @@ struct Plugin : fxgui::Model {
             for (int i = 0; i < N(); i++) dirty[i].store(false);
             return;
         }
-        made->prepare(rate);
+        // A device file can ask for more than the machine has; then the program stays.
+        try {
+            made->prepare(rate);
+        } catch (const std::exception&) {
+            delete made;
+            program = was;
+            return;
+        }
         // One made before that the audio thread has not taken yet is never played.
         delete incoming.exchange(made, std::memory_order_acq_rel);
         if (host->request_callback) host->request_callback(host);
@@ -384,7 +392,13 @@ bool pluginActivate(const clap_plugin_t* plugin, double sampleRate, uint32_t, ui
         p->dirty[i].store(false);
         p->effect->setParam(i, p->values[i].load());
     }
-    p->effect->prepare(sampleRate);
+    // Nothing may be thrown into the host: a device that cannot be prepared (it asked for
+    // more memory than there is) is a plugin that will not start, which hosts report.
+    try {
+        p->effect->prepare(sampleRate);
+    } catch (const std::exception&) {
+        return false;
+    }
     p->rate = sampleRate;
     p->active = true;
     p->spare32.assign(maxFrames, 0.0f);

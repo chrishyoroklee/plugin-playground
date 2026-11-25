@@ -102,7 +102,38 @@ inline std::string fileName(const std::string& name) {
     }
     while (!out.empty() && (out.back() == ' ' || out.back() == '.')) out.pop_back();
     while (!out.empty() && out.front() == ' ') out.erase(out.begin());
-    return out.empty() ? "Device" : out;
+    if (out.empty()) return "Device";
+    // Names Windows keeps for devices (CON, NUL, COM1...), whatever follows a dot: a file
+    // called that cannot be made there. The same name is used on every system.
+    std::string stem;
+    for (char c : out.substr(0, out.find('.'))) stem.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(c))));
+    while (!stem.empty() && stem.back() == ' ') stem.pop_back();
+    static const char* reserved[] = {"CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6",
+                                     "COM7", "COM8", "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6",
+                                     "LPT7", "LPT8", "LPT9"};
+    for (const char* r : reserved)
+        if (stem == r) return out + "-";
+    return out;
+}
+
+// Whether `to` is a plugin this helper made, which it may replace. Everything it makes
+// carries its device: inside a bundle, or beside a .clap that is one file. Anything else
+// with that name (another maker's plugin that happens to share it) is never touched.
+inline bool ours(const fs::path& to) {
+    std::error_code ec;
+    const fs::file_status s = fs::symlink_status(to, ec);
+    if (ec || !fs::exists(s)) return true;  // nothing there
+    if (fs::is_symlink(s)) return false;
+    if (fs::is_directory(s)) {
+        if (fs::is_regular_file(to / "Contents" / "Resources" / "device.ppdevice", ec)) return true;
+        // A plugin compiled from a device (scripts/plugin.py, native/CMakeLists.txt) has
+        // no device in it, but is ours by its identifier.
+        std::ifstream plist(to / "Contents" / "Info.plist", std::ios::binary);
+        std::ostringstream text;
+        text << plist.rdbuf();
+        return text.str().find("<string>com.plugin-playground.") != std::string::npos;
+    }
+    return fs::is_regular_file(fs::path(to).replace_extension(".ppdevice"), ec);
 }
 
 inline std::string xml(const std::string& text) {
@@ -289,6 +320,16 @@ inline Result install(const fs::path& deviceFile, const fs::path& runtime, const
                        runtime / (parsed.instrument ? "instrument" : "effect") / (std::string(kRuntimeName) + ".component"),
                        folders.au});
 #endif
+    // Nothing is written unless every plugin can be: a name another plugin already has
+    // stops the install before it starts.
+    for (const Format& f : formats) {
+        const fs::path to = f.folder / fs::u8path(name + f.extension);
+        if (fs::exists(f.from) && !detail::ours(to)) {
+            result.message = "There is already a plugin called “" + name + "” that Plugin Playground did not make (" +
+                             to.u8string() + "). It was left as it is. Rename your device on the site and download it again.";
+            return result;
+        }
+    }
     try {
         for (const Format& f : formats) {
             if (!fs::exists(f.from)) continue;

@@ -309,6 +309,9 @@ inline bool Device::parse(const std::string& text, std::string* error) {
                 const int type = detail::kernelType(w[2]);
                 if (type < 0) return fail(newer);
                 if (whole(1) != static_cast<int>(kernelType.size())) return bad();
+                // Far more than any device has (a reverb is 24): a file asking for more is
+                // not one the page wrote, and could ask for gigabytes of delay lines.
+                if (kernelType.size() >= 4096) return fail("the device file asks for too many objects");
                 kernelType.push_back(type);
                 kernelIndex.push_back(kernels[type]++);
             }
@@ -610,6 +613,8 @@ struct Book {
             else if (!inside) after.push_back(bare);
         }
         if (pieces.empty()) return fail("this is not a Plugin Playground device file");
+        // The synth, with every effect its presets add, is 40.
+        if (pieces.size() > 256) return fail("the device file holds too many programs");
         for (const std::string& piece : pieces) {
             auto program = std::make_unique<Device>();
             if (!program->parse(piece, error)) return false;

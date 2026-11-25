@@ -105,7 +105,7 @@ async function stampPkg(template: Uint8Array, device: StampedDevice): Promise<Ui
   await xar.write('Scripts', await gzip(cpioBytes(entries)), false);
 
   const name = xmlEscape(device.name);
-  const distribution = text(await xar.read('Distribution')).replace(/<title>[^<]*<\/title>/, `<title>${name}</title>`);
+  const distribution = text(await xar.read('Distribution')).replace(/<title>[^<]*<\/title>/, () => `<title>${name}</title>`);
   await xar.write('Distribution', utf8.encode(distribution), true);
   const where = device.instrument ? 'Instrument, AU Instruments, Plugin Playground' : 'Audio FX, Audio Units, Plugin Playground';
   const welcome =
