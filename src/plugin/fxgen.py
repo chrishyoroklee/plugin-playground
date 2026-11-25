@@ -78,8 +78,8 @@ def graph_source():
 
 # ── settings ────────────────────────────────────────────────────────────────────
 
-DEFAULT_NAME = "MaxPy FX"
-DEFAULT_INSTRUMENT_NAME = "MaxPy Synth"
+DEFAULT_NAME = "My Effect"
+DEFAULT_INSTRUMENT_NAME = "My Synth"
 NAME_OK = re.compile(r"[^A-Za-z0-9 _\-]")
 HEX_OK = re.compile(r"^#[0-9a-fA-F]{6}$")
 

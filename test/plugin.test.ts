@@ -286,7 +286,7 @@ describe('instruments', () => {
   it('an instrument has the synth sections, and an effect does not', () => {
     const synth = normalize({ kind: 'instrument' });
     expect(kindOf(synth)).toBe('instrument');
-    expect(synth.name).toBe('MaxPy Synth');
+    expect(synth.name).toBe('My Synth');
     expect(Object.keys(synth.instrument!)).toEqual(SCHEMA.instrument.modules.map((m) => m.id));
     const effect = normalize({});
     expect(kindOf(effect)).toBe('effect');

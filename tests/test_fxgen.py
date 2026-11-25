@@ -277,7 +277,7 @@ def test_settings_are_bounded_before_they_reach_the_script():
     assert fxgen.filename(hostile).endswith(".amxd") and "/" not in fxgen.filename(hostile)
     # garbage in is the default device out
     assert fxgen.normalize(None) == fxgen.normalize({})
-    assert fxgen.normalize({"name": "   "})["name"] == "MaxPy FX"
+    assert fxgen.normalize({"name": "   "})["name"] == "My Effect"
 
 
 def test_named_gaps_are_the_ones_the_page_explains():
@@ -331,7 +331,7 @@ def test_instrument_dials_are_the_schemas():
 def test_instrument_settings_are_bounded_like_any_other():
     st = fxgen.normalize({"kind": "instrument", "instrument": {"osc": {"options": {"wave": "nope", "voices": "99"},
                                                                "values": {"detune": 1e9}}}})
-    assert st["kind"] == "instrument" and st["name"] == "MaxPy Synth"
+    assert st["kind"] == "instrument" and st["name"] == "My Synth"
     assert st["instrument"]["osc"]["options"] == {"wave": "saw", "second": "unison", "voices": "6"}
     assert st["instrument"]["osc"]["values"]["detune"] == 50
     assert "instrument" not in fxgen.normalize({}) and "kind" not in fxgen.normalize({})

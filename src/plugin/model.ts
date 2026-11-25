@@ -144,7 +144,7 @@ export const themeOf = (s: Pick<Settings, 'theme'>): Theme => SCHEMA.themes.find
 
 export const moduleSpec = (id: string): ModuleSpec | undefined => SCHEMA.modules.find((m) => m.id === id);
 
-const DEFAULT_NAME: Record<Kind, string> = { effect: 'MaxPy FX', instrument: 'MaxPy Synth' };
+const DEFAULT_NAME: Record<Kind, string> = { effect: 'My Effect', instrument: 'My Synth' };
 
 function clampParam(p: ParamSpec, value: unknown): number {
   let v = Number(value);
