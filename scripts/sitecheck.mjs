@@ -18,6 +18,7 @@ import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { deviceIn, installerFileName } from '../src/plugin/stamp.ts';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
@@ -33,18 +34,27 @@ const OUT = flag('--out', path.join(ROOT, 'build', 'sitecheck'));
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.mp3': 'audio/mpeg',
   '.whl': 'application/octet-stream', '.md': 'text/markdown', '.png': 'image/png', '.svg': 'image/svg+xml', '.wasm': 'application/wasm' };
 
+const STAND_INS = {
+  macos: ['plugin-playground-macos.pkg', 'runtime-macos.pkg'],
+  windows: ['plugin-playground-windows-setup.exe', 'runtime-windows.exe'],
+  linux: ['plugin-playground-linux.tar.gz', 'runtime-linux.tar.gz'],
+};
+
 async function serve() {
   const dist = path.join(ROOT, 'dist');
   if (!existsSync(path.join(dist, 'index.html'))) throw new Error('there is no dist/: run `npm run build` first');
   const server = createServer(async (req, res) => {
     const url = decodeURIComponent(new URL(req.url, 'http://x').pathname).replace(/^\/plugin-playground/, '');
-    // With no installers built here, say that one exists, so the Download menu shows what a visitor sees.
-    if (url === '/downloads/index.json' && !existsSync(path.join(dist, 'downloads', 'index.json'))) {
+    // With no installers built here, say that they exist and serve the small stand-ins the
+    // tests use (test/fixtures), so the Download menu does what it does for a visitor.
+    const built = existsSync(path.join(dist, 'downloads', 'index.json'));
+    if (url === '/downloads/index.json' && !built) {
       res.writeHead(200, { 'content-type': 'application/json' });
-      res.end(JSON.stringify({ runtime: { macos: 'downloads/plugin-playground-macos.pkg', windows: 'downloads/plugin-playground-windows-setup.exe', linux: 'downloads/plugin-playground-linux.tar.gz' } }));
+      res.end(JSON.stringify({ runtime: Object.fromEntries(Object.keys(STAND_INS).map((s) => [s, `downloads/${STAND_INS[s][0]}`])) }));
       return;
     }
-    const file = path.join(dist, url.endsWith('/') ? url + 'index.html' : url);
+    const standIn = Object.values(STAND_INS).find(([name]) => url === `/downloads/${name}`);
+    const file = standIn && !built ? path.join(ROOT, 'test', 'fixtures', standIn[1]) : path.join(dist, url.endsWith('/') ? url + 'index.html' : url);
     try {
       const body = await readFile(file);
       res.writeHead(200, { 'content-type': TYPES[path.extname(file)] ?? 'application/octet-stream' });
@@ -255,6 +265,8 @@ async function check(name, url) {
       note(amxdBytes.subarray(0, 4).toString('latin1') === 'ampf' && amxdBytes.length > 4000, `${tab}: the Max for Live device downloads`,
         `${amxd.suggestedFilename()}, ${amxdBytes.length} bytes`);
       if (!(await page.locator('#downloads.open').count())) await page.locator('#btn-download').click();
+      // The device file alone is under "Have Plugin Playground already?".
+      if (!(await page.locator('#dl-more[open]').count())) await page.locator('#dl-more summary').click();
       const [dev] = await Promise.all([page.waitForEvent('download', { timeout: 60000 }), page.locator('#dl-device').click()]);
       const text = (await readFile(await dev.path())).toString('utf8');
       const ok = text.startsWith('ppdevice 1\n') && text.includes(`\nkind ${tab}\n`) && text.includes('\n@end\n') && /\nface \S+/.test(text) && /\nsettings \S+/.test(text);
@@ -265,7 +277,17 @@ async function check(name, url) {
       note(presets >= 1 && /\ncurrent -?\d+\n$/.test(text) && /^ppdevice 1\nruntime 4\n/.test(text), `${tab}: the file holds the plugin's presets`,
         `${presets} presets, ${programs} programs`);
       const href = await page.locator('#dl-installer').getAttribute('href');
-      note(!!href && /plugin-playground-(macos|windows|linux)/.test(href), `${tab}: the installer is offered`, href ?? 'no link');
+      note(!!href && /plugin-playground-(macos|windows|linux)/.test(href), `${tab}: Plugin Playground on its own is offered`, href ?? 'no link');
+      // The plugin, for each system: its installer with that same device inside it.
+      const name = await page.evaluate(() => document.getElementById('name').value);
+      for (const [system, label] of [['macos', 'macOS'], ['windows', 'Windows'], ['linux', 'Linux']]) {
+        await page.locator('#dl-systems button', { hasText: label }).click();
+        const [got] = await Promise.all([page.waitForEvent('download', { timeout: 60000 }), page.locator('#dl-plugin').click()]);
+        const bytes = new Uint8Array(await readFile(await got.path()));
+        const inside = await deviceIn(system, bytes).catch((e) => `damaged: ${e.message}`);
+        note(inside === text && got.suggestedFilename() === installerFileName(system, name),
+          `${tab}: the ${label} plugin downloads as one installer, carrying the device`, `${got.suggestedFilename()}, ${bytes.length} bytes`);
+      }
       await page.keyboard.press('Escape');
       await page.mouse.click(700, 500);
     }

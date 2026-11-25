@@ -48,6 +48,13 @@ settings ─▶ fxgen.py ─▶ patch JSON ─▶ patchc.py ─┬─▶ Effect.
   is listed by. On macOS it is `Plugin Playground.app` with the runtime inside it, on
   Windows `Plugin Playground.exe`, and everywhere `plugin-playground-install` for a
   terminal. The installer sets it to open `.ppdevice` files.
+- **The download** is the installer with the device inside it. The page cannot compile,
+  but it can put a device into an installer CI has built (`src/plugin/stamp.ts`): next to
+  the install script in a `.pkg` (whose table of contents it writes again), after the end
+  of the setup `.exe` with a footer giving its length, or as one more file in the
+  `.tar.gz`. Each installer, finding a device on itself, has the helper make it into
+  plugins once Plugin Playground is in. So a visitor downloads one file, and a device
+  never meets an older runtime than the one it came with.
 
 ```sh
 npm run plugin -- --runtime                                # build the runtime and the helper
@@ -57,7 +64,7 @@ npm run plugin -- --runtime --all --package downloads      # every preset checke
 
 | System  | Installer                             | What it installs | Where a device's plugins go |
 |---------|---------------------------------------|------------------|-----------------------------|
-| macOS   | `plugin-playground-macos.pkg`         | `Plugin Playground.app` in Applications | `~/Library/Audio/Plug-Ins` (Audio Unit, VST3, CLAP) |
+| macOS   | `plugin-playground-macos.pkg`         | `Plugin Playground.app` in Applications | `~/Library/Audio/Plug-Ins` (Audio Unit, VST3, CLAP); a device inside the installer goes beside the app, in `/Library` when installed for every user |
 | Windows | `plugin-playground-windows-setup.exe` | the helper and runtime in Program Files | `Common Files\VST3\Plugin Playground` and the same under `CLAP`, which the installer makes writable by every user |
 | Linux   | `plugin-playground-linux.tar.gz`      | `install.sh` copies it to `~/.local/share/plugin-playground` | `~/.vst3` and `~/.clap` |
 
@@ -70,14 +77,21 @@ A device file names the oldest runtime that can run it (`PROGRAM_RUNTIME` in pat
 not know, raise both: the helper then tells someone with the old one to install the new
 one, and does not make half a plugin.
 
-**Not signed yet.** The installers are not signed with a paid developer certificate, so
-each system asks the visitor to allow them once: on macOS under System Settings, Privacy
-& Security, Open Anyway; on Windows through SmartScreen's More info, Run anyway. With an
+**Not signed.** The installers are not signed with a paid developer certificate, so
+each system asks the visitor to allow them: on macOS under System Settings, Privacy &
+Security, Open Anyway; on Windows through SmartScreen's More info, Run anyway. An
+installer with a device put in by the page could not keep a signature anyway (changing
+it breaks one), so that is asked for every plugin downloaded. With an
 Apple Developer ID, set `FX_CODESIGN_IDENTITY` ("Developer ID Application: ...") and
 `FX_INSTALLER_IDENTITY` ("Developer ID Installer: ...") when packaging and both are used;
 the package then still has to be notarized (`xcrun notarytool submit`, `xcrun stapler
 staple`), which nothing here does yet. A plugin the helper makes is signed ad hoc on the
 machine, which a Developer ID does not change.
+
+`--check-stamped DIR` does what the page's Download does to DIR's installer
+(`scripts/stamp.mjs` runs the page's code under Node 22.18 or newer), runs the result
+with no window, and requires the plugin to be there and to pass hostcheck and auval. CI
+runs it on all three systems, and on macOS for both ways Installer offers.
 
 `--package DIR` without `--runtime` still wraps one compiled device in an installer of
 its own, and `--check-installer DIR` runs it.

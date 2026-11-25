@@ -4,6 +4,10 @@
 // message box. Opened on its own it says what it is for.
 //
 // plugin-playground-install.exe (cli.cpp) does the same work in a terminal.
+//
+// Given `--install FILE [--result REPORT]` it does it with no window and says how it went
+// in REPORT and its exit code. That is how a setup program that carries a device (one
+// downloaded from the page, src/plugin/stamp.ts) installs it.
 
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -32,6 +36,15 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     wchar_t self[32768];
     const DWORD n = GetModuleFileNameW(nullptr, self, 32768);
     const fs::path runtime = fs::path(std::wstring(self, n)).parent_path() / "Runtime";
+
+    if (argv && argc >= 3 && std::wstring(argv[1]) == L"--install") {
+        const ppinstall::Result result = ppinstall::install(fs::path(argv[2]), runtime, ppinstall::userFolders());
+        if (argc >= 5 && std::wstring(argv[3]) == L"--result") {
+            std::ofstream report(fs::path(argv[4]), std::ios::binary);
+            report << (result.ok ? "Installed " + result.name + "." : result.message);
+        }
+        return result.ok ? 0 : 1;
+    }
 
     if (!argv || argc < 2) {
         MessageBoxW(nullptr,

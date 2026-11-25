@@ -40,14 +40,15 @@ Try it at <https://chrishyoroklee.github.io/plugin-playground/>.
   distortion with, synth loops, a drum machine, test signals) or use your
   own file. For an instrument, click or drag the keyboard, play the letters printed on
   its keys, press **MIDI** to use a MIDI keyboard, or press play to loop a phrase.
-- **Download** offers the Max for Live device and the plugin. The plugin takes two steps.
-  Once, you install Plugin Playground for your system (macOS, Windows or Linux: you pick
-  it and its version, and the page checks it). After that every device, a preset or a
-  chain of your own, is one small file: open it and it is a plugin in every DAW on the
-  machine, under the name you gave it, with every dial where it stood. A plugin's file
-  holds its presets too: on macOS the plugin opens with the same face it has on the page
-  and a preset menu along its top; on Windows and Linux the DAW shows its own sliders
-  for now, and no menu.
+- **Download** offers the Max for Live device and the plugin. The plugin is one file:
+  pick your system (macOS, Windows or Linux) and its version, and the page checks it and
+  gives you an installer named after your device, a preset or a chain of your own. Open
+  it and it installs as a plugin in every DAW on the machine, under the name you gave it,
+  with every dial where it stood, together with Plugin Playground, which runs it. A
+  plugin's file holds its presets too: on macOS the plugin opens with the same face it
+  has on the page and a preset menu along its top; on Windows and Linux the DAW shows its
+  own sliders for now, and no menu. With Plugin Playground installed already, the device
+  file alone does the same.
 - **Edit**, above the device, unlocks it. Drag an effect's card to move it, press its x to
   take it out, pick its type on the card, and add another with **+ Effect**. **+ Knob**
   adds a knob of your own: click the dials it should turn, and one knob moves them all.

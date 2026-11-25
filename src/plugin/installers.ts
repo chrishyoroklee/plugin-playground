@@ -1,10 +1,10 @@
-// Getting a device into a DAW: what the page knows about the one thing to install.
+// Getting a device into a DAW: what the page knows about each system it installs on.
 //
 // A plugin is compiled code, which a page cannot make. So the compiled part is the same
-// for every device: Plugin Playground itself, installed once, which holds a plugin that
-// runs any device and a helper that opens device files. CI builds its installer for each
-// system (scripts/plugin.py, --runtime --package). The device is then a small file the
-// page writes (patchc.py, device_for), and opening it makes the plugin.
+// for every device: Plugin Playground, a plugin that runs any device and a helper that
+// makes a device into plugins. CI builds its installer for each system (scripts/plugin.py,
+// --runtime --package). The page writes the device (patchc.py) and puts it inside that
+// installer (stamp.ts): one download, which installs Plugin Playground and the plugin.
 //
 // This file is the page's side of that: what each system needs, how to tell which system
 // the browser is on, and whether to let the download go ahead.
@@ -26,9 +26,9 @@ export interface SystemInfo {
   formats: string;
   needs: string;
   versions: VersionChoice[];
-  /** What to do with the installer once it has downloaded. */
+  /** What to do with the download, and what it installs. `{name}` is the device, `{where}` is where Logic lists it. */
   steps: string;
-  /** What opening a device file does here. `{name}` is the device, `{where}` is where Logic lists it. */
+  /** What opening a device file alone does, where Plugin Playground is installed already. */
   opens: string;
   /** The builds are not signed with a paid developer certificate: what the system says, and the way past it. */
   unsigned: string;
@@ -45,9 +45,9 @@ export const SYSTEMS: SystemInfo[] = [
       { id: 'new', label: 'macOS 10.15 Catalina or newer', ok: true },
       { id: 'old', label: 'macOS 10.14 Mojave or older', ok: false },
     ],
-    steps: 'Open the .pkg and follow the installer.',
-    opens: 'Open the file. It installs as “{name}”, an Audio Unit, VST3 and CLAP plugin. Restart your DAW; in Logic Pro and GarageBand it is under {where}.',
-    unsigned: 'The installer is not signed by Apple yet, so macOS blocks it the first time: open System Settings, Privacy & Security, scroll down and press Open Anyway.',
+    steps: 'Open the .pkg and follow the installer. It installs “{name}” as an Audio Unit, VST3 and CLAP plugin. Restart your DAW; in Logic Pro and GarageBand it is under {where}.',
+    opens: 'Open it and it installs as “{name}”, an Audio Unit, VST3 and CLAP plugin.',
+    unsigned: 'The installer is not signed by Apple, so macOS blocks it: open System Settings, Privacy & Security, scroll down and press Open Anyway. It asks again for each plugin you download.',
   },
   {
     id: 'windows',
@@ -60,9 +60,9 @@ export const SYSTEMS: SystemInfo[] = [
       { id: '10', label: 'Windows 10 (64-bit)', ok: true },
       { id: 'old', label: 'Windows 8.1 or older', ok: false },
     ],
-    steps: 'Run the setup program.',
-    opens: 'Open the file. It installs as “{name}”, a VST3 and CLAP plugin. Then rescan plugins in your DAW. For now it shows your DAW’s own sliders: the window that looks like this page is on macOS only.',
-    unsigned: 'The installer is not signed yet, so Windows may say it protected your PC: press More info, then Run anyway.',
+    steps: 'Run the setup program. It installs “{name}” as a VST3 and CLAP plugin. Then rescan plugins in your DAW. For now it shows your DAW’s own sliders: the window that looks like this page is on macOS only.',
+    opens: 'Open it and it installs as “{name}”, a VST3 and CLAP plugin.',
+    unsigned: 'The setup program is not signed, so Windows may say it protected your PC: press More info, then Run anyway.',
   },
   {
     id: 'linux',
@@ -74,8 +74,8 @@ export const SYSTEMS: SystemInfo[] = [
       { id: 'new', label: 'As new as Ubuntu 24.04 (glibc 2.39)', ok: true },
       { id: 'old', label: 'Older than that', ok: false },
     ],
-    steps: 'Unpack it and run sh install.sh in the folder. Linux has no single installer format, so this is a script.',
-    opens: 'Open the file, or run plugin-playground-install on it. It installs as “{name}”, a VST3 and CLAP plugin. Then rescan plugins in your DAW. For now it shows your DAW’s own sliders: the window that looks like this page is on macOS only.',
+    steps: 'Unpack it and run sh install.sh in the folder. It installs “{name}” as a VST3 and CLAP plugin in ~/.vst3 and ~/.clap. Then rescan plugins in your DAW. For now it shows your DAW’s own sliders: the window that looks like this page is on macOS only.',
+    opens: 'Open it, or run plugin-playground-install on it, and it installs as “{name}”, a VST3 and CLAP plugin.',
     unsigned: '',
   },
 ];

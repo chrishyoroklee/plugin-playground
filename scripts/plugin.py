@@ -782,10 +782,25 @@ def package_runtime_macos(home, target, work):
                "plugins for every DAW on this Mac: Audio Unit, VST3 and CLAP.</p>"
                "<p>You install this once. After that, each <b>Download</b> on the site gives you a small file. "
                "Open it and the plugin is installed under the name you gave it.</p>")
-    # $3 is where it was installed: / or, for one user, their home folder. Telling Launch
-    # Services about the app now is what makes a .ppdevice open with it straight away.
-    _mac_pkg(work, work / "root", "com.plugin-playground.helper", APP_NAME, welcome, target,
-             '"%s" -f "${3%%/}/Applications/%s.app" >/dev/null 2>&1' % (LSREGISTER, APP_NAME))
+    _mac_pkg(work, work / "root", "com.plugin-playground.helper", APP_NAME, welcome, target, MAC_POSTINSTALL)
+
+
+# What the runtime's .pkg runs once its files are in. $2 is where they went: / for every
+# user, or one user's home folder ($3 is the disk, / either way). Telling Launch Services
+# about the app is what makes a .ppdevice open with it straight away.
+#
+# The page's Download puts a device next to this script (src/plugin/stamp.ts). Then the
+# device is made into plugins too, beside the app: in /Library for every user, or in that
+# user's ~/Library. A device that cannot be made fails the install, so Installer says so.
+MAC_POSTINSTALL = """\
+app="${2%%/}/Applications/%(app)s.app"
+"%(lsregister)s" -f "$app" >/dev/null 2>&1
+device="$(dirname "$0")/device.ppdevice"
+if [ -f "$device" ]; then
+    "$app/Contents/MacOS/%(app)s" --install "$device" --to "${2%%/}/Library/Audio/Plug-Ins" || exit 1
+    # An Audio Unit copied in a moment ago is not always known to the system yet.
+    killall -9 AudioComponentRegistrar >/dev/null 2>&1
+fi""" % {"app": APP_NAME, "lsregister": LSREGISTER}
 
 
 def package_runtime_windows(home, target, work):
@@ -837,10 +852,82 @@ def package_runtime_windows(home, target, work):
         'Root: HKLM; Subkey: "Software\\Classes\\PluginPlayground.Device\\shell\\open\\command"; ValueType: string; '
         'ValueName: ""; ValueData: """{app}\\%s.exe"" ""%%1"""' % APP_NAME,
         "",
+        WINDOWS_CODE % {"app": APP_NAME},
     ]), encoding="utf-8-sig")
     _run([inno_setup(), "/Q", script], "Inno Setup")
     if not target.exists():
         raise BuildError("Inno Setup finished but did not write %s" % target)
+
+
+# The setup's own code. The page's Download puts a device after the end of the setup
+# program (src/plugin/stamp.ts): its bytes, then PPDEVICE and their length in 12 digits.
+# When the setup finds that on itself, it says it is installing a plugin, and once
+# Plugin Playground is in, has the helper make the device into plugins. Setup reads the
+# whole of its own file to find it: a few megabytes.
+WINDOWS_CODE = """[Code]
+var
+  HasDevice: Boolean;
+  Device: AnsiString;
+
+function CarriedDevice(): Boolean;
+var
+  Whole: AnsiString;
+  Footer: String;
+  Size, Total: Integer;
+begin
+  Result := False;
+  if not LoadStringFromFile(ExpandConstant('{srcexe}'), Whole) then Exit;
+  Total := Length(Whole);
+  if Total < 20 then Exit;
+  Footer := Copy(Whole, Total - 19, 20);
+  if Copy(Footer, 1, 8) <> 'PPDEVICE' then Exit;
+  Size := StrToIntDef(Copy(Footer, 9, 12), -1);
+  if (Size <= 0) or (Size > Total - 20) then Exit;
+  Device := Copy(Whole, Total - 19 - Size, Size);
+  Result := True;
+end;
+
+function InitializeSetup(): Boolean;
+begin
+  HasDevice := CarriedDevice();
+  Result := True;
+end;
+
+procedure InitializeWizard();
+begin
+  if HasDevice then
+  begin
+    WizardForm.WelcomeLabel1.Caption := 'Install your plugin';
+    WizardForm.WelcomeLabel2.Caption := 'This installs the plugin you made on the Plugin Playground site as a VST3 and a CLAP plugin '
+      + 'for every DAW on this PC, together with Plugin Playground, which runs it.';
+  end;
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  Path, Report: String;
+  Said: AnsiString;
+  Code: Integer;
+begin
+  if (CurStep <> ssPostInstall) or not HasDevice then Exit;
+  Path := ExpandConstant('{tmp}\\device.ppdevice');
+  Report := ExpandConstant('{tmp}\\device.txt');
+  SaveStringToFile(Path, Device, False);
+  if not Exec(ExpandConstant('{app}\\%(app)s.exe'), '--install "' + Path + '" --result "' + Report + '"', '',
+              SW_HIDE, ewWaitUntilTerminated, Code) or (Code <> 0) then
+  begin
+    if not LoadStringFromFile(Report, Said) then Said := 'the helper stopped with code ' + IntToStr(Code);
+    SuppressibleMsgBox('The plugin could not be installed: ' + Said, mbError, MB_OK, IDOK);
+  end;
+end;
+
+procedure CurPageChanged(CurPageID: Integer);
+begin
+  if HasDevice and (CurPageID = wpFinished) then
+    WizardForm.FinishedLabel.Caption := 'Your plugin is installed, as a VST3 and a CLAP plugin. Rescan plugins in your DAW, '
+      + 'or restart it, to find it.';
+end;
+"""
 
 
 LINUX_INSTALL = """#!/bin/sh
@@ -891,6 +978,12 @@ command -v update-mime-database >/dev/null 2>&1 && update-mime-database "$data/m
 command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "$data/applications" >/dev/null 2>&1 || true
 command -v xdg-mime >/dev/null 2>&1 && xdg-mime default plugin-playground.desktop application/x-plugin-playground-device >/dev/null 2>&1 || true
 
+# A device downloaded from the site comes in this folder (src/plugin/stamp.ts): make it now.
+if [ -f "$here/device.ppdevice" ]; then
+    "$home/plugin-playground-install" "$here/device.ppdevice"
+    exit 0
+fi
+
 echo "Installed Plugin Playground."
 echo "Open a .ppdevice from the site to make it a plugin, or run:"
 echo "    plugin-playground-install \\"My Effect.ppdevice\\""
@@ -925,6 +1018,8 @@ def package_runtime_linux(home, target, work):
     (top / "README.txt").write_text(
         "Plugin Playground\n=================\nTurns the effects and instruments you make on the site into VST3 and CLAP\n"
         "plugins.\n\nTo install it, run this in a terminal, in this folder:\n\n    sh install.sh\n\n"
+        "If you downloaded a plugin from the site, its device.ppdevice is in this folder, and install.sh\n"
+        "makes it into plugins too.\n\n"
         "After that, open a .ppdevice you downloaded from the site, or run\n\n    plugin-playground-install \"My Effect.ppdevice\"\n\n"
         "and it is installed into ~/.vst3 and ~/.clap under its own name.\n", encoding="utf-8")
     with tarfile.open(target, "w:gz") as tar:
@@ -984,6 +1079,88 @@ def check_runtime_installer(home, made, folder, log=print):
         subprocess.run(["killall", "-9", "AudioComponentRegistrar"], capture_output=True)
         done = _run(["auval", "-v", au_type(made), au_subtype(made["slug"]), "PlPg"], "auval")
         log("  auval: %s" % ([l for l in done.stdout.splitlines() if "VALIDATION" in l] or ["passed"])[-1].strip())
+
+
+def stamp(system, installer, device, out, instrument=False):
+    """
+    `installer` with `device` inside it, written to `out`: what the page's Download gives a
+    visitor. The work is the page's own (src/plugin/stamp.ts), run by Node 22.18 or newer.
+    """
+    node = shutil.which("node")
+    if not node:
+        raise BuildError("Node is not installed: the page's code that puts a device into an installer runs on it")
+    _run([node, ROOT / "scripts" / "stamp.mjs", system, installer, device, out] + (["--instrument"] if instrument else []),
+         "stamp.mjs")
+    carried = _run([node, ROOT / "scripts" / "stamp.mjs", "--read", system, out], "stamp.mjs --read").stdout
+    if carried != Path(device).read_text(encoding="utf-8"):
+        raise BuildError("the stamped installer does not carry the device it was given")
+    return out
+
+
+def check_stamped(home, made, folder, log=print):
+    """
+    What a visitor does with the page's Download: this system's installer of Plugin
+    Playground (the one --package wrote into `folder`) with the device put inside it, run
+    with no window. Nothing else is opened: the installer alone has to leave the plugins
+    where hosts look. Each is then loaded and held to the device (hostcheck), and on macOS
+    the Audio Unit has to pass auval. A Mac installs it both ways Installer offers: for
+    every user, into /Library, and for this user alone, into ~/Library.
+    """
+    import tarfile
+    import tempfile
+
+    installer = Path(folder).resolve() / RUNTIME_PACKAGES[SYSTEM]
+    if not installer.exists():
+        raise BuildError("there is no %s: build it with --runtime --package first" % installer)
+    name, device = made["name"], made["device"]
+    hostcheck = home / ("hostcheck" + (".exe" if os.name == "nt" else ""))
+    with tempfile.TemporaryDirectory() as work:
+        work = Path(work)
+        stamped = stamp(SYSTEM, installer, device, work / ("stamped" + {"macos": ".pkg", "windows": ".exe", "linux": ".tar.gz"}[SYSTEM]),
+                        made["kind"] == "instrument")
+        log("  stamped the installer with %s (%d bytes)" % (name, stamped.stat().st_size))
+        if SYSTEM == "macos":
+            rounds = [("for every user", ["sudo", "-n", "installer", "-pkg", stamped, "-target", "/"], Path("/Library/Audio/Plug-Ins"), ["sudo", "-n"]),
+                      ("for this user", ["installer", "-pkg", stamped, "-target", "CurrentUserHomeDirectory"],
+                       Path.home() / "Library" / "Audio" / "Plug-Ins", [])]
+        elif SYSTEM == "windows":
+            common = Path(os.environ.get("CommonProgramW6432") or os.environ.get("CommonProgramFiles") or r"C:\Program Files\Common Files")
+            rounds = [("for this PC", [stamped, "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"], common, [])]
+        else:
+            unpacked = work / "unpacked"
+            with tarfile.open(stamped) as tar:
+                tar.extractall(unpacked)
+            rounds = [("for this user", ["sh", unpacked / "plugin-playground" / "install.sh"], Path.home(), [])]
+
+        for how, command, base, admin in rounds:
+            if SYSTEM == "macos":
+                where = {"clap": base / "CLAP" / (name + ".clap"), "vst3": base / "VST3" / (name + ".vst3"),
+                         "au": base / "Components" / (name + ".component")}
+            elif SYSTEM == "windows":
+                where = {fmt: base / fmt.upper() / APP_NAME / (name + "." + fmt) for fmt in ("clap", "vst3")}
+            else:
+                where = {fmt: base / ("." + fmt) / (name + "." + fmt) for fmt in ("clap", "vst3")}
+            # Whatever an earlier run left is taken away, so what is found is this install's.
+            for path in where.values():
+                if path.exists():
+                    if admin:
+                        _run(admin + ["rm", "-rf", path], "rm")
+                    else:
+                        shutil.rmtree(path) if path.is_dir() else path.unlink()
+            _run(command, "the stamped installer")
+            for fmt, path in where.items():
+                if not path.exists():
+                    raise BuildError("the stamped installer ran (%s), but there is no %s" % (how, path))
+                log("  %s, %s: %s" % (how, FORMAT_NAMES[fmt], path))
+            binary = where["clap"] / "Contents" / "MacOS" / RUNTIME_NAME if SYSTEM == "macos" else where["clap"]
+            log("  %s" % _run([hostcheck, binary, device], "hostcheck").stdout.strip())
+            if SYSTEM == "macos":
+                subprocess.run(["killall", "-9", "AudioComponentRegistrar"], capture_output=True)
+                done = _run(["auval", "-v", au_type(made), au_subtype(made["slug"]), "PlPg"], "auval")
+                log("  auval: %s" % ([l for l in done.stdout.splitlines() if "VALIDATION" in l] or ["passed"])[-1].strip())
+                # The next way of installing it is checked on its own.
+                for path in where.values():
+                    _run(admin + ["rm", "-rf", path], "rm")
 
 
 def tarfile_open(path):
@@ -1110,6 +1287,9 @@ def main(argv=None):
                     help="with --runtime: make every plugin of the page, with its presets, from the runtime and check each")
     ap.add_argument("--check-installer", metavar="DIR",
                     help="run the installer --package wrote into DIR, silently, and check what it installed (needs admin rights)")
+    ap.add_argument("--check-stamped", metavar="DIR",
+                    help="put the device into the installer in DIR as the page's Download does, run that, silently, "
+                         "and check what it installed (needs admin rights and Node 22.18 or newer)")
     ap.add_argument("--render", nargs=2, metavar=("IN.wav", "OUT.wav"),
                     help="play a WAV through the effect instead of building a plugin")
     args = ap.parse_args(argv)
@@ -1150,6 +1330,8 @@ def main(argv=None):
                 check_runtime(home, made, out / "_runtime_check", window=not args.all)
                 if args.check_installer:
                     check_runtime_installer(home, made, Path(args.check_installer))
+                if args.check_stamped:
+                    check_stamped(home, made, Path(args.check_stamped))
                 if args.install or args.validate:
                     plugins = install_device(home, made["device"])
                     for path in plugins:

@@ -7,6 +7,8 @@
 #     loaded, and compared with the device it was made from (hostcheck)
 #   - the installer run as a visitor would run it, a device opened with what it
 #     installed, and the result put through clap-validator, pluginval and auval
+#   - the installer with a device put inside it by the page's own code, which is what
+#     the page's Download gives, run on its own: the plugin has to be there afterwards
 #   - one preset compiled into a plugin of its own, the way `npm run plugin` does
 #
 # The installer is kept as the run's artifact. pages.yml calls this workflow and
@@ -21,6 +23,7 @@ on:
       - src/plugin/**
       - src/objects/**
       - scripts/plugin.*
+      - scripts/stamp.mjs
       - scripts/maxcheck/**
       - tests/**
       - .github/workflows/native.yml
@@ -30,6 +33,7 @@ on:
       - src/plugin/**
       - src/objects/**
       - scripts/plugin.*
+      - scripts/stamp.mjs
       - scripts/maxcheck/**
       - tests/**
       - .github/workflows/native.yml
@@ -58,6 +62,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      # The page's code that puts a device into an installer is TypeScript, which Node
+      # 22.18 and newer run as it is (scripts/stamp.mjs).
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
       # The wheel the page itself loads. PyPI's 0.1.1 is an older build that lacks objects
       # the generator uses.
       - run: python -m pip install public/py/maxpylang-*.whl pytest numpy
@@ -102,18 +111,20 @@ jobs:
           echo "$RUNNER_TEMP/tools/$bin" >> "$GITHUB_PATH"
           if [ "$RUNNER_OS" = Linux ]; then sudo apt-get update -q && sudo apt-get install -y -q xvfb; fi
 
-      # What a visitor does: run the installer, then open a device file. A feedback delay
-      # through two lines, a chain of three effects, and an instrument are each opened
-      # with what the installer put on the machine, have to land where hosts scan, and
-      # are then put through the validators. On macOS that includes auval, which an Audio
-      # Unit has to pass before Logic lists it.
-      - name: Run the installer, open three devices, validate them
+      # What a visitor does. The page's Download is the installer with the device inside
+      # it: a chain of three effects and an instrument are each put into this system's
+      # installer by the page's code, which is run on its own and has to leave the plugin
+      # where hosts scan (on macOS, both for every user and for one). The other way, the
+      # installer and then a device file opened with what it installed, is a feedback
+      # delay through two lines. Each is then put through the validators; on macOS that
+      # includes auval, which an Audio Unit has to pass before Logic lists it.
+      - name: Run the installers, with devices in them and without, validate what they made
         run: |
           run=""
           if [ "$RUNNER_OS" = Linux ]; then run="xvfb-run -a"; fi
-          $run python scripts/plugin.py --runtime --preset pingpong --package downloads --check-installer downloads --validate
-          $run python scripts/plugin.py --runtime --preset "Tape Lo-Fi" --check-installer downloads --validate
-          $run python scripts/plugin.py --runtime --preset "Soft Pad" --check-installer downloads --validate
+          $run python scripts/plugin.py --runtime --preset "Tape Lo-Fi" --package downloads --check-stamped downloads --validate
+          $run python scripts/plugin.py --runtime --preset "Soft Pad" --check-stamped downloads --validate
+          $run python scripts/plugin.py --runtime --preset pingpong --check-installer downloads --validate
 
       # The other way to a plugin, for someone with a compiler: one device, compiled.
       - name: Compile one preset into a plugin of its own

@@ -101,22 +101,20 @@
                 <b>Plugin for your DAW</b>
                 <span id="dl-plugin-note">Logic Pro, GarageBand, Ableton Live, FL Studio, Reaper and others</span>
                 <div id="dl-ready">
-                  <details id="dl-once" class="dl-step" open>
-                    <summary><i>1</i><span id="dl-once-title">Install Plugin Playground, once</span></summary>
-                    <div class="dl-pick">
-                      <div id="dl-systems" class="seg" role="radiogroup" aria-label="Your system"></div>
-                      <select id="dl-version" aria-label="Your version of it"></select>
-                    </div>
-                    <p id="dl-check" class="dl-check small" role="status"></p>
-                    <a id="dl-installer" class="btn" download></a>
-                    <p id="dl-steps" class="muted small"></p>
-                    <p id="dl-unsigned" class="muted small"></p>
-                  </details>
-                  <div class="dl-step">
-                    <div class="dl-step-head"><i>2</i><span id="dl-device-title"></span></div>
-                    <button id="dl-device" class="btn primary" type="button"></button>
-                    <p id="dl-opens" class="muted small"></p>
+                  <div class="dl-pick">
+                    <div id="dl-systems" class="seg" role="radiogroup" aria-label="Your system"></div>
+                    <select id="dl-version" aria-label="Your version of it"></select>
                   </div>
+                  <p id="dl-check" class="dl-check small" role="status"></p>
+                  <button id="dl-plugin" class="btn primary" type="button"></button>
+                  <p id="dl-steps" class="muted small"></p>
+                  <p id="dl-unsigned" class="muted small"></p>
+                  <details id="dl-more" class="dl-build">
+                    <summary>Have Plugin Playground already?</summary>
+                    <p class="muted small">Then the device file alone will do. <span id="dl-opens"></span></p>
+                    <button id="dl-device" class="btn" type="button"></button>
+                    <p class="muted small"><a id="dl-installer" download>Plugin Playground on its own</a>, to open device files with.</p>
+                  </details>
                 </div>
                 <p id="dl-none" class="small" hidden></p>
                 <details class="dl-build">
