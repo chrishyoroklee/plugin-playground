@@ -37,7 +37,12 @@
 #include <string>
 #include <vector>
 
-#if !defined(_WIN32)
+#if defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#else
 #include <fcntl.h>
 #include <spawn.h>
 #include <sys/wait.h>
@@ -121,6 +126,12 @@ inline std::string fileName(const std::string& name) {
 // with that name (another maker's plugin that happens to share it) is never touched.
 inline bool ours(const fs::path& to) {
     std::error_code ec;
+#if defined(_WIN32)
+    // Asked of Windows itself: not every C++ library sees a Windows link (a symbolic
+    // link or a junction, both "reparse points") as a link.
+    const DWORD attributes = GetFileAttributesW(to.wstring().c_str());
+    if (attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_REPARSE_POINT)) return false;
+#endif
     const fs::file_status s = fs::symlink_status(to, ec);
     if (ec || !fs::exists(s)) return true;  // nothing there
     if (fs::is_symlink(s)) return false;
@@ -325,7 +336,7 @@ inline Result install(const fs::path& deviceFile, const fs::path& runtime, const
     for (const Format& f : formats) {
         const fs::path to = f.folder / fs::u8path(name + f.extension);
         if (fs::exists(f.from) && !detail::ours(to)) {
-            result.message = "There is already a plugin called “" + name + "” that Plugin Playground did not make (" +
+            result.message = "There is already a plugin called \"" + name + "\" that Plugin Playground did not make (" +
                              to.u8string() + "). It was left as it is. Rename your device on the site and download it again.";
             return result;
         }

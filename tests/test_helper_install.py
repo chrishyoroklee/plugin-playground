@@ -62,8 +62,9 @@ def _device(tmp_path, name):
 
 
 def _run(helper, device, runtime, to):
+    # The helper writes UTF-8 (paths can hold any letter), whatever the console's code page.
     return subprocess.run([str(helper), str(device), "--runtime", str(runtime), "--to", str(to)],
-                          capture_output=True, text=True)
+                          capture_output=True, text=True, encoding="utf-8", errors="replace")
 
 
 def _foreign(path, is_bundle):
