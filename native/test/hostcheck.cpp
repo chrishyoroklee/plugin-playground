@@ -401,11 +401,19 @@ int main(int argc, char** argv) {
             check(!layouts->can_apply_configuration(mono, four, 1) && !layouts->can_apply_configuration(mono, misnamed, 1) &&
                       !layouts->can_apply_configuration(mono, elsewhere, 1),
                   "four channels, a mislabelled port and a port that is not there are refused");
+            // Mono in, stereo out: two widths, so the ports are no longer one buffer in place.
+            check(layouts->apply_configuration(mono, monoIn, 1), "mono in, stereo out is applied");
+            clap_audio_port_info_t wideIn, wideOut;
+            check(monoPorts->get(mono, 0, true, &wideIn) && monoPorts->get(mono, 0, false, &wideOut) &&
+                      wideIn.channel_count == 1 && wideOut.channel_count == 2 &&
+                      wideIn.in_place_pair == CLAP_INVALID_ID && wideOut.in_place_pair == CLAP_INVALID_ID,
+                  "mono in, stereo out are not offered as one buffer in place");
             check(layouts->apply_configuration(mono, both, 2), "mono in and out is applied");
             clap_audio_port_info_t a, b;
             check(monoPorts->get(mono, 0, true, &a) && monoPorts->get(mono, 0, false, &b) && a.channel_count == 1 &&
-                      b.channel_count == 1 && std::strcmp(a.port_type, CLAP_PORT_MONO) == 0,
-                  "the ports then say mono");
+                      b.channel_count == 1 && std::strcmp(a.port_type, CLAP_PORT_MONO) == 0 &&
+                      a.in_place_pair == b.id && b.in_place_pair == a.id,
+                  "the ports then say mono, and may share a buffer again");
             check(mono->activate(mono, sampleRate, 1, block) && mono->start_processing(mono), "the mono plugin starts");
             check(!layouts->can_apply_configuration(mono, monoIn, 1), "the ports are not changed while it runs");
             Effect ref;

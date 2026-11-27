@@ -485,8 +485,9 @@ bool portsGet(const clap_plugin_t* plugin, uint32_t index, bool isInput, clap_au
     const Plugin* p = self(plugin);
     info->channel_count = isInput ? p->inWidth : p->outWidth;
     info->port_type = info->channel_count == 1 ? CLAP_PORT_MONO : CLAP_PORT_STEREO;
-    // An effect reads a frame before it writes it, so the host may use one buffer for both.
-    info->in_place_pair = Effect::kIsInstrument ? CLAP_INVALID_ID : 0;
+    // An effect reads a frame before it writes it, so the host may use one buffer for both,
+    // while they are as wide as each other (not mono in, stereo out).
+    info->in_place_pair = Effect::kIsInstrument || p->inWidth != p->outWidth ? CLAP_INVALID_ID : 0;
     return true;
 }
 
