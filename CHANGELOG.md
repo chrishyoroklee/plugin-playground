@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- **Fixed**: an effect plugin was offered only on stereo tracks, so Logic Pro did not list it
+  on an audio track, which is mono when it is made. Effects now take mono in and out, and
+  mono in with stereo out, as well as stereo. Instruments are unchanged.
+
 ## 0.1.0 beta 1
 
 The first public beta. Everything below is new.

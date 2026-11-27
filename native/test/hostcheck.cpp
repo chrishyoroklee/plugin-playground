@@ -374,6 +374,84 @@ int main(int argc, char** argv) {
         second->destroy(second);
     }
 
+    // Mono: a host may make an effect's ports mono, as Logic does on a mono audio track,
+    // which is offered only effects that take mono. Mono in feeds both sides of the Effect;
+    // mono out is the mean of its two sides. An instrument stays stereo.
+    const clap_plugin_t* mono = factory->create_plugin(factory, &kHost, desc->id);
+    check(mono && mono->init(mono), "an instance for a mono track can be created");
+    if (mono) {
+        using Request = clap_audio_port_configuration_request_t;
+        const auto* layouts = static_cast<const clap_plugin_configurable_audio_ports_t*>(
+            mono->get_extension(mono, CLAP_EXT_CONFIGURABLE_AUDIO_PORTS));
+        const auto* monoPorts = static_cast<const clap_plugin_audio_ports_t*>(mono->get_extension(mono, CLAP_EXT_AUDIO_PORTS));
+        if (Effect::kIsInstrument) {
+            check(!layouts, "an instrument's ports are not made mono");
+        } else {
+            check(layouts != nullptr, "an effect's ports can be made mono");
+        }
+        if (layouts && !Effect::kIsInstrument) {
+            const Request both[2] = {{true, 0, 1, CLAP_PORT_MONO, nullptr}, {false, 0, 1, CLAP_PORT_MONO, nullptr}};
+            const Request monoIn[1] = {{true, 0, 1, CLAP_PORT_MONO, nullptr}};
+            const Request monoOut[1] = {{false, 0, 1, CLAP_PORT_MONO, nullptr}};
+            const Request four[1] = {{true, 0, 4, nullptr, nullptr}};
+            const Request misnamed[1] = {{true, 0, 1, CLAP_PORT_STEREO, nullptr}};
+            const Request elsewhere[1] = {{true, 1, 1, CLAP_PORT_MONO, nullptr}};
+            check(layouts->can_apply_configuration(mono, monoIn, 1), "mono in, stereo out is offered");
+            check(!layouts->can_apply_configuration(mono, monoOut, 1), "stereo in, mono out is not");
+            check(!layouts->can_apply_configuration(mono, four, 1) && !layouts->can_apply_configuration(mono, misnamed, 1) &&
+                      !layouts->can_apply_configuration(mono, elsewhere, 1),
+                  "four channels, a mislabelled port and a port that is not there are refused");
+            check(layouts->apply_configuration(mono, both, 2), "mono in and out is applied");
+            clap_audio_port_info_t a, b;
+            check(monoPorts->get(mono, 0, true, &a) && monoPorts->get(mono, 0, false, &b) && a.channel_count == 1 &&
+                      b.channel_count == 1 && std::strcmp(a.port_type, CLAP_PORT_MONO) == 0,
+                  "the ports then say mono");
+            check(mono->activate(mono, sampleRate, 1, block) && mono->start_processing(mono), "the mono plugin starts");
+            check(!layouts->can_apply_configuration(mono, monoIn, 1), "the ports are not changed while it runs");
+            Effect ref;
+            ref.prepare(sampleRate);
+            std::vector<float> m(block), mo(block);
+            double off = 0;
+            bool monoHeard = false;
+            for (uint32_t blk = 0; blk < 100; blk++) {
+                for (uint32_t i = 0; i < block; i++) m[i] = blk < 50 ? noise.next() : 0.0f;
+                const float* directIn[2] = {m.data(), m.data()};
+                float* directOut[2] = {wantL.data(), wantR.data()};
+                ref.process(directIn, directOut, static_cast<int>(block));
+                float* in32[1] = {m.data()};
+                float* out32[1] = {mo.data()};
+                clap_audio_buffer_t in, out;
+                std::memset(&in, 0, sizeof in);
+                std::memset(&out, 0, sizeof out);
+                in.channel_count = out.channel_count = 1;
+                in.data32 = in32;
+                out.data32 = out32;
+                Events events;
+                clap_process_t process;
+                std::memset(&process, 0, sizeof process);
+                process.steady_time = -1;
+                process.frames_count = block;
+                process.audio_inputs = &in;
+                process.audio_outputs = &out;
+                process.audio_inputs_count = 1;
+                process.audio_outputs_count = 1;
+                process.in_events = &events.in;
+                process.out_events = &kOutEvents;
+                check(mono->process(mono, &process) != CLAP_PROCESS_ERROR, "a mono block is processed");
+                for (uint32_t i = 0; i < block; i++) {
+                    const float want = (wantL[i] + wantR[i]) * 0.5f;
+                    off = std::max(off, std::fabs(double(mo[i]) - want));
+                    monoHeard = monoHeard || mo[i] != 0;
+                }
+            }
+            if (off != 0) std::fprintf(stderr, "hostcheck: mono differs from the Effect's mean by up to %g\n", off);
+            check(monoHeard && off == 0, "mono out is the mean of the Effect's two sides, fed the mono input");
+            mono->stop_processing(mono);
+            mono->deactivate(mono);
+        }
+        mono->destroy(mono);
+    }
+
 #ifdef FX_RUNTIME
     // Presets: each one sets the dials it names (and the rest to their defaults) and tells
     // the host. One that runs another program swaps it in, playing, on the next block;

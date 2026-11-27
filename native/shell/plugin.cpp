@@ -1,8 +1,9 @@
 // The plugin shell: one Effect.h, wrapped as a CLAP plugin. That is either the Effect.h
 // patchc generated for one device, or the runtime's (native/runtime), which becomes
 // whichever device is in the file next to the plugin when the plugin is loaded. An effect gets a
-// stereo input and output; an instrument (Effect::kIsInstrument) gets a note input and a
-// stereo output, and is played by the host's notes or by raw MIDI.
+// stereo input and output, which a host may make mono (a mono track in Logic is offered
+// only effects that take mono); an instrument (Effect::kIsInstrument) gets a note input and
+// a stereo output, and is played by the host's notes or by raw MIDI.
 //
 // Hand-written and the same for every effect. The Effect.h it includes is whichever one
 // patchc generated for this build; clap-wrapper turns the result into VST3 and Audio
@@ -112,6 +113,9 @@ struct Plugin : fxgui::Model {
     std::atomic<int> picked{-1};     // the preset last chosen, -1 for none
     bool active = false;
     double rate = 44100.0;
+    // How many channels the main input and output carry: 2, or 1 where the host asked for
+    // mono (configurable audio ports, below). Changed only while the plugin is not active.
+    uint32_t inWidth = 2, outWidth = 2;
     std::unique_ptr<std::atomic<double>[]> values;  // in the dial's units
     std::unique_ptr<std::atomic<bool>[]> dirty;     // changed off the audio thread; process() applies it
     std::vector<float> spare32;          // somewhere to render a channel the host did not give us
@@ -322,8 +326,12 @@ struct Plugin : fxgui::Model {
             effect->process(static_cast<const Sample* const*>(nullptr), outs, static_cast<int>(frames));
             return;
         }
+        // A mono input feeds both sides; a mono output is the two sides' mean, so a stereo
+        // delay or chorus keeps both of its sides on a mono track.
         const Sample* ins[2] = {in[0] + from, (inChannels > 1 ? in[1] : in[0]) + from};
         effect->process(ins, outs, static_cast<int>(frames));
+        if (outChannels < 2)
+            for (uint32_t i = 0; i < frames; i++) outs[0][i] = (outs[0][i] + outs[1][i]) * Sample(0.5);
     }
 };
 
@@ -464,6 +472,7 @@ clap_process_status pluginProcess(const clap_plugin_t* plugin, const clap_proces
 }
 
 // ── audio ports: a stereo output, and for an effect a stereo input ──────────────
+// An effect's may be made mono by the host: see configurable audio ports below.
 
 uint32_t portsCount(const clap_plugin_t*, bool isInput) { return isInput && Effect::kIsInstrument ? 0 : 1; }
 
@@ -473,14 +482,54 @@ bool portsGet(const clap_plugin_t* plugin, uint32_t index, bool isInput, clap_au
     info->id = 0;
     std::strncpy(info->name, isInput ? "Input" : "Output", sizeof info->name - 1);
     info->flags = CLAP_AUDIO_PORT_IS_MAIN | CLAP_AUDIO_PORT_SUPPORTS_64BITS;
-    info->channel_count = 2;
-    info->port_type = CLAP_PORT_STEREO;
+    const Plugin* p = self(plugin);
+    info->channel_count = isInput ? p->inWidth : p->outWidth;
+    info->port_type = info->channel_count == 1 ? CLAP_PORT_MONO : CLAP_PORT_STEREO;
     // An effect reads a frame before it writes it, so the host may use one buffer for both.
     info->in_place_pair = Effect::kIsInstrument ? CLAP_INVALID_ID : 0;
     return true;
 }
 
 const clap_plugin_audio_ports_t kAudioPorts = {portsCount, portsGet};
+
+// ── configurable audio ports: an effect on a mono track ─────────────────────────
+// What an effect takes: mono or stereo in, and an output at least as wide (mono, mono to
+// stereo, stereo). clap-wrapper asks this to know which layouts its Audio Unit and VST3
+// may offer; without it the Audio Unit said stereo only, and Logic does not list a
+// stereo-only effect on a mono audio track, which is what a new audio track is.
+
+bool layoutFor(const Plugin* p, const clap_audio_port_configuration_request_t* requests, uint32_t count,
+               uint32_t& in, uint32_t& out) {
+    if (Effect::kIsInstrument || p->active || (count && !requests)) return false;
+    in = p->inWidth;
+    out = p->outWidth;
+    for (uint32_t k = 0; k < count; k++) {
+        const clap_audio_port_configuration_request_t& r = requests[k];
+        if (r.port_index != 0 || r.channel_count < 1 || r.channel_count > 2) return false;
+        if (r.port_type && std::strcmp(r.port_type, r.channel_count == 1 ? CLAP_PORT_MONO : CLAP_PORT_STEREO) != 0)
+            return false;
+        (r.is_input ? in : out) = r.channel_count;
+    }
+    return in <= out;
+}
+
+bool canApplyLayout(const clap_plugin_t* plugin, const clap_audio_port_configuration_request_t* requests,
+                    uint32_t count) {
+    uint32_t in = 0, out = 0;
+    return layoutFor(self(plugin), requests, count, in, out);
+}
+
+bool applyLayout(const clap_plugin_t* plugin, const clap_audio_port_configuration_request_t* requests,
+                 uint32_t count) {
+    Plugin* p = self(plugin);
+    uint32_t in = 0, out = 0;
+    if (!layoutFor(p, requests, count, in, out)) return false;
+    p->inWidth = in;
+    p->outWidth = out;
+    return true;
+}
+
+const clap_plugin_configurable_audio_ports_t kLayouts = {canApplyLayout, applyLayout};
 
 // ── note port: an instrument's way in ───────────────────────────────────────────
 
@@ -718,6 +767,7 @@ const clap_plugin_preset_load_t kPresetLoad = {presetFromLocation};
 const void* pluginExtension(const clap_plugin_t*, const char* id) {
     if (std::strcmp(id, CLAP_EXT_GUI) == 0 && hasWindow()) return &kGui;
     if (std::strcmp(id, CLAP_EXT_AUDIO_PORTS) == 0) return &kAudioPorts;
+    if (std::strcmp(id, CLAP_EXT_CONFIGURABLE_AUDIO_PORTS) == 0 && !Effect::kIsInstrument) return &kLayouts;
     if (std::strcmp(id, CLAP_EXT_NOTE_PORTS) == 0 && Effect::kIsInstrument) return &kNotePorts;
     if (std::strcmp(id, CLAP_EXT_PARAMS) == 0) return &kParams;
     if (std::strcmp(id, CLAP_EXT_STATE) == 0) return &kState;
@@ -728,7 +778,8 @@ const void* pluginExtension(const clap_plugin_t*, const char* id) {
 
 // ── descriptor and factory ──────────────────────────────────────────────────────
 
-const char* const kEffectFeatures[] = {CLAP_PLUGIN_FEATURE_AUDIO_EFFECT, CLAP_PLUGIN_FEATURE_STEREO, nullptr};
+const char* const kEffectFeatures[] = {CLAP_PLUGIN_FEATURE_AUDIO_EFFECT, CLAP_PLUGIN_FEATURE_STEREO,
+                                       CLAP_PLUGIN_FEATURE_MONO, nullptr};
 const char* const kInstrumentFeatures[] = {CLAP_PLUGIN_FEATURE_INSTRUMENT, CLAP_PLUGIN_FEATURE_SYNTHESIZER,
                                            CLAP_PLUGIN_FEATURE_STEREO, nullptr};
 
